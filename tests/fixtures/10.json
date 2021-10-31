@@ -1,0 +1,46 @@
+{
+    "name": "Niko's NFT #11",
+    "description": "This is a custom, one of a kind NFT for Niko",
+    "seller_fee_basis_points": 500,
+    "image": "10.png",
+    "attributes": [
+        {
+            "trait_type": "black",
+            "value": 3,
+            "trait_count": 16
+        },
+        {
+            "trait_type": "yellow",
+            "value": 0,
+            "trait_count": 256
+        },
+        {
+            "trait_type": "red",
+            "value": 1,
+            "trait_count": 256
+        },
+        {
+            "trait_type": "blue",
+            "value": 0,
+            "trait_count": 256
+        },
+        {
+            "trait_type": "colors",
+            "value": 2,
+            "trait_count": 300
+        }
+    ],
+    "collection": {
+        "name": "Niko's NFT",
+        "family": "NFT's for Niko"
+    },
+    "properties": {
+        "files": [
+            {
+                "uri": "10.png",
+                "type": "image/png"
+            }
+        ],
+        "category": "image"
+    }
+}

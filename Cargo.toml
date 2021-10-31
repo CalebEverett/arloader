@@ -1,0 +1,37 @@
+[package]
+name = "arload"
+authors = ["calebeverett <caleb@calebeverett.io>"]
+description = "Command line application and library for uploading files to Arweave."
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/CalebEverett/arload"
+
+[lib]
+name = "arload"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1.51"
+base64 = "0.13.0"
+borsh = "0.9.1"
+blake3 = "1.1.0"
+chrono = { version = "0.4.19", features = ["serde"] }
+clap = "2.33.3"
+futures = "0.3.17"
+glob = "0.3.0"
+infer = { version = "0.5.0", default-features = false }
+jsonwebkey = { version = "0.3.4", features = [ "pkcs-convert" ] }
+log = "0.4.14"
+matches = "0.1.9"
+num-bigint = { version = "0.4.2", features = [ "serde" ] }
+num-traits = "0.2.14"
+ring = {version = "0.16.20", features = [ "std" ] }
+reqwest = { version = "0.11", features = ["json"] }
+serde = "1.0.130"
+serde_derive = "1.0.130"
+serde_json = "1.0.68"
+thiserror = "1.0.30"
+tokio = { version = "1", features = ["rt-multi-thread", "fs", "macros"] }
+url = "2.2.2"
+
