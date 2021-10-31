@@ -1,3 +1,4 @@
+[![build status](https://github.com/CalebEverett/arload/actions/workflows/build.yml/badge.svg)](https://github.com/CalebEverett/arload/actions/workflows/build.yml)
 
 # arload
 
@@ -30,7 +31,7 @@ cargo run wallet-balance
 ```
 Wallet balance is 1549658342531 winstons ($49.82). At the current price of 444274406 winstons ($0.0221) per MB, you can upload 3488 MB of data.
 ```
-5. Upload your files, specifying a `log_dir` to write statuses to so you check on the status of your uploads later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
+5. Upload your files, specifying a `log_dir` to write statuses to so you check them later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
 ```
 cargo run upload "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 ```
@@ -46,9 +47,9 @@ cargo run upload "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
  Uploaded 5 files. Run `update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/` to confirm transaction(s).
  ```
 
-Uploads are async and utilize stream, although the default buffer size is 1. To incraese the buffer size, pass the flat `--buffer` followed by the size.
+Uploads are async and utilize streams, although the default buffer size is 1. To increase the buffer size, pass the flag `--buffer` followed by the size.
 
-6. Your transactions won't be written written, even though they have been successfully uploaded. To check the status of your transactions run:
+6. Your transactions may not be written write away, depending on network traffic and how long it takes miners to add them to the blockchain. To check the status of your transactions run:
 
 ```
 cargo run update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
@@ -78,7 +79,7 @@ cargo run status-report "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
  Total                     5
  ```
 
-7. If you wanted determine whether any of your upload transactions were unsuccessful - you may end with a few that don't get confirmed if you have a large number of them - you can filter the statuses of your files by status and by number of confirmations.
+7. If you wanted to determine whether any of your upload transactions were unsuccessful - you can filter the statuses of your files by status and by number of confirmations.
 
 ```
 cargo run list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --min-confirms 7
@@ -93,11 +94,11 @@ cargo run list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --min-co
 Found 3 files matching filter criteria.
 ```
 
-8. If you then want to re-upload some files, you can run 
+8. If you then want to re-upload some of your files, you can run 
 ```
 cargo run upload-filter "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --min-confirms 7 --buffer 3
 ```
-with the same filter criteria you used in the filter above.
+with the same filter criteria you used above.
 ```
  path                            id                                           status     confirms
 -------------------------------------------------------------------------------------------------
@@ -106,11 +107,11 @@ with the same filter criteria you used in the filter above.
  tests/fixtures/5.png            NLkmVtUAsphbmjNYMWTMMbZ7Kd6l40Fsj4MagKDkgRA  Submitted         0
 Uploaded 3 files. Run `update-statuses` to confirm acceptance.
 
-and then if we run 
+and then if you run 
 ```
 cargo run update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 ```
-we can see that our files have been re-uploaded.
+you can see that your files have been re-uploaded.
 ```
 ```
  path                            id                                           status     confirms
@@ -122,7 +123,7 @@ we can see that our files have been re-uploaded.
  tests/fixtures/5.png            nWChdcmmIBLYHAjD90IuRVEsd3D3-WzUaknskK9f790  Pending           0
 Updated 5 statuses.
 ```
-9. If you want to get the the transaction ids for all your uploads, the status objects are written to json files in `log_dir` or you can get json output by passing `json` to the `output flag`.
+9. If you want to get the transaction ids for all your uploads, the status objects are written to json files in `log_dir` or you can get json output by passing `json` to the `output flag`.
 
 ```
 cargo run list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --output json
