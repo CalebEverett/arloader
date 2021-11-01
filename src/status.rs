@@ -1,3 +1,5 @@
+//! Data structures for reporting transaction statuses.
+
 use crate::transaction::Base64;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

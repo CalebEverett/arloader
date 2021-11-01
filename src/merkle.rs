@@ -1,3 +1,5 @@
+//! Functionality for chunking file data and calculating and verifying root Merkle tree root ids.
+
 use crate::{
     crypto::{Methods, Provider},
     error::ArweaveError,

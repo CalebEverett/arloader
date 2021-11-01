@@ -1,6 +1,6 @@
-#![feature(derive_default_enum)]
+//! Upload files in bulk to [Arweave](https://www.arweave.org/) for permanent storage.
 
-use crate::error::ArweaveError;
+#![feature(derive_default_enum)]
 use async_trait::async_trait;
 use blake3;
 use chrono::Utc;
@@ -26,14 +26,15 @@ pub mod transaction;
 pub mod utils;
 
 use crypto::Methods as CryptoMethods;
+use error::ArweaveError as Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use status::{Status, StatusCode};
-use transaction::{Base64, FromStrs, Tag, Transaction};
+use transaction::{Base64, FromStrs, Tag, ToItems, Transaction};
 
-pub type Error = ArweaveError;
-
+/// Winstons are a sub unit of the native Arweave network token, AR. There are 10<sup>12</sup> Winstons per AR.
 pub const WINSTONS_PER_AR: u64 = 1000000000000;
 
+/// Primary struct on which [`Methods`] for interacting with the network are implemented.
 pub struct Arweave {
     pub name: String,
     pub units: String,
@@ -41,6 +42,7 @@ pub struct Arweave {
     pub crypto: crypto::Provider,
 }
 
+/// Uploads files matching glob pattern, returning a stream of [`Status`] structs.
 pub fn upload_files_stream<'a, IP>(
     arweave: &'a Arweave,
     paths_iter: IP,
@@ -59,6 +61,7 @@ where
         .buffer_unordered(buffer)
 }
 
+/// Queries network and updates locally stored [`Status`] structs.
 pub fn update_statuses_stream<'a, IP>(
     arweave: &'a Arweave,
     paths_iter: IP,
@@ -83,6 +86,7 @@ struct OraclePricePair {
     pub usd: f32,
 }
 
+/// Primary methods for interacting with Arweave network.
 #[async_trait]
 pub trait Methods<T> {
     async fn from_keypair_path(keypair_path: PathBuf, base_url: Option<Url>) -> Result<T, Error>;
@@ -285,7 +289,7 @@ impl Methods<Arweave> for Arweave {
 
     /// Gets deep hash, signs and sets signature and id.
     fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
-        let deep_hash = self.crypto.deep_hash(&transaction)?;
+        let deep_hash = self.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
         let signature = self.crypto.sign(&deep_hash)?;
         let id = self.crypto.hash_SHA256(&signature)?;
         transaction.signature = Base64(signature);
@@ -367,7 +371,7 @@ impl Methods<Arweave> for Arweave {
             let status: Status = serde_json::from_str(&data)?;
             Ok(status)
         } else {
-            Err(ArweaveError::StatusNotFound)
+            Err(Error::StatusNotFound)
         }
     }
 

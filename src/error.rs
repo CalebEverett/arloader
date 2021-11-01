@@ -1,3 +1,4 @@
+//! Errors propagated by library functions.
 use base64::DecodeError;
 use glob;
 use reqwest;
