@@ -55,6 +55,9 @@ impl Methods for Provider {
             keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
         })
     }
+    /// Returns the full modulus of the stored keypair. Encoded as a Base64Url String,
+    /// represents the associated network address. Also used in the calculation of transaction
+    /// signatures.
     fn keypair_modulus(&self) -> Result<Base64, Error> {
         let modulus = self
             .keypair
@@ -138,6 +141,7 @@ impl Methods for Provider {
         Ok(result)
     }
 
+    /// Returns a SHA256 hash of the the concatenated SHA256 hashes of a vector messages.
     fn hash_all_SHA256(&self, messages: Vec<&[u8]>) -> Result<[u8; 32], Error> {
         let hash: Vec<u8> = messages
             .into_iter()
@@ -149,6 +153,7 @@ impl Methods for Provider {
         Ok(hash)
     }
 
+    /// Returns a SHA384 hash of the the concatenated SHA384 hashes of a vector messages.
     fn hash_all_SHA384(&self, messages: Vec<&[u8]>) -> Result<[u8; 48], Error> {
         let hash: Vec<u8> = messages
             .into_iter()
@@ -160,22 +165,24 @@ impl Methods for Provider {
         Ok(hash)
     }
 
+    /// Concatenates two `[u8; 48]` arrays, returning a `[u8; 96]` array.
     fn concat_u8_48(&self, left: [u8; 48], right: [u8; 48]) -> Result<[u8; 96], Error> {
         let mut iter = left.into_iter().chain(right);
         let result = [(); 96].map(|_| iter.next().unwrap());
         Ok(result)
     }
 
+    /// Calculates data root of transaction in accordance with implementation in [arweave-js](https://github.com/ArweaveTeam/arweave-js/blob/master/src/common/lib/deepHash.ts).
+    /// [`DeepHashItem`] is a recursive Enum that allows the function to be applied to
+    /// nested [`Vec<u8>`] of arbitrary depth.
     fn deep_hash(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error> {
         let hash = match deep_hash_item {
             DeepHashItem::Blob(blob) => {
                 let blob_tag = format!("blob{}", blob.len());
-                println!("alt2 blob: {}", blob_tag);
                 self.hash_all_SHA384(vec![blob_tag.as_bytes(), &blob])?
             }
             DeepHashItem::List(list) => {
                 let list_tag = format!("list{}", list.len());
-                println!("alt2 list: {}", list_tag);
                 let mut hash = self.hash_SHA384(list_tag.as_bytes())?;
 
                 for child in list.into_iter() {
