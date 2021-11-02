@@ -69,8 +69,8 @@ impl Methods for Provider {
     /// Calculates the wallet address of the provided keypair according to [addressing](https://docs.arweave.org/developers/server/http-api#addressing)
     /// in documentation.
     ///```
-    /// # use arload::crypto::Methods as CryptoMethods;
-    /// # use arload::{Arweave, Methods as ArweaveMethods};
+    /// # use arloader::crypto::Methods as CryptoMethods;
+    /// # use arloader::{Arweave, Methods as ArweaveMethods};
     /// # use ring::{signature, rand};
     /// # use std::{fmt::Display, path::PathBuf};
     /// #
@@ -102,7 +102,7 @@ impl Methods for Provider {
     /// Verifies that a message was signed by the public key of the Provider.key keypair.
     ///```
     /// # use ring::{signature, rand};
-    /// # use arload::crypto::{Provider, Methods};
+    /// # use arloader::crypto::{Provider, Methods};
     /// # use std::path::PathBuf;
     /// #
     /// # #[tokio::main]

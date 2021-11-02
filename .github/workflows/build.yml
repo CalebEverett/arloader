@@ -34,7 +34,7 @@ jobs:
           sudo apt-get install -y libudev-dev --allow-unauthenticated
           sudo apt-get install -y zip --allow-unauthenticated
           cargo build --target x86_64-unknown-linux-gnu --release
-          zip x86_64-unknown-linux-gnu.zip target/x86_64-unknown-linux-gnu/release/arload README.md -j
+          zip x86_64-unknown-linux-gnu.zip target/x86_64-unknown-linux-gnu/release/arloader README.md -j
       - name: Test
         run: |
           cargo test --release --target x86_64-unknown-linux-gnu -- --nocapture
