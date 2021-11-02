@@ -42,4 +42,9 @@ jobs:
         with:
           files: |
             x86_64-linux-gnu.zip
-          
+            LICENSE.md
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        run: cargo publish --token ${{ secrets.CARGO_TOKEN }} 
+
+    
