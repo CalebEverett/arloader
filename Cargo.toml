@@ -1,14 +1,14 @@
 [package]
-name = "arload"
+name = "arloader"
 authors = ["calebeverett <caleb@calebeverett.io>"]
 description = "Command line application and library for uploading files to Arweave."
 version = "0.1.3"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/CalebEverett/arload"
+repository = "https://github.com/CalebEverett/arloader"
 
 [lib]
-name = "arload"
+name = "arloader"
 path = "src/lib.rs"
 
 [dependencies]

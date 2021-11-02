@@ -1,6 +1,6 @@
-[![build status](https://github.com/CalebEverett/arload/actions/workflows/build.yml/badge.svg)](https://github.com/CalebEverett/arload/actions/workflows/build.yml)
+[![build status](https://github.com/CalebEverett/arloader/actions/workflows/build.yml/badge.svg)](https://github.com/CalebEverett/arloader/actions/workflows/build.yml)
 
-# arload
+# arloader
 
 Command line application and library for uploading files to Arweave.
 
@@ -10,15 +10,13 @@ Command line application and library for uploading files to Arweave.
 
 2. Install
 ```
-git clone git@github.com:CalebEverett/arload.git
-cd arload
-cargo build
+cargo install arloader
 ```
 
 3. Get an estimate of how much it is going to cost to store your files:
 
 ```
-cargo run estimate "tests/fixtures/*.png"
+arloader estimate "tests/fixtures/*.png"
 ```
 
 ```
@@ -26,14 +24,14 @@ The price to upload 10 files with 18265 total bytes is 9071040 winstons ($0.0004
 ```
 4. Check your wallet balance
 ```
-cargo run wallet-balance
+arloader wallet-balance
 ```
 ```
 Wallet balance is 1549658342531 winstons ($49.82). At the current price of 444274406 winstons ($0.0221) per MB, you can upload 3488 MB of data.
 ```
 5. Upload your files, specifying a `log_dir` to write statuses to so you check them later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
 ```
-cargo run upload "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
+arloader upload "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 ```
 
 ```
@@ -52,7 +50,7 @@ Uploads are async and utilize streams, although the default buffer size is 1. To
 6. Your transactions may not be written write away, depending on network traffic and how long it takes miners to add them to the blockchain. To check the status of your transactions run:
 
 ```
-cargo run update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
+arloader update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 ```
 ```
  path                            id                                           status     confirms
@@ -66,7 +64,7 @@ cargo run update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 
 6. To get a summary report of the status of your uploads, run:
 ```
-cargo run status-report "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
+arloader status-report "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 ```
 ```
  status                count
@@ -82,7 +80,7 @@ cargo run status-report "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 7. If you wanted to determine whether any of your upload transactions were unsuccessful - you can filter the statuses of your files by status and by number of confirmations.
 
 ```
-cargo run list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ -max-confirms 1
+arloader list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ -max-confirms 1
 ```
 
 ```
@@ -96,7 +94,7 @@ Found 3 files matching filter criteria.
 
 8. If you then want to re-upload some of your files, you can run 
 ```
-cargo run upload-filter "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --max-confirms 1 --buffer 3
+arloader upload-filter "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --max-confirms 1 --buffer 3
 ```
 with the same filter criteria you used above.
 ```
@@ -109,7 +107,7 @@ Uploaded 3 files. Run `update-statuses` to confirm acceptance.
 
 and then if you run 
 ```
-cargo run update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
+arloader update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 ```
 you can see that your files have been re-uploaded.
 ```
@@ -126,7 +124,7 @@ Updated 5 statuses.
 9. If you want to get the transaction ids for all your uploads, the status objects are written to json files in `log_dir` or you can get json output by passing `json` to the `output flag`.
 
 ```
-cargo run list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --output json
+arloader list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --output json
 ```
 
 ```

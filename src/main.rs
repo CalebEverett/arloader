@@ -1,4 +1,4 @@
-use arload::{
+use arloader::{
     error::ArweaveError,
     status::{OutputFormat, OutputHeader, Status, StatusCode},
     transaction::{Base64, FromStrs, Tag},
