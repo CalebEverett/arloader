@@ -1,4 +1,4 @@
-//! [`Transaction`] and [`Tag`] data structures and serialization and deserialization functionality.
+//! Data structures for serializing and deserializing [`Transaction`]s and [`Tag`]s.
 
 use crate::{
     error::ArweaveError,
@@ -9,6 +9,7 @@ use std::str::FromStr;
 
 type Error = ArweaveError;
 
+/// Transaction data structure per [Arweave spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Transaction {
     pub format: u8,
@@ -32,6 +33,9 @@ pub struct Transaction {
     pub proofs: Vec<Proof>,
 }
 
+/// Serializes and deserializes numbers represented as Strings. Used for `quantity`, `data_size`
+/// and `reward` [`Transaction`] fields so that they can be represented as numbers but be serialized
+/// to Strings as required by the Arweave spec.
 pub mod stringify {
     use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -55,6 +59,9 @@ pub mod stringify {
     }
 }
 
+/// Implemented on [`Transaction`] to create root [`DeepHashItem`]s used by
+/// [`crate::crypto::Methods::deep_hash`] in the creation of a transaction
+/// signatures.
 pub trait ToItems<'a, T> {
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error>;
 }
@@ -103,12 +110,14 @@ impl<'a> ToItems<'a, Transaction> for Transaction {
     }
 }
 
+/// Transaction tag.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Tag {
     pub name: Base64,
     pub value: Base64,
 }
 
+/// Implemented as a convenience to create [`Tag`]s from name, value pairs of utf8 strings.
 pub trait FromStrs<T> {
     fn from_utf8_strs(name: &str, value: &str) -> Result<T, Error>;
 }
@@ -148,6 +157,7 @@ impl<'a> ToItems<'a, Tag> for Tag {
     }
 }
 
+/// A struct of [`Vec<u8>`] used for all data and address fields.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Base64(pub Vec<u8>);
 
@@ -173,7 +183,7 @@ impl FromStr for Base64 {
     }
 }
 
-/// Handles conversion of unencoded strings through to base64url and back to bytes.
+/// Implemented on [`Base64`] to encode and decode utf8 strings.
 pub trait ConvertUtf8<T> {
     fn from_utf8_str(str: &str) -> Result<T, Error>;
     fn to_utf8_string(&self) -> Result<String, Error>;
@@ -218,12 +228,15 @@ impl<'de> Deserialize<'de> for Base64 {
     }
 }
 
+/// Recursive data structure that facilitates [`crate::crypto::Methods::deep_hash`] accepting nested
+/// arrays of arbitrary depth as an argument with a single type.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeepHashItem {
     Blob(Vec<u8>),
     List(Vec<DeepHashItem>),
 }
 
+/// Implemented as a convenience to create [`DeepHashItem`]s.
 pub trait FromItemOrChild<T> {
     fn from_item(item: &[u8]) -> Self;
     fn from_children(children: Vec<T>) -> Self;

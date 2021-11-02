@@ -332,11 +332,11 @@ fn get_app() -> App<'static, 'static> {
                         .help("Status codes to filter by. Multiple Ok."),
                 )
                 .arg(
-                    Arg::with_name("min_confirms")
+                    Arg::with_name("max_confirms")
                         .long("min-confirms")
-                        .value_name("MIN_CONFIRM")
+                        .value_name("MAX_CONFIRM")
                         .takes_value(true)
-                        .help("Provide minimum number of confirmations to filter statuses by."),
+                        .help("Provide maximum number of confirmations to filter statuses by."),
                 ),
         )
         .subcommand(
@@ -377,11 +377,11 @@ fn get_app() -> App<'static, 'static> {
                         .help("Status codes to filter by. Multiple Ok."),
                 )
                 .arg(
-                    Arg::with_name("min_confirms")
+                    Arg::with_name("max_confirms")
                         .long("min-confirms")
-                        .value_name("MIN_CONFIRM")
+                        .value_name("MAX_CONFIRM")
                         .takes_value(true)
-                        .help("Provide minimum number of confirmations to filter statuses by."),
+                        .help("Provide maximum number of confirmations to filter statuses by."),
                 ),
         );
     app_matches
@@ -439,14 +439,14 @@ async fn main() -> CommandResult {
                 None
             };
 
-            let min_confirms = sub_arg_matches.value_of("min_confirms");
+            let max_confirms = sub_arg_matches.value_of("max_confirms");
             let output_format = app_matches.value_of("output_format");
             command_list_statuses(
                 &arweave,
                 glob_str,
                 log_dir,
                 statuses,
-                min_confirms,
+                max_confirms,
                 output_format,
             )
             .await
@@ -473,7 +473,7 @@ async fn main() -> CommandResult {
                 None
             };
 
-            let min_confirms = sub_arg_matches.value_of("min_confirms");
+            let max_confirms = sub_arg_matches.value_of("max_confirms");
             let output_format = app_matches.value_of("output_format");
             let buffer = app_matches.value_of("buffer");
             command_upload_filter(
@@ -481,7 +481,7 @@ async fn main() -> CommandResult {
                 glob_str,
                 log_dir,
                 statuses,
-                min_confirms,
+                max_confirms,
                 output_format,
                 buffer,
             )
@@ -592,17 +592,17 @@ async fn command_list_statuses(
     glob_str: &str,
     log_dir: &str,
     statuses: Option<Vec<StatusCode>>,
-    min_confirms: Option<&str>,
+    max_confirms: Option<&str>,
     output_format: Option<&str>,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let log_dir = PathBuf::from(log_dir);
     let output_format = get_output_format(output_format.unwrap_or(""));
-    let min_confirms = min_confirms.map(|m| m.parse::<u64>().unwrap());
+    let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
 
     let mut counter = 0;
     for status in arweave
-        .filter_statuses(paths_iter, log_dir.clone(), statuses, min_confirms)
+        .filter_statuses(paths_iter, log_dir.clone(), statuses, max_confirms)
         .await?
         .iter()
     {
@@ -667,19 +667,19 @@ async fn command_upload_filter(
     glob_str: &str,
     log_dir: &str,
     statuses: Option<Vec<StatusCode>>,
-    min_confirms: Option<&str>,
+    max_confirms: Option<&str>,
     output_format: Option<&str>,
     buffer: Option<&str>,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let log_dir = PathBuf::from(log_dir);
     let output_format = get_output_format(output_format.unwrap_or(""));
-    let min_confirms = min_confirms.map(|m| m.parse::<u64>().unwrap());
+    let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
     let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
 
     // Should be refactored to be included in the stream.
     let filtered_paths_iter = arweave
-        .filter_statuses(paths_iter, log_dir.clone(), statuses, min_confirms)
+        .filter_statuses(paths_iter, log_dir.clone(), statuses, max_confirms)
         .await?
         .into_iter()
         .filter_map(|f| f.file_path);

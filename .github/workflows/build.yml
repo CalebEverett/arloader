@@ -17,8 +17,10 @@ jobs:
           ports:
             - 1984:1984
     steps:
-      - uses: actions/checkout@v2
-      - run: |
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Build
+        run: |
           sudo apt-get update
           rustup install nightly
           rustup default nightly
@@ -28,6 +30,16 @@ jobs:
           sudo apt-get install -y libssl-dev --allow-unauthenticated
           sudo apt-get install -y libssl1.1 --allow-unauthenticated
           sudo apt-get install -y libudev-dev --allow-unauthenticated
-          cargo build
+          sudo apt-get install -y zip --allow-unauthenticated
+          cargo build --release
+          zip x86_64-linux-gnu.zip target/release/arload README.md -j
+      - name: Test
+        run: |
           cargo test -- --nocapture
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            x86_64-linux-gnu.zip
           

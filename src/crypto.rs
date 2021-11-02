@@ -16,7 +16,7 @@ use crate::{
     transaction::{Base64, DeepHashItem},
 };
 
-/// Struct on which [`Methods`] trait for cryptographic functionality is implemented.
+/// Struct on which [`Methods`] for cryptographic functionality is implemented.
 pub struct Provider {
     pub keypair: RsaKeyPair,
 }
