@@ -1,3 +1,4 @@
+//! Errors propagated by library functions.
 use base64::DecodeError;
 use glob;
 use reqwest;
@@ -7,6 +8,7 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 use url::ParseError;
 
+/// Errors propagated by library functions.
 #[derive(Error, Debug)]
 pub enum ArweaveError {
     #[error("base64 decode: {0}")]

@@ -1,3 +1,5 @@
+//! Async [`TempDir`] for testing.
+
 use crate::error::ArweaveError as Error;
 use async_trait::async_trait;
 use base64::{self, encode_config};
@@ -5,8 +7,12 @@ use ring::rand::{SecureRandom, SystemRandom};
 use std::{fs as fsstd, path::PathBuf};
 use tokio::fs;
 
+/// Tuple struct with a [`PathBuf`] in it.
 pub struct TempDir(pub PathBuf);
 
+/// Implemented to create a temporary directory with a random 8 byte
+/// base64 url string as a name. Drop implemented to remove directory
+/// when [`TempDir`] goes out of scope.
 #[async_trait]
 pub trait TempFrom<T> {
     async fn from_str(path_str: &str) -> Result<T, Error>;

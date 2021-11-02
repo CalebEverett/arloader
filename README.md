@@ -82,21 +82,21 @@ cargo run status-report "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 7. If you wanted to determine whether any of your upload transactions were unsuccessful - you can filter the statuses of your files by status and by number of confirmations.
 
 ```
-cargo run list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --min-confirms 7
+cargo run list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ -max-confirms 1
 ```
 
 ```
  path                            id                                           status     confirms
 -------------------------------------------------------------------------------------------------
- tests/fixtures/3.png            rgudrIf_hVF_VRz3-el9-kVaki8U4OEfxTEYEoZ6eME  Confirmed         6
- tests/fixtures/4.png            GK6FieopUSDQ7MLPJ1GvoO9227BhdcY8c0AewPF_ZhY  Confirmed         6
- tests/fixtures/5.png            Frj44HRVdfvz98x7zR63sTkVLa7I159HI6IsphLHhQc  Confirmed         6
+ tests/fixtures/3.png            rgudrIf_hVF_VRz3-el9-kVaki8U4OEfxTEYEoZ6eME  Confirmed         1
+ tests/fixtures/4.png            GK6FieopUSDQ7MLPJ1GvoO9227BhdcY8c0AewPF_ZhY  Confirmed         1
+ tests/fixtures/5.png            Frj44HRVdfvz98x7zR63sTkVLa7I159HI6IsphLHhQc  Confirmed         1
 Found 3 files matching filter criteria.
 ```
 
 8. If you then want to re-upload some of your files, you can run 
 ```
-cargo run upload-filter "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --min-confirms 7 --buffer 3
+cargo run upload-filter "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --max-confirms 1 --buffer 3
 ```
 with the same filter criteria you used above.
 ```

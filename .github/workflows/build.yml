@@ -4,6 +4,8 @@ on:
     branches:
       - master
       - dev
+    tags:
+      - "v*.*.*"
   pull_request:
     branches:
       - master
@@ -17,8 +19,10 @@ jobs:
           ports:
             - 1984:1984
     steps:
-      - uses: actions/checkout@v2
-      - run: |
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Build
+        run: |
           sudo apt-get update
           rustup install nightly
           rustup default nightly
@@ -28,6 +32,21 @@ jobs:
           sudo apt-get install -y libssl-dev --allow-unauthenticated
           sudo apt-get install -y libssl1.1 --allow-unauthenticated
           sudo apt-get install -y libudev-dev --allow-unauthenticated
-          cargo build
-          cargo test -- --nocapture
-          
+          sudo apt-get install -y zip --allow-unauthenticated
+          cargo build --target x86_64-unknown-linux-gnu --release
+          zip x86_64-unknown-linux-gnu.zip target/x86_64-unknown-linux-gnu/release/arload README.md -j
+      - name: Test
+        run: |
+          cargo test --release --target x86_64-unknown-linux-gnu -- --nocapture
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            x86_64-unknown-linux-gnu.zip
+            LICENSE.md
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        run: cargo publish --token ${{ secrets.CARGO_TOKEN }} 
+
+    

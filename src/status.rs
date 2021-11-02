@@ -1,3 +1,5 @@
+//! Data structures for reporting transaction statuses.
+
 use crate::transaction::Base64;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -5,6 +7,7 @@ use std::{cmp::Eq, fmt, hash::Hash, path::PathBuf};
 
 const STRFTIME: &str = "%Y-%m-%d %H:%M:%S";
 
+/// Status as reported directly from the network.
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct RawStatus {
@@ -13,6 +16,7 @@ pub struct RawStatus {
     pub number_of_confirmations: u64,
 }
 
+/// Indicates transaction status on the network, from Submitted to Confirmed.
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone, Eq, Hash)]
 pub enum StatusCode {
     #[default]
@@ -33,6 +37,8 @@ impl std::fmt::Display for StatusCode {
     }
 }
 
+/// Expanded status record that can be logged to a local directory to facilitate future updating,
+/// reporting and upload filtering.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Status {
     pub id: Base64,
@@ -135,6 +141,7 @@ impl OutputHeader<Status> for Status {
     }
 }
 
+/// Controls output format, including quiet, verbose and json formats.
 #[derive(Debug, Clone, Copy)]
 pub enum OutputFormat {
     Display,
@@ -175,18 +182,21 @@ impl OutputFormat {
     }
 }
 
+/// Implements header for output with multiple records.
 pub trait OutputHeader<T> {
     fn header_string(output_format: &OutputFormat) -> String
     where
         T: Serialize + fmt::Display + QuietDisplay + VerboseDisplay;
 }
 
+/// Implements output for quiet display output format.
 pub trait QuietDisplay: fmt::Display {
     fn write_str(&self, w: &mut dyn std::fmt::Write) -> std::fmt::Result {
         write!(w, "{}", self)
     }
 }
 
+/// Implements output for verbose display output format.
 pub trait VerboseDisplay: fmt::Display {
     fn write_str(&self, w: &mut dyn std::fmt::Write) -> std::fmt::Result {
         write!(w, "{}", self)

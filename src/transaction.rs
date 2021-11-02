@@ -1,3 +1,5 @@
+//! Data structures for serializing and deserializing [`Transaction`]s and [`Tag`]s.
+
 use crate::{
     error::ArweaveError,
     merkle::{Node, Proof},
@@ -7,6 +9,7 @@ use std::str::FromStr;
 
 type Error = ArweaveError;
 
+/// Transaction data structure per [Arweave spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Transaction {
     pub format: u8,
@@ -30,6 +33,9 @@ pub struct Transaction {
     pub proofs: Vec<Proof>,
 }
 
+/// Serializes and deserializes numbers represented as Strings. Used for `quantity`, `data_size`
+/// and `reward` [`Transaction`] fields so that they can be represented as numbers but be serialized
+/// to Strings as required by the Arweave spec.
 pub mod stringify {
     use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -53,16 +59,14 @@ pub mod stringify {
     }
 }
 
+/// Implemented on [`Transaction`] to create root [`DeepHashItem`]s used by
+/// [`crate::crypto::Methods::deep_hash`] in the creation of a transaction
+/// signatures.
 pub trait ToItems<'a, T> {
-    // fn to_slices(&'a self) -> Result<Vec<Vec<&'a [u8]>>, Error>;
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error>;
-    fn to_slices(&'a self) -> Result<Vec<Vec<&'a [u8]>>, Error>;
 }
 
 impl<'a> ToItems<'a, Transaction> for Transaction {
-    fn to_slices(&'a self) -> Result<Vec<Vec<&'a [u8]>>, Error> {
-        Ok(vec![vec![&[0]]])
-    }
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error> {
         match &self.format {
             1 => {
@@ -106,12 +110,14 @@ impl<'a> ToItems<'a, Transaction> for Transaction {
     }
 }
 
+/// Transaction tag.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Tag {
     pub name: Base64,
     pub value: Base64,
 }
 
+/// Implemented as a convenience to create [`Tag`]s from name, value pairs of utf8 strings.
 pub trait FromStrs<T> {
     fn from_utf8_strs(name: &str, value: &str) -> Result<T, Error>;
 }
@@ -129,53 +135,29 @@ impl FromStrs<Tag> for Tag {
 }
 
 impl<'a> ToItems<'a, Vec<Tag>> for Vec<Tag> {
-    fn to_slices(&'a self) -> Result<Vec<Vec<&'a [u8]>>, Error> {
-        let result = self
-            .iter()
-            .map(|t| vec![&t.name.0[..], &t.value.0[..]])
-            .collect();
-        Ok(result)
-    }
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error> {
         if self.len() > 0 {
-            Ok(DeepHashItem {
-                blob: None,
-                list: Some(
-                    self.iter()
-                        .map(|t| t.to_deep_hash_item().unwrap())
-                        .collect(),
-                ),
-            })
+            Ok(DeepHashItem::List(
+                self.iter()
+                    .map(|t| t.to_deep_hash_item().unwrap())
+                    .collect(),
+            ))
         } else {
-            Ok(DeepHashItem {
-                blob: Some(Vec::<u8>::new()),
-                list: None,
-            })
+            Ok(DeepHashItem::Blob(Vec::<u8>::new()))
         }
     }
 }
 
 impl<'a> ToItems<'a, Tag> for Tag {
-    fn to_slices(&'a self) -> Result<Vec<Vec<&'a [u8]>>, Error> {
-        Ok(vec![vec![&[0]]])
-    }
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error> {
-        Ok(DeepHashItem {
-            blob: None,
-            list: Some(vec![
-                DeepHashItem {
-                    blob: Some(self.name.0.to_vec()),
-                    list: None,
-                },
-                DeepHashItem {
-                    blob: Some(self.value.0.to_vec()),
-                    list: None,
-                },
-            ]),
-        })
+        Ok(DeepHashItem::List(vec![
+            DeepHashItem::Blob(self.name.0.to_vec()),
+            DeepHashItem::Blob(self.value.0.to_vec()),
+        ]))
     }
 }
 
+/// A struct of [`Vec<u8>`] used for all data and address fields.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Base64(pub Vec<u8>);
 
@@ -201,7 +183,7 @@ impl FromStr for Base64 {
     }
 }
 
-/// Handles conversion of unencoded strings through to base64url and back to bytes.
+/// Implemented on [`Base64`] to encode and decode utf8 strings.
 pub trait ConvertUtf8<T> {
     fn from_utf8_str(str: &str) -> Result<T, Error>;
     fn to_utf8_string(&self) -> Result<String, Error>;
@@ -245,29 +227,27 @@ impl<'de> Deserialize<'de> for Base64 {
         deserializer.deserialize_str(Vis)
     }
 }
+
+/// Recursive data structure that facilitates [`crate::crypto::Methods::deep_hash`] accepting nested
+/// arrays of arbitrary depth as an argument with a single type.
 #[derive(Debug, Clone, PartialEq)]
-pub struct DeepHashItem {
-    pub blob: Option<Vec<u8>>,
-    pub list: Option<Vec<DeepHashItem>>,
+pub enum DeepHashItem {
+    Blob(Vec<u8>),
+    List(Vec<DeepHashItem>),
 }
 
-pub trait FromItemOrChild {
+/// Implemented as a convenience to create [`DeepHashItem`]s.
+pub trait FromItemOrChild<T> {
     fn from_item(item: &[u8]) -> Self;
-    fn from_children(children: Vec<DeepHashItem>) -> Self;
+    fn from_children(children: Vec<T>) -> Self;
 }
 
-impl FromItemOrChild for DeepHashItem {
+impl FromItemOrChild<DeepHashItem> for DeepHashItem {
     fn from_item(item: &[u8]) -> DeepHashItem {
-        Self {
-            blob: Some(item.to_vec()),
-            list: None,
-        }
+        Self::Blob(item.to_vec())
     }
     fn from_children(children: Vec<DeepHashItem>) -> DeepHashItem {
-        Self {
-            blob: None,
-            list: Some(children),
-        }
+        Self::List(children)
     }
 }
 
@@ -276,7 +256,6 @@ mod tests {
     use crate::transaction::FromStrs;
 
     use super::{Base64, ConvertUtf8, DeepHashItem, Error, Tag, ToItems};
-    // use serde::{self, de, Deserialize, Deserializer, Serialize, Serializer};
     use serde_json;
     use std::str::FromStr;
 
@@ -313,45 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn test_transaction_slices() -> Result<(), Error> {
-        let tags = Vec::<Tag>::new();
-        assert_eq!(tags.to_slices()?, Vec::<Vec<&[u8]>>::new());
-
-        let tags = vec![
-            Tag::from_utf8_strs("Content-Type", "text/html")?,
-            Tag::from_utf8_strs("key2", "value2")?,
-        ];
-
-        assert_eq!("Content-Type".to_string(), tags[0].name.to_utf8_string()?);
-        assert_eq!("Q29udGVudC1UeXBl".to_string(), tags[0].name.to_string());
-
-        let tag_slices = tags.to_slices()?;
-        assert_eq!(tag_slices.len(), 2);
-        tag_slices.iter().for_each(|f| assert_eq!(f.len(), 2));
-        assert_eq!(
-            tag_slices[0][0],
-            &[67, 111, 110, 116, 101, 110, 116, 45, 84, 121, 112, 101][..]
-        );
-        assert_eq!(
-            tag_slices[0][1],
-            &[116, 101, 120, 116, 47, 104, 116, 109, 108][..]
-        );
-        assert_eq!(tag_slices[1][0], &[107, 101, 121, 50][..]);
-        assert_eq!(tag_slices[1][1], &[118, 97, 108, 117, 101, 50][..]);
-        Ok(())
-    }
-
-    #[test]
-    fn test_tags_deep_hash_item() -> Result<(), Error> {
-        let tags = Vec::<Tag>::new();
-        assert_eq!(
-            tags.to_deep_hash_item()?,
-            DeepHashItem {
-                blob: Some(Vec::<u8>::new()),
-                list: None
-            }
-        );
-
+    fn test_tags_deep_hash_item2() -> Result<(), Error> {
         let tags = vec![
             Tag::from_utf8_strs("Content-Type", "text/html")?,
             Tag::from_utf8_strs("key2", "value2")?,
@@ -362,39 +303,18 @@ mod tests {
 
         let deep_hash_item = tags.to_deep_hash_item()?;
 
-        let deep_hash_item_actual = DeepHashItem {
-            blob: None,
-            list: Some(vec![
-                DeepHashItem {
-                    blob: None,
-                    list: Some(vec![
-                        DeepHashItem {
-                            blob: Some(vec![
-                                67, 111, 110, 116, 101, 110, 116, 45, 84, 121, 112, 101,
-                            ]),
-                            list: None,
-                        },
-                        DeepHashItem {
-                            blob: Some(vec![116, 101, 120, 116, 47, 104, 116, 109, 108]),
-                            list: None,
-                        },
-                    ]),
-                },
-                DeepHashItem {
-                    blob: None,
-                    list: Some(vec![
-                        DeepHashItem {
-                            blob: Some(vec![107, 101, 121, 50]),
-                            list: None,
-                        },
-                        DeepHashItem {
-                            blob: Some(vec![118, 97, 108, 117, 101, 50]),
-                            list: None,
-                        },
-                    ]),
-                },
+        let deep_hash_item_actual = DeepHashItem::List(vec![
+            DeepHashItem::List(vec![
+                DeepHashItem::Blob(vec![
+                    67, 111, 110, 116, 101, 110, 116, 45, 84, 121, 112, 101,
+                ]),
+                DeepHashItem::Blob(vec![116, 101, 120, 116, 47, 104, 116, 109, 108]),
             ]),
-        };
+            DeepHashItem::List(vec![
+                DeepHashItem::Blob(vec![107, 101, 121, 50]),
+                DeepHashItem::Blob(vec![118, 97, 108, 117, 101, 50]),
+            ]),
+        ]);
 
         assert_eq!(deep_hash_item, deep_hash_item_actual);
         Ok(())

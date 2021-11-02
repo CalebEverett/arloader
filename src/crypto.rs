@@ -1,3 +1,5 @@
+//! Functionality for creating and verifying signatures and hashing.
+
 use async_trait::async_trait;
 use jsonwebkey::JsonWebKey;
 use log::debug;
@@ -11,13 +13,15 @@ use tokio::fs;
 type Error = ArweaveError;
 use crate::{
     error::ArweaveError,
-    transaction::{Base64, DeepHashItem, Tag, ToItems, Transaction},
+    transaction::{Base64, DeepHashItem},
 };
 
+/// Struct on which [`Methods`] for cryptographic functionality is implemented.
 pub struct Provider {
     pub keypair: RsaKeyPair,
 }
 
+/// Cryptographic functions.
 #[async_trait]
 pub trait Methods {
     async fn from_keypair_path(keypair_path: PathBuf) -> Result<Provider, Error>;
@@ -35,19 +39,13 @@ pub trait Methods {
     #[allow(non_snake_case)]
     fn hash_all_SHA384(&self, messages: Vec<&[u8]>) -> Result<[u8; 48], Error>;
     fn concat_u8_48(&self, left: [u8; 48], right: [u8; 48]) -> Result<[u8; 96], Error>;
-    fn deep_hash_list(
-        &self,
-        data_len: usize,
-        data: Vec<&[u8]>,
-        hash: Option<[u8; 48]>,
-    ) -> Result<[u8; 48], Error>;
-    fn deep_hash_tags(&self, tags: &Vec<Tag>) -> Result<[u8; 48], Error>;
-    fn deep_hash(&self, transaction: &Transaction) -> Result<[u8; 48], Error>;
-    fn deep_hash_alt(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error>;
+    fn deep_hash(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error>;
 }
 
 #[async_trait]
 impl Methods for Provider {
+    /// Reads a [`JsonWebKey`] from a [`PathBuf`] and stores it as a [`signature::RsaKeyPair`] in
+    /// the `keypair` property of [`Provider`] for future use in signing and funding transactions.
     async fn from_keypair_path(keypair_path: PathBuf) -> Result<Provider, Error> {
         debug!("{:?}", keypair_path);
         let data = fs::read_to_string(keypair_path).await?;
@@ -57,6 +55,9 @@ impl Methods for Provider {
             keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
         })
     }
+    /// Returns the full modulus of the stored keypair. Encoded as a Base64Url String,
+    /// represents the associated network address. Also used in the calculation of transaction
+    /// signatures.
     fn keypair_modulus(&self) -> Result<Base64, Error> {
         let modulus = self
             .keypair
@@ -140,6 +141,7 @@ impl Methods for Provider {
         Ok(result)
     }
 
+    /// Returns a SHA256 hash of the the concatenated SHA256 hashes of a vector messages.
     fn hash_all_SHA256(&self, messages: Vec<&[u8]>) -> Result<[u8; 32], Error> {
         let hash: Vec<u8> = messages
             .into_iter()
@@ -151,6 +153,7 @@ impl Methods for Provider {
         Ok(hash)
     }
 
+    /// Returns a SHA384 hash of the the concatenated SHA384 hashes of a vector messages.
     fn hash_all_SHA384(&self, messages: Vec<&[u8]>) -> Result<[u8; 48], Error> {
         let hash: Vec<u8> = messages
             .into_iter()
@@ -162,96 +165,32 @@ impl Methods for Provider {
         Ok(hash)
     }
 
+    /// Concatenates two `[u8; 48]` arrays, returning a `[u8; 96]` array.
     fn concat_u8_48(&self, left: [u8; 48], right: [u8; 48]) -> Result<[u8; 96], Error> {
         let mut iter = left.into_iter().chain(right);
         let result = [(); 96].map(|_| iter.next().unwrap());
         Ok(result)
     }
 
-    fn deep_hash_list(
-        &self,
-        data_len: usize,
-        data: Vec<&[u8]>,
-        hash: Option<[u8; 48]>,
-    ) -> Result<[u8; 48], Error> {
-        let mut hash = if let Some(hash) = hash {
-            hash
-        } else {
-            let list_tag = format!("list{}", data_len);
-            self.hash_SHA384(list_tag.as_bytes())?
-        };
-
-        for blob in data.iter() {
-            let blob_tag = format!("blob{}", blob.len());
-            let blob_hash = self.hash_all_SHA384(vec![blob_tag.as_bytes(), blob])?;
-            hash = self.hash_SHA384(&self.concat_u8_48(hash, blob_hash)?)?;
-        }
-        Ok(hash)
-    }
-
-    fn deep_hash_tags(&self, tags: &Vec<Tag>) -> Result<[u8; 48], Error> {
-        let list_tag = format!("list{}", tags.len());
-        let mut hash = self.hash_SHA384(list_tag.as_bytes())?;
-
-        for tag_slice in tags.to_slices()?.into_iter() {
-            let tag_slice_hash = self.deep_hash_list(tag_slice.len(), tag_slice, None)?;
-            hash = self.hash_SHA384(&self.concat_u8_48(hash, tag_slice_hash)?)?;
-        }
-        Ok(hash)
-    }
-
-    /// Calculates deep hash of the required fields.
-    ///
-    /// Completes the calculation of the root hash to be signed in three steps. First is to calculate the hash for all of
-    /// the items up to the tags. Then the hash is calculated for the tags separately and concatenated with the hash
-    /// from the first part of the list. This is then used as the starting point to calculate the final hash from
-    /// the final two items in the list.
-    fn deep_hash(&self, transaction: &Transaction) -> Result<[u8; 48], Error> {
-        // Calculate hash for first part of list.
-        let pre_tag_hash = self.deep_hash_list(
-            9,
-            vec![
-                &transaction.format.to_string().as_bytes(),
-                &transaction.owner.0,
-                &transaction.target.0,
-                &transaction.quantity.to_string().as_bytes(),
-                &transaction.reward.to_string().as_bytes(),
-                &transaction.last_tx.0,
-            ],
-            None,
-        )?;
-
-        // Calculate deep hash for tags and concat with has from first part of list.
-        let tag_hash = self.deep_hash_tags(&transaction.tags)?;
-        let post_tag_hash = self.hash_SHA384(&self.concat_u8_48(pre_tag_hash, tag_hash)?)?;
-
-        // Calculate hash for last part of list starting with hash of first part of list and tags.
-        let final_hash = self.deep_hash_list(
-            0,
-            vec![
-                &transaction.data_size.to_string().as_bytes(),
-                &transaction.data_root.0,
-            ],
-            Some(post_tag_hash),
-        )?;
-
-        Ok(final_hash)
-    }
-
-    fn deep_hash_alt(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error> {
-        let hash = if let Some(blob) = deep_hash_item.blob {
-            let blob_tag = format!("blob{}", blob.len());
-            self.hash_all_SHA384(vec![blob_tag.as_bytes(), &blob])?
-        } else {
-            let list = deep_hash_item.list.unwrap();
-            let list_tag = format!("list{}", list.len());
-            let mut hash = self.hash_SHA384(list_tag.as_bytes())?;
-
-            for child in list.into_iter() {
-                let child_hash = self.deep_hash_alt(child)?;
-                hash = self.hash_SHA384(&self.concat_u8_48(hash, child_hash)?)?;
+    /// Calculates data root of transaction in accordance with implementation in [arweave-js](https://github.com/ArweaveTeam/arweave-js/blob/master/src/common/lib/deepHash.ts).
+    /// [`DeepHashItem`] is a recursive Enum that allows the function to be applied to
+    /// nested [`Vec<u8>`] of arbitrary depth.
+    fn deep_hash(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error> {
+        let hash = match deep_hash_item {
+            DeepHashItem::Blob(blob) => {
+                let blob_tag = format!("blob{}", blob.len());
+                self.hash_all_SHA384(vec![blob_tag.as_bytes(), &blob])?
             }
-            hash
+            DeepHashItem::List(list) => {
+                let list_tag = format!("list{}", list.len());
+                let mut hash = self.hash_SHA384(list_tag.as_bytes())?;
+
+                for child in list.into_iter() {
+                    let child_hash = self.deep_hash(child)?;
+                    hash = self.hash_SHA384(&self.concat_u8_48(hash, child_hash)?)?;
+                }
+                hash
+            }
         };
         Ok(hash)
     }
@@ -262,12 +201,12 @@ mod tests {
     use crate::{
         crypto::Methods as CryptoMethods,
         transaction::{Base64, FromStrs, Tag, ToItems},
-        Arweave, Error, Methods as ArewaveMethods,
+        Arweave, Error, Methods as ArweaveMethods,
     };
-    use std::{path::PathBuf, str::FromStr, time::Instant};
+    use std::{path::PathBuf, str::FromStr};
 
     #[tokio::test]
-    async fn test_deep_hash() -> Result<(), Error> {
+    async fn test_deep_hash_alt2() -> Result<(), Error> {
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
@@ -302,88 +241,10 @@ mod tests {
                 )
                 .await?;
 
-            let deep_hash = arweave.crypto.deep_hash(&transaction)?;
-            assert_eq!(deep_hash, correct_hash);
-        }
-        Ok(())
-    }
-    #[tokio::test]
-    async fn test_deep_hash_alt() -> Result<(), Error> {
-        let arweave = Arweave::from_keypair_path(
-            PathBuf::from(
-                "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
-            ),
-            None,
-        )
-        .await?;
-
-        let file_stems = ["0.png", "1mb.bin"];
-        let hashes: [[u8; 48]; 2] = [
-            [
-                250, 147, 146, 233, 232, 245, 14, 213, 182, 94, 254, 251, 28, 124, 128, 225, 51, 7,
-                112, 16, 20, 209, 224, 26, 55, 78, 27, 4, 50, 223, 158, 240, 5, 64, 127, 126, 81,
-                156, 153, 245, 207, 219, 8, 108, 158, 120, 212, 214,
-            ],
-            [
-                196, 4, 241, 167, 159, 14, 68, 184, 220, 208, 48, 238, 148, 76, 125, 68, 62, 84,
-                192, 99, 165, 188, 36, 73, 249, 200, 16, 52, 193, 249, 190, 60, 85, 148, 252, 195,
-                118, 197, 52, 74, 173, 30, 58, 63, 46, 11, 56, 135,
-            ],
-        ];
-
-        for (file_stem, correct_hash) in file_stems.iter().zip(hashes) {
-            let last_tx = Base64::from_str("LCwsLCwsLA")?;
-            let other_tags = vec![Tag::from_utf8_strs("key2", "value2")?];
-            let transaction = arweave
-                .create_transaction_from_file_path(
-                    PathBuf::from("tests/fixtures/").join(file_stem),
-                    Some(other_tags),
-                    Some(last_tx),
-                    Some(0),
-                )
-                .await?;
-
-            let deep_hash = arweave
-                .crypto
-                .deep_hash_alt(transaction.to_deep_hash_item()?)?;
+            let deep_hash = arweave.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
 
             assert_eq!(deep_hash, correct_hash);
         }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_deep_hash_timing() -> Result<(), Error> {
-        let arweave = Arweave::from_keypair_path(
-            PathBuf::from(
-                "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
-            ),
-            None,
-        )
-        .await?;
-        let file_path = PathBuf::from("tests/fixtures/0.png");
-        let last_tx = Base64::from_str("LCwsLCwsLA")?;
-        let other_tags = vec![Tag::from_utf8_strs("key2", "value2")?];
-        let transaction = arweave
-            .create_transaction_from_file_path(file_path, Some(other_tags), Some(last_tx), Some(0))
-            .await?;
-
-        let start = Instant::now();
-        for _ in [..1].iter() {
-            let _ = arweave
-                .crypto
-                .deep_hash_alt(transaction.to_deep_hash_item()?)?;
-        }
-        println!("deep_hash_alt: {:?}", start.elapsed());
-
-        let start = Instant::now();
-        for _ in [..1].iter() {
-            let _ = arweave.crypto.deep_hash(&transaction)?;
-        }
-        println!("deep_hash: {:?}", start.elapsed());
-
-        // The non-recursive implementation is faster, but only marginally - < 50 ns
-        // assert!(false);
         Ok(())
     }
 }

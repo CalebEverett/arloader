@@ -1,3 +1,5 @@
+//! Functionality for chunking file data and calculating and verifying root ids.
+
 use crate::{
     crypto::{Methods, Provider},
     error::ArweaveError,
@@ -5,7 +7,7 @@ use crate::{
 use borsh::BorshDeserialize;
 type Error = ArweaveError;
 
-/// Single struct used for chunks and nodes.
+/// Single struct used for original data chunks (Leaves) and branch nodes (hashes of pairs of child nodes).
 #[derive(Debug, PartialEq, Clone)]
 pub struct Node {
     pub id: [u8; HASH_SIZE],
@@ -16,14 +18,14 @@ pub struct Node {
     pub right_child: Option<Box<Node>>,
 }
 
+/// Concatenated ids and offsets for full set of nodes for an original data chunk, starting with the root.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Proof {
     pub offset: usize,
     pub proof: Vec<u8>,
 }
 
-/// Uses Borsh to deserialze [u8] chunk proofs into
-/// nodes to make it easier to reason about validation.
+/// Populated with data from deserialized [`Proof`] for original data chunk (Leaf [`Node`]).
 #[repr(C)]
 #[derive(BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct LeafProof {
@@ -32,6 +34,7 @@ pub struct LeafProof {
     offset: [u8; 8],
 }
 
+/// Populated with data from deserialized [`Proof`] for branch [`Node`] (hash of pair of child nodes).
 #[derive(BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct BranchProof {
     left_id: [u8; HASH_SIZE],
@@ -40,6 +43,7 @@ pub struct BranchProof {
     offset: [u8; 8],
 }
 
+/// Includes methods to deserialize [`Proof`]s.
 pub trait ProofDeserialize<T> {
     fn try_from_proof_slice(slice: &[u8]) -> Result<T, Error>;
     fn offset(&self) -> usize;
@@ -70,6 +74,7 @@ pub const MIN_CHUNK_SIZE: usize = 32 * 1024;
 pub const HASH_SIZE: usize = 32;
 const NOTE_SIZE: usize = 32;
 
+/// Includes a function to convert a number to a Vec of 32 bytes per the Arweave spec.
 pub trait Helpers<T> {
     fn to_note_vec(&self) -> Vec<u8>;
 }
@@ -91,10 +96,7 @@ fn get_chunk_size(data_len: usize) -> usize {
     }
 }
 
-/// Chunks data and generates leaves in one pass instead of two in arweave-js. We can chunk
-/// the data and put in to leaf nodes in the same closed scope since nothing outside of
-/// this scope has to reference the data chunks and the leaf nodes own all of the element
-/// of the chunked data.
+/// Generates data chunks from which the calculation of root id starts.
 pub fn generate_leaves(data: Vec<u8>, crypto: &Provider) -> Result<Vec<Node>, Error> {
     let chunk_size = get_chunk_size(data.len());
     let data_chunks: Vec<&[u8]> = data.chunks(chunk_size).collect();
@@ -153,7 +155,7 @@ pub fn generate_data_root(mut nodes: Vec<Node>, crypto: &Provider) -> Result<Nod
     Ok(root)
 }
 
-// Pattern matching avoids having two differnt types of Nodes.
+/// Calculates [`Proof`] for each data chunk contained in root [`Node`].
 pub fn resolve_proofs(node: Node, proof: Option<Proof>) -> Result<Vec<Proof>, Error> {
     let mut proof = if let Some(proof) = proof {
         proof
@@ -198,7 +200,7 @@ pub fn resolve_proofs(node: Node, proof: Option<Proof>) -> Result<Vec<Proof>, Er
     }
 }
 
-// Uses a single Node for chunks, leaves and branches.
+/// Validates chunk of data against provided [`Proof`].
 pub fn validate_chunk(
     mut root_id: [u8; HASH_SIZE],
     chunk: Node,
