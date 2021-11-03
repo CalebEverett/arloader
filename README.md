@@ -7,7 +7,6 @@ Command line application and library for uploading files to [Arweave](https://ww
 This library does not take advantage of the bundles API that aggregates smaller files into a single transaction. Keep in mind that the Arweave network has a limit
 of 1,000 transactions per block every two minutes, so if you are going to upload thousands of files, check the network for pending transactions and upload in batches
 of less than 1,000.
-.
 
 ## Usage
 
