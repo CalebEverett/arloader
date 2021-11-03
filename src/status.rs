@@ -75,17 +75,18 @@ impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(
             f,
-            " {:<30}  {}  {:<9?}  {:>8}",
+            " {:<30}  {}  {:<9}  {:>8}",
             self.file_path
                 .as_ref()
                 .map(|f| f.display().to_string())
                 .unwrap_or("".to_string()),
             self.id,
-            self.status,
+            self.status.to_string(),
             self.raw_status
                 .as_ref()
                 .map(|f| f.number_of_confirmations)
-                .unwrap_or(0),
+                .unwrap_or(0)
+                .to_string(),
         )
     }
 }

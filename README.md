@@ -4,6 +4,11 @@
 
 Command line application and library for uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
 
+This library does not take advantage of the bundles API that aggregates smaller files into a single transaction. Keep in mind that the Arweave network has a limit
+of 1,000 transactions per block every two minutes, so if you are going to upload thousands of files, check the network for pending transactions and upload in batches
+of less than 1,000.
+.
+
 ## Usage
 
 1. Get an Arweave wallet json file and purchase AR tokens.
