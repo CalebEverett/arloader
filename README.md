@@ -2,7 +2,7 @@
 
 # arloader
 
-Command line application and library for uploading files to Arweave.
+Command line application and library for uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
 
 ## Usage
 

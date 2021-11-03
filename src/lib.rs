@@ -11,7 +11,10 @@
 use async_trait::async_trait;
 use blake3;
 use chrono::Utc;
-use futures::{future::try_join_all, stream, Stream, StreamExt};
+use futures::{
+    future::{try_join, try_join_all},
+    stream, Stream, StreamExt,
+};
 use infer;
 use log::debug;
 use num_bigint::BigUint;
@@ -55,7 +58,7 @@ pub fn upload_files_stream<'a, IP>(
     paths_iter: IP,
     log_dir: Option<PathBuf>,
     last_tx: Option<Base64>,
-    reward: Option<u64>,
+    price_terms: (u64, u64),
     buffer: usize,
 ) -> impl Stream<Item = Result<Status, Error>> + 'a
 where
@@ -63,7 +66,7 @@ where
 {
     stream::iter(paths_iter)
         .map(move |p| {
-            arweave.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), reward)
+            arweave.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), price_terms)
         })
         .buffer_unordered(buffer)
 }
@@ -101,6 +104,7 @@ pub trait Methods<T> {
     async fn get_wallet_balance(&self, wallet_address: Option<String>) -> Result<BigUint, Error>;
 
     async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint), Error>;
+    async fn get_price_terms(&self) -> Result<(u64, u64), Error>;
 
     async fn get_transaction(&self, id: &Base64) -> Result<Transaction, Error>;
 
@@ -109,7 +113,7 @@ pub trait Methods<T> {
         file_path: PathBuf,
         additional_tags: Option<Vec<Tag>>,
         last_tx: Option<Base64>,
-        reward: Option<u64>,
+        price_terms: (u64, u64),
     ) -> Result<Transaction, Error>;
 
     fn sign_transaction(&self, transaction: Transaction) -> Result<Transaction, Error>;
@@ -154,7 +158,7 @@ pub trait Methods<T> {
         log_dir: Option<PathBuf>,
         additional_tags: Option<Vec<Tag>>,
         last_tx: Option<Base64>,
-        reward: Option<u64>,
+        price_terms: (u64, u64),
     ) -> Result<Status, Error>;
 
     async fn upload_files_from_paths<IP, IT>(
@@ -163,7 +167,7 @@ pub trait Methods<T> {
         log_dir: Option<PathBuf>,
         tags_iter: Option<IT>,
         last_tx: Option<Base64>,
-        reward: Option<u64>,
+        price_terms: (u64, u64),
     ) -> Result<Vec<Status>, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
@@ -216,17 +220,23 @@ impl Methods<Arweave> for Arweave {
         let winstons_per_bytes = BigUint::from(winstons_per_bytes);
         let oracle_url =
             "https://api.coingecko.com/api/v3/simple/price?ids=arweave&vs_currencies=usd";
-        let usd_per_ar = reqwest::get(oracle_url)
-            .await?
-            .json::<OraclePrice>()
-            .await?
-            .arweave
-            .usd;
+
+        let resp = reqwest::get(oracle_url).await?;
+
+        let usd_per_ar = resp.json::<OraclePrice>().await?.arweave.usd;
 
         let usd_per_ar: BigUint = BigUint::from((usd_per_ar * 100.0).floor() as u32);
 
         Ok((winstons_per_bytes, usd_per_ar))
     }
+
+    async fn get_price_terms(&self) -> Result<(u64, u64), Error> {
+        let (prices1, prices2) = try_join(self.get_price(&1), self.get_price(&2)).await?;
+        let base = prices1.0.to_u64_digits()[0];
+        let incremental = prices2.0.to_u64_digits()[0] - &base;
+        Ok((base, incremental))
+    }
+
     async fn get_transaction(&self, id: &Base64) -> Result<Transaction, Error> {
         let url = self.base_url.join("tx/")?.join(&id.to_string())?;
         let resp = reqwest::get(url).await?.json::<Transaction>().await?;
@@ -238,7 +248,7 @@ impl Methods<Arweave> for Arweave {
         file_path: PathBuf,
         other_tags: Option<Vec<Tag>>,
         last_tx: Option<Base64>,
-        reward: Option<u64>,
+        price_terms: (u64, u64),
     ) -> Result<Transaction, Error> {
         let data = fs::read(file_path).await?;
         let chunks = generate_leaves(data.clone(), &self.crypto)?;
@@ -265,23 +275,26 @@ impl Methods<Arweave> for Arweave {
         let last_tx = if let Some(last_tx) = last_tx {
             last_tx
         } else {
-            let last_tx_str = reqwest::get(self.base_url.join("tx_anchor")?)
-                .await?
-                .text()
-                .await?;
+            let resp = reqwest::get(self.base_url.join("tx_anchor")?).await?;
+            debug!("last_tx: {}", resp.status());
+            let last_tx_str = resp.text().await?;
             Base64::from_str(&last_tx_str)?
         };
 
         // Fetch and set reward if not provided (primarily for testing).
-        let bytes_len: u64 = data.len() as u64;
-        let reward = reward.unwrap_or({
-            let (winstons_per_bytes, _) = self.get_price(&bytes_len).await?;
-            winstons_per_bytes.to_u64_digits()[0]
-        });
+        // let bytes_len: u64 = data.len() as u64;
+        // let reward = {
+        //     let (winstons_per_bytes, _) = self.get_price(&bytes_len).await?;
+        //     winstons_per_bytes.to_u64_digits()[0]
+        // };
+
+        // let reward = 1443960;
+        let data_len = data.len() as u64;
+        let reward = price_terms.0 + price_terms.1 * (data_len - 1);
 
         Ok(Transaction {
             format: 2,
-            data_size: data.len() as u64,
+            data_size: data_len.clone(),
             data: Base64(data),
             data_root,
             tags,
@@ -345,7 +358,7 @@ impl Methods<Arweave> for Arweave {
     ///
     /// This is done to facilitate checking the status of uploaded file and also means that only
     /// one status object can exist for a given `file_path`. If for some reason you wanted to record
-    /// statuses for multiple uploads of the same file you can provide a different log_dir (or copy the
+    /// statuses for multiple uploads of the same file you can provide a different `log_dir` (or copy the
     /// file to a different directory and upload from there).
     async fn write_status(&self, status: Status, log_dir: PathBuf) -> Result<(), Error> {
         if let Some(file_path) = &status.file_path {
@@ -470,10 +483,15 @@ impl Methods<Arweave> for Arweave {
         log_dir: Option<PathBuf>,
         additional_tags: Option<Vec<Tag>>,
         last_tx: Option<Base64>,
-        reward: Option<u64>,
+        price_terms: (u64, u64),
     ) -> Result<Status, Error> {
         let transaction = self
-            .create_transaction_from_file_path(file_path.clone(), additional_tags, last_tx, reward)
+            .create_transaction_from_file_path(
+                file_path.clone(),
+                additional_tags,
+                last_tx,
+                price_terms,
+            )
             .await?;
         let signed_transaction = self.sign_transaction(transaction)?;
         let status = self
@@ -496,7 +514,7 @@ impl Methods<Arweave> for Arweave {
         log_dir: Option<PathBuf>,
         tags_iter: Option<IT>,
         last_tx: Option<Base64>,
-        reward: Option<u64>,
+        price_terms: (u64, u64),
     ) -> Result<Vec<Status>, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
@@ -504,11 +522,11 @@ impl Methods<Arweave> for Arweave {
     {
         let statuses = if let Some(tags_iter) = tags_iter {
             try_join_all(paths_iter.zip(tags_iter).map(|(p, t)| {
-                self.upload_file_from_path(p, log_dir.clone(), t, last_tx.clone(), reward)
+                self.upload_file_from_path(p, log_dir.clone(), t, last_tx.clone(), price_terms)
             }))
         } else {
             try_join_all(paths_iter.map(|p| {
-                self.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), reward)
+                self.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), price_terms)
             }))
         }
         .await?;
@@ -601,7 +619,7 @@ mod tests {
         let last_tx = Base64::from_str("LCwsLCwsLA")?;
         let other_tags = vec![Tag::from_utf8_strs("key2", "value2")?];
         let transaction = arweave
-            .create_transaction_from_file_path(file_path, Some(other_tags), Some(last_tx), Some(0))
+            .create_transaction_from_file_path(file_path, Some(other_tags), Some(last_tx), (0, 0))
             .await?;
 
         let error = arweave
@@ -631,7 +649,7 @@ mod tests {
                 file_path.clone(),
                 Some(other_tags),
                 Some(last_tx),
-                Some(0),
+                (0, 0),
             )
             .await?;
 
