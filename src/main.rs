@@ -493,14 +493,24 @@ async fn main() -> CommandResult {
 
 async fn command_get_cost(arweave: &Arweave, glob_str: &str) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let (count, total) =
-        paths_iter.fold((0, 0), |(c, t), p| (c + 1, t + p.metadata().unwrap().len()));
+    let (base, incremental) = arweave.get_price_terms().await?;
 
-    let (winstons_per_bytes, usd_per_ar) = arweave.get_price(&total).await?;
-    let usd_per_kb = (&winstons_per_bytes * &usd_per_ar).to_f32().unwrap() / 1e14_f32;
+    let (num, cost, bytes) = paths_iter.fold((0, 0, 0), |(n, c, b), p| {
+        (
+            n + 1,
+            c + {
+                let data_len = p.metadata().unwrap().len();
+                base + incremental * (data_len - 1)
+            },
+            b + p.metadata().unwrap().len(),
+        )
+    });
+
+    let (_, usd_per_ar) = arweave.get_price(&1).await?;
+    let usd_per_bytes = (&cost * &usd_per_ar).to_f32().unwrap() / 1e14_f32;
     println!(
         "The price to upload {} files with {} total bytes is {} {} (${}).",
-        count, total, winstons_per_bytes, arweave.units, usd_per_kb
+        num, bytes, cost, arweave.units, usd_per_bytes
     );
     Ok(())
 }
@@ -559,25 +569,39 @@ async fn command_upload(
     let log_dir = log_dir.map(|s| PathBuf::from(s));
     let output_format = get_output_format(output_format.unwrap_or(""));
     let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
+    let price_terms = arweave.get_price_terms().await?;
 
-    let mut stream = upload_files_stream(arweave, paths_iter, log_dir.clone(), None, None, buffer);
+    let mut stream = upload_files_stream(
+        arweave,
+        paths_iter,
+        log_dir.clone(),
+        None,
+        price_terms,
+        buffer,
+    );
 
     let mut counter = 0;
-    while let Some(Ok(status)) = stream.next().await {
-        if counter == 0 {
-            if let Some(log_dir) = &log_dir {
-                println!("Logging statuses to {}", &log_dir.display());
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(status) => {
+                if counter == 0 {
+                    if let Some(log_dir) = &log_dir {
+                        println!("Logging statuses to {}", &log_dir.display());
+                    }
+                    println!("{}", Status::header_string(&output_format));
+                }
+                print!("{}", output_format.formatted_string(&status));
+                counter += 1;
             }
-            println!("{}", Status::header_string(&output_format));
+            Err(e) => println!("{:#?}", e),
         }
-        print!("{}", output_format.formatted_string(&status));
-        counter += 1;
     }
+
     if counter == 0 {
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         println!(
-            "Uploaded {} files. Run `update-status {} --log-dir {} to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir {} to confirm transaction(s).",
             counter,
             glob_str,
             &log_dir.unwrap_or(PathBuf::from("")).display()
@@ -676,6 +700,7 @@ async fn command_upload_filter(
     let output_format = get_output_format(output_format.unwrap_or(""));
     let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
     let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
+    let price_terms = arweave.get_price_terms().await?;
 
     // Should be refactored to be included in the stream.
     let filtered_paths_iter = arweave
@@ -689,7 +714,7 @@ async fn command_upload_filter(
         filtered_paths_iter,
         Some(log_dir.clone()),
         None,
-        None,
+        price_terms,
         buffer,
     );
 
@@ -702,11 +727,13 @@ async fn command_upload_filter(
         counter += 1;
     }
     if counter == 0 {
-        println!("Didn't find match any statuses.");
+        println!("Didn't find any matching statuses.");
     } else {
         println!(
-            "Uploaded {} files. Run `update-statuses` to confirm acceptance.",
-            counter
+            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir {} to confirm transaction(s).",
+            counter,
+            glob_str,
+            &log_dir.display()
         );
     }
     Ok(())

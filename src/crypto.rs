@@ -237,7 +237,7 @@ mod tests {
                     PathBuf::from("tests/fixtures/").join(file_stem),
                     Some(other_tags),
                     Some(last_tx),
-                    Some(0),
+                    (0, 0),
                 )
                 .await?;
 

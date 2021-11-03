@@ -40,7 +40,7 @@ async fn test_post_transaction() -> Result<(), Error> {
 
     let file_path = PathBuf::from("tests/fixtures/0.png");
     let transaction = arweave
-        .create_transaction_from_file_path(file_path, None, None, Some(0))
+        .create_transaction_from_file_path(file_path, None, None, (0, 0))
         .await?;
 
     let signed_transaction = arweave.sign_transaction(transaction)?;
@@ -70,13 +70,7 @@ async fn test_upload_file_from_path() -> Result<(), Error> {
     let log_dir = temp_log_dir.0.clone();
 
     let status = arweave
-        .upload_file_from_path(
-            file_path.clone(),
-            Some(log_dir.clone()),
-            None,
-            None,
-            Some(0),
-        )
+        .upload_file_from_path(file_path.clone(), Some(log_dir.clone()), None, None, (0, 0))
         .await?;
 
     let read_status = arweave.read_status(file_path, log_dir.clone()).await?;
@@ -99,13 +93,7 @@ async fn test_update_status() -> Result<(), Error> {
     let log_dir = temp_log_dir.0.clone();
 
     let _ = arweave
-        .upload_file_from_path(
-            file_path.clone(),
-            Some(log_dir.clone()),
-            None,
-            None,
-            Some(0),
-        )
+        .upload_file_from_path(file_path.clone(), Some(log_dir.clone()), None, None, (0, 0))
         .await?;
 
     let read_status = arweave
@@ -142,7 +130,7 @@ async fn test_upload_files_from_paths_without_tags() -> Result<(), Error> {
     tags_iter = None;
 
     let statuses = arweave
-        .upload_files_from_paths(paths_iter, Some(log_dir.clone()), tags_iter, None, Some(0))
+        .upload_files_from_paths(paths_iter, Some(log_dir.clone()), tags_iter, None, (0, 0))
         .await?;
 
     let paths_iter = glob("tests/fixtures/*.png")?.filter_map(Result::ok);
@@ -169,7 +157,7 @@ async fn test_update_statuses() -> Result<(), Error> {
     tags_iter = None;
 
     let statuses = arweave
-        .upload_files_from_paths(paths_iter, Some(log_dir.clone()), tags_iter, None, Some(0))
+        .upload_files_from_paths(paths_iter, Some(log_dir.clone()), tags_iter, None, (0, 0))
         .await?;
 
     println!("{:?}", statuses);
@@ -216,7 +204,7 @@ async fn test_filter_statuses() -> Result<(), Error> {
             Some(log_dir.clone()),
             tags_iter.clone(),
             None,
-            Some(0),
+            (0, 0),
         )
         .await?;
 
@@ -262,7 +250,7 @@ async fn test_filter_statuses() -> Result<(), Error> {
     // to fetch their raw statuses from the server.
     let paths_iter = glob("tests/fixtures/[5-9]*.png")?.filter_map(Result::ok);
     let transactions = try_join_all(
-        paths_iter.map(|p| arweave.create_transaction_from_file_path(p, None, None, Some(0))),
+        paths_iter.map(|p| arweave.create_transaction_from_file_path(p, None, None, (0, 0))),
     )
     .await?;
     let _ = try_join_all(
@@ -305,7 +293,7 @@ async fn test_filter_statuses() -> Result<(), Error> {
     // Now if we upload transactions for the not found statuses and mine we should have ten confirmed transactions.
     let paths_iter = glob("tests/fixtures/[5-9]*.png")?.filter_map(Result::ok);
     let _statuses = arweave
-        .upload_files_from_paths(paths_iter, Some(log_dir.clone()), tags_iter, None, Some(0))
+        .upload_files_from_paths(paths_iter, Some(log_dir.clone()), tags_iter, None, (0, 0))
         .await?;
 
     let _ = mine(&arweave).await?;
@@ -345,7 +333,7 @@ async fn test_upload_files_stream() -> Result<(), Error> {
     let mut _tags_iter = Some(iter::repeat(Some(Vec::<Tag>::new())));
     _tags_iter = None;
 
-    let mut stream = upload_files_stream(&arweave, paths_iter, None, None, None, 3);
+    let mut stream = upload_files_stream(&arweave, paths_iter, None, None, (0, 0), 3);
 
     let output_format = OutputFormat::JsonCompact;
     println!("{}", Status::header_string(&output_format));
