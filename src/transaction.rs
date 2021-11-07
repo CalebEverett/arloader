@@ -1,13 +1,11 @@
 //! Data structures for serializing and deserializing [`Transaction`]s and [`Tag`]s.
 
 use crate::{
-    error::ArweaveError,
+    error::Error,
     merkle::{Node, Proof},
 };
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
-
-type Error = ArweaveError;
 
 /// Transaction data structure per [Arweave spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
 #[derive(Serialize, Deserialize, Debug, Default)]

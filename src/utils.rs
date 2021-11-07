@@ -1,6 +1,6 @@
 //! Async [`TempDir`] for testing.
 
-use crate::error::ArweaveError as Error;
+use crate::error::Error;
 use async_trait::async_trait;
 use base64::{self, encode_config};
 use ring::rand::{SecureRandom, SystemRandom};

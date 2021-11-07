@@ -1,10 +1,10 @@
 use arloader::{
-    error::ArweaveError as Error,
+    error::Error,
     status::{OutputFormat, OutputHeader, Status, StatusCode},
     transaction::Tag,
     upload_files_stream,
     utils::{TempDir, TempFrom},
-    Arweave, Methods as ArewaveMethods,
+    Arweave,
 };
 use futures::{future::try_join_all, StreamExt};
 use glob::glob;

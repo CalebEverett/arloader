@@ -1,6 +1,9 @@
 //! Functionality for creating and verifying signatures and hashing.
 
-use async_trait::async_trait;
+use crate::{
+    error::Error,
+    transaction::{Base64, DeepHashItem},
+};
 use jsonwebkey::JsonWebKey;
 use log::debug;
 use ring::{
@@ -10,43 +13,16 @@ use ring::{
 };
 use std::path::PathBuf;
 use tokio::fs;
-type Error = ArweaveError;
-use crate::{
-    error::ArweaveError,
-    transaction::{Base64, DeepHashItem},
-};
 
 /// Struct on which [`Methods`] for cryptographic functionality is implemented.
 pub struct Provider {
     pub keypair: RsaKeyPair,
 }
 
-/// Cryptographic functions.
-#[async_trait]
-pub trait Methods {
-    async fn from_keypair_path(keypair_path: PathBuf) -> Result<Provider, Error>;
-    fn keypair_modulus(&self) -> Result<Base64, Error>;
-    fn wallet_address(&self) -> Result<Base64, Error>;
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, Error>;
-    fn verify(&self, signature: &[u8], message: &[u8]) -> Result<(), Error>;
-    #[allow(non_snake_case)]
-    fn hash_SHA256(&self, message: &[u8]) -> Result<[u8; 32], Error>;
-    #[allow(non_snake_case)]
-    fn hash_SHA384(&self, message: &[u8]) -> Result<[u8; 48], Error>;
-    #[allow(non_snake_case)]
-    #[allow(non_snake_case)]
-    fn hash_all_SHA256(&self, messages: Vec<&[u8]>) -> Result<[u8; 32], Error>;
-    #[allow(non_snake_case)]
-    fn hash_all_SHA384(&self, messages: Vec<&[u8]>) -> Result<[u8; 48], Error>;
-    fn concat_u8_48(&self, left: [u8; 48], right: [u8; 48]) -> Result<[u8; 96], Error>;
-    fn deep_hash(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error>;
-}
-
-#[async_trait]
-impl Methods for Provider {
+impl Provider {
     /// Reads a [`JsonWebKey`] from a [`PathBuf`] and stores it as a [`signature::RsaKeyPair`] in
     /// the `keypair` property of [`Provider`] for future use in signing and funding transactions.
-    async fn from_keypair_path(keypair_path: PathBuf) -> Result<Provider, Error> {
+    pub async fn from_keypair_path(keypair_path: PathBuf) -> Result<Provider, Error> {
         debug!("{:?}", keypair_path);
         let data = fs::read_to_string(keypair_path).await?;
 
@@ -58,7 +34,7 @@ impl Methods for Provider {
     /// Returns the full modulus of the stored keypair. Encoded as a Base64Url String,
     /// represents the associated network address. Also used in the calculation of transaction
     /// signatures.
-    fn keypair_modulus(&self) -> Result<Base64, Error> {
+    pub fn keypair_modulus(&self) -> Result<Base64, Error> {
         let modulus = self
             .keypair
             .public_key()
@@ -69,8 +45,7 @@ impl Methods for Provider {
     /// Calculates the wallet address of the provided keypair according to [addressing](https://docs.arweave.org/developers/server/http-api#addressing)
     /// in documentation.
     ///```
-    /// # use arloader::crypto::Methods as CryptoMethods;
-    /// # use arloader::{Arweave, Methods as ArweaveMethods};
+    /// # use arloader::Arweave;
     /// # use ring::{signature, rand};
     /// # use std::{fmt::Display, path::PathBuf};
     /// #
@@ -84,14 +59,14 @@ impl Methods for Provider {
     /// # Ok(())
     /// # }
     /// ```
-    fn wallet_address(&self) -> Result<Base64, Error> {
+    pub fn wallet_address(&self) -> Result<Base64, Error> {
         let mut context = Context::new(&SHA256);
         context.update(&self.keypair_modulus()?.0[..]);
         let wallet_address = Base64(context.finish().as_ref().to_vec());
         Ok(wallet_address)
     }
 
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, Error> {
+    pub fn sign(&self, message: &[u8]) -> Result<Vec<u8>, Error> {
         let rng = rand::SystemRandom::new();
         let mut signature = vec![0; self.keypair.public_modulus_len()];
         self.keypair
@@ -102,7 +77,7 @@ impl Methods for Provider {
     /// Verifies that a message was signed by the public key of the Provider.key keypair.
     ///```
     /// # use ring::{signature, rand};
-    /// # use arloader::crypto::{Provider, Methods};
+    /// # use arloader::crypto::Provider;
     /// # use std::path::PathBuf;
     /// #
     /// # #[tokio::main]
@@ -116,7 +91,7 @@ impl Methods for Provider {
     /// # Ok(())
     /// # }
     /// ```
-    fn verify(&self, signature: &[u8], message: &[u8]) -> Result<(), Error> {
+    pub fn verify(&self, signature: &[u8], message: &[u8]) -> Result<(), Error> {
         let public_key = signature::UnparsedPublicKey::new(
             &signature::RSA_PSS_2048_8192_SHA256,
             self.keypair.public_key().as_ref(),
@@ -125,7 +100,7 @@ impl Methods for Provider {
         Ok(())
     }
 
-    fn hash_SHA256(&self, message: &[u8]) -> Result<[u8; 32], Error> {
+    pub fn hash_sha256(&self, message: &[u8]) -> Result<[u8; 32], Error> {
         let mut context = Context::new(&SHA256);
         context.update(message);
         let mut result: [u8; 32] = [0; 32];
@@ -133,7 +108,7 @@ impl Methods for Provider {
         Ok(result)
     }
 
-    fn hash_SHA384(&self, message: &[u8]) -> Result<[u8; 48], Error> {
+    fn hash_sha384(&self, message: &[u8]) -> Result<[u8; 48], Error> {
         let mut context = Context::new(&SHA384);
         context.update(message);
         let mut result: [u8; 48] = [0; 48];
@@ -142,26 +117,26 @@ impl Methods for Provider {
     }
 
     /// Returns a SHA256 hash of the the concatenated SHA256 hashes of a vector messages.
-    fn hash_all_SHA256(&self, messages: Vec<&[u8]>) -> Result<[u8; 32], Error> {
+    pub fn hash_all_sha256(&self, messages: Vec<&[u8]>) -> Result<[u8; 32], Error> {
         let hash: Vec<u8> = messages
             .into_iter()
-            .map(|m| self.hash_SHA256(m).unwrap())
+            .map(|m| self.hash_sha256(m).unwrap())
             .into_iter()
             .flatten()
             .collect();
-        let hash = self.hash_SHA256(&hash)?;
+        let hash = self.hash_sha256(&hash)?;
         Ok(hash)
     }
 
     /// Returns a SHA384 hash of the the concatenated SHA384 hashes of a vector messages.
-    fn hash_all_SHA384(&self, messages: Vec<&[u8]>) -> Result<[u8; 48], Error> {
+    fn hash_all_sha384(&self, messages: Vec<&[u8]>) -> Result<[u8; 48], Error> {
         let hash: Vec<u8> = messages
             .into_iter()
-            .map(|m| self.hash_SHA384(m).unwrap())
+            .map(|m| self.hash_sha384(m).unwrap())
             .into_iter()
             .flatten()
             .collect();
-        let hash = self.hash_SHA384(&hash)?;
+        let hash = self.hash_sha384(&hash)?;
         Ok(hash)
     }
 
@@ -175,19 +150,19 @@ impl Methods for Provider {
     /// Calculates data root of transaction in accordance with implementation in [arweave-js](https://github.com/ArweaveTeam/arweave-js/blob/master/src/common/lib/deepHash.ts).
     /// [`DeepHashItem`] is a recursive Enum that allows the function to be applied to
     /// nested [`Vec<u8>`] of arbitrary depth.
-    fn deep_hash(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error> {
+    pub fn deep_hash(&self, deep_hash_item: DeepHashItem) -> Result<[u8; 48], Error> {
         let hash = match deep_hash_item {
             DeepHashItem::Blob(blob) => {
                 let blob_tag = format!("blob{}", blob.len());
-                self.hash_all_SHA384(vec![blob_tag.as_bytes(), &blob])?
+                self.hash_all_sha384(vec![blob_tag.as_bytes(), &blob])?
             }
             DeepHashItem::List(list) => {
                 let list_tag = format!("list{}", list.len());
-                let mut hash = self.hash_SHA384(list_tag.as_bytes())?;
+                let mut hash = self.hash_sha384(list_tag.as_bytes())?;
 
                 for child in list.into_iter() {
                     let child_hash = self.deep_hash(child)?;
-                    hash = self.hash_SHA384(&self.concat_u8_48(hash, child_hash)?)?;
+                    hash = self.hash_sha384(&self.concat_u8_48(hash, child_hash)?)?;
                 }
                 hash
             }
@@ -199,9 +174,8 @@ impl Methods for Provider {
 #[cfg(test)]
 mod tests {
     use crate::{
-        crypto::Methods as CryptoMethods,
         transaction::{Base64, FromStrs, Tag, ToItems},
-        Arweave, Error, Methods as ArweaveMethods,
+        Arweave, Error,
     };
     use std::{path::PathBuf, str::FromStr};
 

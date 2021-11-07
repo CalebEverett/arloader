@@ -1,11 +1,7 @@
 //! Functionality for chunking file data and calculating and verifying root ids.
 
-use crate::{
-    crypto::{Methods, Provider},
-    error::ArweaveError,
-};
+use crate::{crypto::Provider, error::Error};
 use borsh::BorshDeserialize;
-type Error = ArweaveError;
 
 /// Single struct used for original data chunks (Leaves) and branch nodes (hashes of pairs of child nodes).
 #[derive(Debug, PartialEq, Clone)]
@@ -104,10 +100,10 @@ pub fn generate_leaves(data: Vec<u8>, crypto: &Provider) -> Result<Vec<Node>, Er
     let mut leaves = Vec::<Node>::new();
     let mut min_byte_range = 0;
     for chunk in data_chunks.iter() {
-        let data_hash = crypto.hash_SHA256(chunk)?;
+        let data_hash = crypto.hash_sha256(chunk)?;
         let max_byte_range = min_byte_range + &chunk.len();
         let offset = max_byte_range.to_note_vec();
-        let id = crypto.hash_all_SHA256(vec![&data_hash, &offset])?;
+        let id = crypto.hash_all_sha256(vec![&data_hash, &offset])?;
 
         leaves.push(Node {
             id,
@@ -125,7 +121,7 @@ pub fn generate_leaves(data: Vec<u8>, crypto: &Provider) -> Result<Vec<Node>, Er
 /// Hashes together a single branch node from a pair of child nodes.
 pub fn hash_branch(left: Node, right: Node, crypto: &Provider) -> Result<Node, Error> {
     let max_byte_range = left.max_byte_range.to_note_vec();
-    let id = crypto.hash_all_SHA256(vec![&left.id, &right.id, &max_byte_range])?;
+    let id = crypto.hash_all_sha256(vec![&left.id, &right.id, &max_byte_range])?;
     Ok(Node {
         id,
         data_hash: None,
@@ -229,7 +225,7 @@ pub fn validate_chunk(
             // Validate branches.
             for branch_proof in branch_proofs.iter() {
                 // Calculate the id from the proof.
-                let id = crypto.hash_all_SHA256(vec![
+                let id = crypto.hash_all_sha256(vec![
                     &branch_proof.left_id,
                     &branch_proof.right_id,
                     &branch_proof.offset().to_note_vec(),
@@ -237,7 +233,7 @@ pub fn validate_chunk(
 
                 // Ensure calculated id correct.
                 if !(id == root_id) {
-                    return Err(ArweaveError::InvalidProof.into());
+                    return Err(Error::InvalidProof.into());
                 }
 
                 // If the offset from the proof is greater than the offset in the data chunk,
@@ -249,9 +245,9 @@ pub fn validate_chunk(
             }
 
             // Validate leaf: both id and data_hash are correct.
-            let id = crypto.hash_all_SHA256(vec![&data_hash, &max_byte_range.to_note_vec()])?;
+            let id = crypto.hash_all_sha256(vec![&data_hash, &max_byte_range.to_note_vec()])?;
             if !(id == root_id) & !(data_hash == leaf_proof.data_hash) {
-                return Err(ArweaveError::InvalidProof.into());
+                return Err(Error::InvalidProof.into());
             }
         }
         _ => {

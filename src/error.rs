@@ -10,7 +10,7 @@ use url::ParseError;
 
 /// Errors propagated by library functions.
 #[derive(Error, Debug)]
-pub enum ArweaveError {
+pub enum Error {
     #[error("base64 decode: {0}")]
     Base64Decode(#[from] DecodeError),
     #[error("unhandled boxed dyn error {0}")]

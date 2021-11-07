@@ -1,9 +1,8 @@
 use arloader::{
-    error::ArweaveError,
+    error::Error,
     status::{OutputFormat, OutputHeader, Status, StatusCode},
     transaction::{Base64, FromStrs, Tag},
-    update_statuses_stream, upload_files_stream, Arweave, Methods as ArweaveMethods,
-    WINSTONS_PER_AR,
+    update_statuses_stream, upload_files_stream, Arweave, WINSTONS_PER_AR,
 };
 
 use clap::{
@@ -15,7 +14,7 @@ use num_traits::cast::ToPrimitive;
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 use url::Url;
 
-pub type CommandResult = Result<(), ArweaveError>;
+pub type CommandResult = Result<(), Error>;
 
 fn is_parsable_generic<U, T>(string: T) -> Result<(), String>
 where

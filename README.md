@@ -1,4 +1,7 @@
+[![crates.io](https://img.shields.io/crates/v/arloader.svg)](https://crates.io/crates/arloader)
 [![build status](https://github.com/CalebEverett/arloader/actions/workflows/build.yml/badge.svg)](https://github.com/CalebEverett/arloader/actions/workflows/build.yml)
+[![docs.rs](https://img.shields.io/docsrs/arloader)](https://docs.rs/arloader)
+![Crates.io](https://img.shields.io/crates/l/arloader)
 
 # arloader
 
