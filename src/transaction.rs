@@ -226,9 +226,9 @@ impl<'de> Deserialize<'de> for Base64 {
     }
 }
 
-/// Recursive data structure that facilitates [`crate::crypto::Methods::deep_hash`] accepting nested
+/// Recursive data structure that facilitates [`crate::crypto::Provider::deep_hash`] accepting nested
 /// arrays of arbitrary depth as an argument with a single type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DeepHashItem {
     Blob(Vec<u8>),
     List(Vec<DeepHashItem>),
