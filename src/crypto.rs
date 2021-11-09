@@ -11,6 +11,7 @@ use ring::{
     rand,
     signature::{self, KeyPair, RsaKeyPair},
 };
+use std::fs as fsSync;
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -31,6 +32,16 @@ impl Provider {
             keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
         })
     }
+    /// Sync version of [`Provider::from_keypair_path`].
+    pub fn from_keypair_path_sync(keypair_path: PathBuf) -> Result<Provider, Error> {
+        let data = fsSync::read_to_string(keypair_path)?;
+
+        let jwk_parsed: JsonWebKey = data.parse().unwrap();
+        Ok(Self {
+            keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
+        })
+    }
+
     /// Returns the full modulus of the stored keypair. Encoded as a Base64Url String,
     /// represents the associated network address. Also used in the calculation of transaction
     /// signatures.
