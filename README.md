@@ -31,7 +31,7 @@ arloader estimate-with-sol "tests/fixtures/*.png"
 4. Check the balance of the service wallet to make sure there is enough balance to upload your files.
 
 ```
-arloader wallet-balance 7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg
+arloader wallet-balance 7nbOsbMYb86qN1YSS0FM514DBctzJ1Swq1PiuXJEWsk
 ```
 
 5. Upload your files, specifying a `log_dir` to write statuses to so you check them later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
