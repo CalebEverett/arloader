@@ -230,14 +230,6 @@ impl Arweave {
             Base64::from_str(&last_tx_str)?
         };
 
-        // Fetch and set reward if not provided (primarily for testing).
-        // let bytes_len: u64 = data.len() as u64;
-        // let reward = {
-        //     let (winstons_per_bytes, _) = self.get_price(&bytes_len).await?;
-        //     winstons_per_bytes.to_u64_digits()[0]
-        // };
-
-        // let reward = 1443960;
         let data_len = data.len() as u64;
         let reward = price_terms.0 + price_terms.1 * (data_len - 1);
 

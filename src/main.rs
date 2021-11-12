@@ -529,7 +529,6 @@ async fn command_wallet_balance(
     let balance = result.0?;
     let (winstons_per_kb, usd_per_ar, _) = result.1?;
 
-    println!("{}", &usd_per_ar);
     let balance_usd = &balance.to_f32().unwrap() / &WINSTONS_PER_AR.to_f32().unwrap()
         * &usd_per_ar.to_f32().unwrap()
         / 100_f32;
@@ -617,7 +616,7 @@ async fn command_upload_with_sol(
     let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
     let price_terms = arweave.get_price_terms().await?;
     let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
-    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("main")?;
+    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
 
     let mut stream = upload_files_with_sol_stream(

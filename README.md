@@ -28,7 +28,13 @@ cargo install arloader
 arloader estimate-with-sol "tests/fixtures/*.png"
 ```
 
-4. Upload your files, specifying a `log_dir` to write statuses to so you check them later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
+4. Check the balance of the service wallet to make sure there is enough balance to upload your files.
+
+```
+arloader wallet-balance 7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg
+```
+
+5. Upload your files, specifying a `log_dir` to write statuses to so you check them later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
 ```
 arloader upload-with-sol "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
 ```
