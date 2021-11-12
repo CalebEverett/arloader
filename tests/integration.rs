@@ -1,13 +1,15 @@
 use arloader::{
-    error::ArweaveError as Error,
+    error::Error,
+    solana::SOL_AR_BASE_URL,
     status::{OutputFormat, OutputHeader, Status, StatusCode},
     transaction::Tag,
     upload_files_stream,
     utils::{TempDir, TempFrom},
-    Arweave, Methods as ArewaveMethods,
+    Arweave,
 };
 use futures::{future::try_join_all, StreamExt};
 use glob::glob;
+use solana_sdk::signer::keypair;
 use std::{iter, path::PathBuf, str::FromStr, time::Duration};
 use tokio::time::sleep;
 use url::Url;
@@ -340,5 +342,47 @@ async fn test_upload_files_stream() -> Result<(), Error> {
     while let Some(Ok(status)) = stream.next().await {
         print!("{}", output_format.formatted_string(&status));
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_upload_file_from_path_with_sol() -> Result<(), Error> {
+    let solana_url = "https://api.devnet.solana.com/".parse::<Url>()?;
+    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("dev")?;
+    let from_keypair = keypair::read_keypair_file("tests/fixtures/solana_test.json")?;
+    let arweave = get_arweave().await?;
+
+    // Don't run if test server is not running.
+    if let Err(_) = reqwest::get(arweave.base_url.join("info")?).await {
+        println!("Test server not running.");
+        return Ok(());
+    }
+
+    // Don't run if sol-ar server is not running.
+    if let Err(_) = reqwest::get(SOL_AR_BASE_URL).await {
+        println!("sol-ar server not running.");
+        return Ok(());
+    }
+
+    let file_path = PathBuf::from("tests/fixtures/0.png");
+    let temp_log_dir = TempDir::from_str("./tests/").await?;
+    let log_dir = temp_log_dir.0.clone();
+
+    let status = arweave
+        .upload_file_from_path_with_sol(
+            file_path.clone(),
+            Some(log_dir.clone()),
+            None,
+            None,
+            (0, 0),
+            solana_url,
+            sol_ar_url,
+            &from_keypair,
+        )
+        .await?;
+
+    let read_status = arweave.read_status(file_path, log_dir.clone()).await?;
+    println!("{:?}", &read_status);
+    assert_eq!(status, read_status);
     Ok(())
 }

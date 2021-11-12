@@ -8,7 +8,7 @@
 //! files from filtered sets of statuses.
 
 #![feature(derive_default_enum)]
-use async_trait::async_trait;
+use crate::solana::{create_sol_transaction, get_sol_ar_signature, FLOOR, RATE};
 use blake3;
 use chrono::Utc;
 use futures::{
@@ -24,6 +24,8 @@ use reqwest::{
     StatusCode as ResponseStatusCode,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use solana_sdk::signer::keypair::Keypair;
 use std::{collections::HashMap, fmt::Write, path::PathBuf, str::FromStr};
 use tokio::fs;
 use url::Url;
@@ -31,12 +33,12 @@ use url::Url;
 pub mod crypto;
 pub mod error;
 pub mod merkle;
+pub mod solana;
 pub mod status;
 pub mod transaction;
 pub mod utils;
 
-use crypto::Methods as CryptoMethods;
-use error::ArweaveError as Error;
+use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use status::{Status, StatusCode};
 use transaction::{Base64, FromStrs, Tag, ToItems, Transaction};
@@ -44,12 +46,15 @@ use transaction::{Base64, FromStrs, Tag, ToItems, Transaction};
 /// Winstons are a sub unit of the native Arweave network token, AR. There are 10<sup>12</sup> Winstons per AR.
 pub const WINSTONS_PER_AR: u64 = 1000000000000;
 
-/// Struct on which [`Methods`] for interacting with the network are implemented.
-pub struct Arweave {
-    pub name: String,
-    pub units: String,
-    pub base_url: Url,
-    pub crypto: crypto::Provider,
+#[derive(Serialize, Deserialize, Debug)]
+struct OraclePrice {
+    pub arweave: OraclePricePair,
+    pub solana: OraclePricePair,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct OraclePricePair {
+    pub usd: f32,
 }
 
 /// Uploads files matching glob pattern, returning a stream of [`Status`] structs.
@@ -71,6 +76,37 @@ where
         .buffer_unordered(buffer)
 }
 
+/// Uploads files matching glob pattern, returning a stream of [`Status`] structs, paying with SOL.
+pub fn upload_files_with_sol_stream<'a, IP>(
+    arweave: &'a Arweave,
+    paths_iter: IP,
+    log_dir: Option<PathBuf>,
+    last_tx: Option<Base64>,
+    price_terms: (u64, u64),
+    solana_url: Url,
+    sol_ar_url: Url,
+    from_keypair: &'a Keypair,
+    buffer: usize,
+) -> impl Stream<Item = Result<Status, Error>> + 'a
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync + 'a,
+{
+    stream::iter(paths_iter)
+        .map(move |p| {
+            arweave.upload_file_from_path_with_sol(
+                p,
+                log_dir.clone(),
+                None,
+                last_tx.clone(),
+                price_terms,
+                solana_url.clone(),
+                sol_ar_url.clone(),
+                from_keypair,
+            )
+        })
+        .buffer_unordered(buffer)
+}
+
 /// Queries network and updates locally stored [`Status`] structs.
 pub fn update_statuses_stream<'a, IP>(
     arweave: &'a Arweave,
@@ -86,107 +122,16 @@ where
         .buffer_unordered(buffer)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct OraclePrice {
-    pub arweave: OraclePricePair,
+/// Struct on which [`Methods`] for interacting with the network are implemented.
+pub struct Arweave {
+    pub name: String,
+    pub units: String,
+    pub base_url: Url,
+    pub crypto: crypto::Provider,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct OraclePricePair {
-    pub usd: f32,
-}
-
-/// Primary methods for interacting with Arweave network.
-#[async_trait]
-pub trait Methods<T> {
-    async fn from_keypair_path(keypair_path: PathBuf, base_url: Option<Url>) -> Result<T, Error>;
-
-    async fn get_wallet_balance(&self, wallet_address: Option<String>) -> Result<BigUint, Error>;
-
-    async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint), Error>;
-    async fn get_price_terms(&self) -> Result<(u64, u64), Error>;
-
-    async fn get_transaction(&self, id: &Base64) -> Result<Transaction, Error>;
-
-    async fn create_transaction_from_file_path(
-        &self,
-        file_path: PathBuf,
-        additional_tags: Option<Vec<Tag>>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-    ) -> Result<Transaction, Error>;
-
-    fn sign_transaction(&self, transaction: Transaction) -> Result<Transaction, Error>;
-
-    async fn post_transaction(
-        &self,
-        signed_transaction: &Transaction,
-        file_path: Option<PathBuf>,
-    ) -> Result<Status, Error>;
-
-    async fn get_raw_status(&self, id: &Base64) -> Result<reqwest::Response, Error>;
-
-    async fn write_status(&self, mut status: Status, log_dir: PathBuf) -> Result<(), Error>;
-
-    async fn read_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error>;
-
-    async fn read_statuses<IP>(
-        &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send;
-
-    async fn status_summary<IP>(&self, paths_iter: IP, log_dir: PathBuf) -> Result<String, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send;
-
-    async fn update_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error>;
-
-    async fn update_statuses<IP>(
-        &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send;
-
-    async fn upload_file_from_path(
-        &self,
-        file_path: PathBuf,
-        log_dir: Option<PathBuf>,
-        additional_tags: Option<Vec<Tag>>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-    ) -> Result<Status, Error>;
-
-    async fn upload_files_from_paths<IP, IT>(
-        &self,
-        paths_iter: IP,
-        log_dir: Option<PathBuf>,
-        tags_iter: Option<IT>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-        IT: Iterator<Item = Option<Vec<Tag>>> + Send;
-
-    async fn filter_statuses<IP>(
-        &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
-        statuses: Option<Vec<StatusCode>>,
-        max_confirms: Option<u64>,
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send;
-}
-
-#[async_trait]
-impl Methods<Arweave> for Arweave {
-    async fn from_keypair_path(
+impl Arweave {
+    pub async fn from_keypair_path(
         keypair_path: PathBuf,
         base_url: Option<Url>,
     ) -> Result<Arweave, Error> {
@@ -199,7 +144,10 @@ impl Methods<Arweave> for Arweave {
     }
 
     /// Returns the balance of the wallet.
-    async fn get_wallet_balance(&self, wallet_address: Option<String>) -> Result<BigUint, Error> {
+    pub async fn get_wallet_balance(
+        &self,
+        wallet_address: Option<String>,
+    ) -> Result<BigUint, Error> {
         let wallet_address = if let Some(wallet_address) = wallet_address {
             wallet_address
         } else {
@@ -212,38 +160,39 @@ impl Methods<Arweave> for Arweave {
         Ok(BigUint::from(winstons))
     }
 
-    /// Returns price of uploading data to the network in winstons and usd per AR
+    /// Returns price of uploading data to the network in winstons and USD per AR and USD per SOL
     /// as a BigUint with two decimals.
-    async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint), Error> {
+    pub async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint, BigUint), Error> {
         let url = self.base_url.join("price/")?.join(&bytes.to_string())?;
         let winstons_per_bytes = reqwest::get(url).await?.json::<u64>().await?;
         let winstons_per_bytes = BigUint::from(winstons_per_bytes);
         let oracle_url =
-            "https://api.coingecko.com/api/v3/simple/price?ids=arweave&vs_currencies=usd";
+            "https://api.coingecko.com/api/v3/simple/price?ids=arweave,solana&vs_currencies=usd";
 
         let resp = reqwest::get(oracle_url).await?;
 
-        let usd_per_ar = resp.json::<OraclePrice>().await?.arweave.usd;
+        let prices = resp.json::<OraclePrice>().await?;
 
-        let usd_per_ar: BigUint = BigUint::from((usd_per_ar * 100.0).floor() as u32);
+        let usd_per_ar: BigUint = BigUint::from((prices.arweave.usd * 100.0).floor() as u32);
+        let usd_per_sol: BigUint = BigUint::from((prices.solana.usd * 100.0).floor() as u32);
 
-        Ok((winstons_per_bytes, usd_per_ar))
+        Ok((winstons_per_bytes, usd_per_ar, usd_per_sol))
     }
 
-    async fn get_price_terms(&self) -> Result<(u64, u64), Error> {
+    pub async fn get_price_terms(&self) -> Result<(u64, u64), Error> {
         let (prices1, prices2) = try_join(self.get_price(&1), self.get_price(&2)).await?;
         let base = prices1.0.to_u64_digits()[0];
         let incremental = prices2.0.to_u64_digits()[0] - &base;
         Ok((base, incremental))
     }
 
-    async fn get_transaction(&self, id: &Base64) -> Result<Transaction, Error> {
+    pub async fn get_transaction(&self, id: &Base64) -> Result<Transaction, Error> {
         let url = self.base_url.join("tx/")?.join(&id.to_string())?;
         let resp = reqwest::get(url).await?.json::<Transaction>().await?;
         Ok(resp)
     }
 
-    async fn create_transaction_from_file_path(
+    pub async fn create_transaction_from_file_path(
         &self,
         file_path: PathBuf,
         other_tags: Option<Vec<Tag>>,
@@ -281,14 +230,6 @@ impl Methods<Arweave> for Arweave {
             Base64::from_str(&last_tx_str)?
         };
 
-        // Fetch and set reward if not provided (primarily for testing).
-        // let bytes_len: u64 = data.len() as u64;
-        // let reward = {
-        //     let (winstons_per_bytes, _) = self.get_price(&bytes_len).await?;
-        //     winstons_per_bytes.to_u64_digits()[0]
-        // };
-
-        // let reward = 1443960;
         let data_len = data.len() as u64;
         let reward = price_terms.0 + price_terms.1 * (data_len - 1);
 
@@ -308,22 +249,22 @@ impl Methods<Arweave> for Arweave {
     }
 
     /// Gets deep hash, signs and sets signature and id.
-    fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
+    pub fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
         let deep_hash = self.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
         let signature = self.crypto.sign(&deep_hash)?;
-        let id = self.crypto.hash_SHA256(&signature)?;
+        let id = self.crypto.hash_sha256(&signature)?;
         transaction.signature = Base64(signature);
         transaction.id = Base64(id.to_vec());
         Ok(transaction)
     }
 
-    async fn post_transaction(
+    pub async fn post_transaction(
         &self,
         signed_transaction: &Transaction,
         file_path: Option<PathBuf>,
     ) -> Result<Status, Error> {
         if signed_transaction.id.0.is_empty() {
-            return Err(error::ArweaveError::UnsignedTransaction.into());
+            return Err(error::Error::UnsignedTransaction.into());
         }
 
         let url = self.base_url.join("tx/")?;
@@ -348,7 +289,7 @@ impl Methods<Arweave> for Arweave {
         Ok(status)
     }
 
-    async fn get_raw_status(&self, id: &Base64) -> Result<reqwest::Response, Error> {
+    pub async fn get_raw_status(&self, id: &Base64) -> Result<reqwest::Response, Error> {
         let url = self.base_url.join(&format!("tx/{}/status", id))?;
         let resp = reqwest::get(url).await?;
         Ok(resp)
@@ -360,10 +301,10 @@ impl Methods<Arweave> for Arweave {
     /// one status object can exist for a given `file_path`. If for some reason you wanted to record
     /// statuses for multiple uploads of the same file you can provide a different `log_dir` (or copy the
     /// file to a different directory and upload from there).
-    async fn write_status(&self, status: Status, log_dir: PathBuf) -> Result<(), Error> {
+    pub async fn write_status(&self, status: Status, log_dir: PathBuf) -> Result<(), Error> {
         if let Some(file_path) = &status.file_path {
             if status.id.0.is_empty() {
-                return Err(error::ArweaveError::UnsignedTransaction.into());
+                return Err(error::Error::UnsignedTransaction.into());
             }
             let file_path_hash = blake3::hash(file_path.to_str().unwrap().as_bytes());
             fs::write(
@@ -375,11 +316,11 @@ impl Methods<Arweave> for Arweave {
             .await?;
             Ok(())
         } else {
-            Err(error::ArweaveError::MissingFilePath)
+            Err(error::Error::MissingFilePath)
         }
     }
 
-    async fn read_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error> {
+    pub async fn read_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error> {
         let file_path_hash = blake3::hash(file_path.to_str().unwrap().as_bytes());
 
         let status_path = log_dir
@@ -395,7 +336,7 @@ impl Methods<Arweave> for Arweave {
         }
     }
 
-    async fn read_statuses<IP>(
+    pub async fn read_statuses<IP>(
         &self,
         paths_iter: IP,
         log_dir: PathBuf,
@@ -406,7 +347,11 @@ impl Methods<Arweave> for Arweave {
         try_join_all(paths_iter.map(|p| self.read_status(p, log_dir.clone()))).await
     }
 
-    async fn status_summary<IP>(&self, paths_iter: IP, log_dir: PathBuf) -> Result<String, Error>
+    pub async fn status_summary<IP>(
+        &self,
+        paths_iter: IP,
+        log_dir: PathBuf,
+    ) -> Result<String, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
     {
@@ -440,7 +385,39 @@ impl Methods<Arweave> for Arweave {
         Ok(output)
     }
 
-    async fn update_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error> {
+    pub async fn write_manifest<IP>(&self, paths_iter: IP, log_dir: PathBuf) -> Result<(), Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        let statuses: Vec<Value> = self
+            .read_statuses(paths_iter, log_dir.clone())
+            .await?
+            .into_iter()
+            .map(|s| json!({s.file_path.unwrap().display().to_string(): {"id": s.id.to_string()}}))
+            .collect();
+
+        let manifest = json!({
+            "manifest": "arweave/paths",
+            "version": "0.1.0",
+            "paths": statuses
+        });
+
+        fs::write(
+            log_dir.join("manifest").with_extension("json"),
+            serde_json::to_string(&manifest)?
+                .replace("[", "")
+                .replace("]", ""),
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_status(
+        &self,
+        file_path: PathBuf,
+        log_dir: PathBuf,
+    ) -> Result<Status, Error> {
         let mut status = self.read_status(file_path, log_dir.clone()).await?;
         let resp = self.get_raw_status(&status.id).await?;
         status.last_modified = Utc::now();
@@ -466,7 +443,7 @@ impl Methods<Arweave> for Arweave {
         Ok(status)
     }
 
-    async fn update_statuses<IP>(
+    pub async fn update_statuses<IP>(
         &self,
         paths_iter: IP,
         log_dir: PathBuf,
@@ -477,7 +454,7 @@ impl Methods<Arweave> for Arweave {
         try_join_all(paths_iter.map(|p| self.update_status(p, log_dir.clone()))).await
     }
 
-    async fn upload_file_from_path(
+    pub async fn upload_file_from_path(
         &self,
         file_path: PathBuf,
         log_dir: Option<PathBuf>,
@@ -504,11 +481,63 @@ impl Methods<Arweave> for Arweave {
         Ok(status)
     }
 
+    /// Signs transaction with sol_ar service.
+    pub async fn sign_transaction_with_sol(
+        &self,
+        mut transaction: Transaction,
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: &Keypair,
+    ) -> Result<Transaction, Error> {
+        let lamports = std::cmp::max(&transaction.reward / RATE, FLOOR);
+        let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
+        let sig_repsonse =
+            get_sol_ar_signature(sol_ar_url, transaction.to_deep_hash_item()?, sol_tx).await?;
+        transaction.signature = sig_repsonse.ar_tx_sig;
+        transaction.id = sig_repsonse.ar_tx_id;
+        transaction.owner = sig_repsonse.ar_tx_owner;
+        Ok(transaction)
+    }
+
+    pub async fn upload_file_from_path_with_sol(
+        &self,
+        file_path: PathBuf,
+        log_dir: Option<PathBuf>,
+        additional_tags: Option<Vec<Tag>>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: &Keypair,
+    ) -> Result<Status, Error> {
+        let transaction = self
+            .create_transaction_from_file_path(
+                file_path.clone(),
+                additional_tags,
+                last_tx,
+                price_terms,
+            )
+            .await?;
+
+        let signed_transaction = self
+            .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
+            .await?;
+
+        let status = self
+            .post_transaction(&signed_transaction, Some(file_path))
+            .await?;
+
+        if let Some(log_dir) = log_dir {
+            self.write_status(status.clone(), log_dir).await?;
+        }
+        Ok(status)
+    }
+
     /// Uploads files from an iterator of paths.
     ///
     /// Optionally logs Status objects to `log_dir`, if provided and optionally adds tags to each
     ///  transaction from an iterator of tags that must be the same size as the paths iterator.
-    async fn upload_files_from_paths<IP, IT>(
+    pub async fn upload_files_from_paths<IP, IT>(
         &self,
         paths_iter: IP,
         log_dir: Option<PathBuf>,
@@ -540,7 +569,7 @@ impl Methods<Arweave> for Arweave {
     /// assumes there are zero confirms. This is designed to be used to
     /// determine whether all files have a confirmed status and to collect the
     /// paths of the files that need to be re-uploaded.
-    async fn filter_statuses<IP>(
+    pub async fn filter_statuses<IP>(
         &self,
         paths_iter: IP,
         log_dir: PathBuf,
@@ -596,14 +625,13 @@ impl Methods<Arweave> for Arweave {
 #[cfg(test)]
 mod tests {
     use crate::{
-        error::ArweaveError,
+        error::Error,
         transaction::{Base64, FromStrs, Tag},
         utils::{TempDir, TempFrom},
-        Arweave, Methods as ArewaveMethods, Status,
+        Arweave, Status,
     };
     use matches::assert_matches;
     use std::{path::PathBuf, str::FromStr};
-    pub type Error = ArweaveError;
 
     #[tokio::test]
     async fn test_cannot_post_unsigned_transaction() -> Result<(), Error> {
@@ -626,7 +654,7 @@ mod tests {
             .post_transaction(&transaction, None)
             .await
             .unwrap_err();
-        assert_matches!(error, ArweaveError::UnsignedTransaction);
+        assert_matches!(error, Error::UnsignedTransaction);
 
         Ok(())
     }

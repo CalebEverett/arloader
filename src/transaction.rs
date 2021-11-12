@@ -1,13 +1,11 @@
 //! Data structures for serializing and deserializing [`Transaction`]s and [`Tag`]s.
 
 use crate::{
-    error::ArweaveError,
+    error::Error,
     merkle::{Node, Proof},
 };
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
-
-type Error = ArweaveError;
 
 /// Transaction data structure per [Arweave spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -228,9 +226,9 @@ impl<'de> Deserialize<'de> for Base64 {
     }
 }
 
-/// Recursive data structure that facilitates [`crate::crypto::Methods::deep_hash`] accepting nested
+/// Recursive data structure that facilitates [`crate::crypto::Provider::deep_hash`] accepting nested
 /// arrays of arbitrary depth as an argument with a single type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DeepHashItem {
     Blob(Vec<u8>),
     List(Vec<DeepHashItem>),
