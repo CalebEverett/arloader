@@ -13,6 +13,8 @@ use url::ParseError;
 pub enum Error {
     #[error("base64 decode: {0}")]
     Base64Decode(#[from] DecodeError),
+    #[error("bincode: {0}")]
+    Bincode(#[from] Box<bincode::ErrorKind>),
     #[error("unhandled boxed dyn error {0}")]
     BoxedDynStd(#[from] Box<dyn std::error::Error>),
     #[error("formatting error")]
@@ -43,6 +45,8 @@ pub enum Error {
     SerdeJson(#[from] serde_json::Error),
     #[error("status not found")]
     StatusNotFound,
+    #[error("solana hash parse {0}")]
+    SolanaHashParse(#[from] solana_sdk::hash::ParseHashError),
     #[error("transaction is not signed")]
     UnsignedTransaction,
     #[error("url parse error: {0}")]

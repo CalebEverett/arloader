@@ -127,7 +127,7 @@ impl Provider {
         Ok(result)
     }
 
-    /// Returns a SHA256 hash of the the concatenated SHA256 hashes of a vector messages.
+    /// Returns a SHA256 hash of the the concatenated SHA256 hashes of a vector of messages.
     pub fn hash_all_sha256(&self, messages: Vec<&[u8]>) -> Result<[u8; 32], Error> {
         let hash: Vec<u8> = messages
             .into_iter()

@@ -8,6 +8,7 @@
 //! files from filtered sets of statuses.
 
 #![feature(derive_default_enum)]
+use crate::solana::{create_sol_transaction, get_sol_ar_signature, FLOOR, RATE};
 use blake3;
 use chrono::Utc;
 use futures::{
@@ -23,6 +24,8 @@ use reqwest::{
     StatusCode as ResponseStatusCode,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use solana_sdk::signer::keypair::Keypair;
 use std::{collections::HashMap, fmt::Write, path::PathBuf, str::FromStr};
 use tokio::fs;
 use url::Url;
@@ -30,6 +33,7 @@ use url::Url;
 pub mod crypto;
 pub mod error;
 pub mod merkle;
+pub mod solana;
 pub mod status;
 pub mod transaction;
 pub mod utils;
@@ -45,6 +49,7 @@ pub const WINSTONS_PER_AR: u64 = 1000000000000;
 #[derive(Serialize, Deserialize, Debug)]
 struct OraclePrice {
     pub arweave: OraclePricePair,
+    pub solana: OraclePricePair,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -67,6 +72,37 @@ where
     stream::iter(paths_iter)
         .map(move |p| {
             arweave.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), price_terms)
+        })
+        .buffer_unordered(buffer)
+}
+
+/// Uploads files matching glob pattern, returning a stream of [`Status`] structs, paying with SOL.
+pub fn upload_files_with_sol_stream<'a, IP>(
+    arweave: &'a Arweave,
+    paths_iter: IP,
+    log_dir: Option<PathBuf>,
+    last_tx: Option<Base64>,
+    price_terms: (u64, u64),
+    solana_url: Url,
+    sol_ar_url: Url,
+    from_keypair: &'a Keypair,
+    buffer: usize,
+) -> impl Stream<Item = Result<Status, Error>> + 'a
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync + 'a,
+{
+    stream::iter(paths_iter)
+        .map(move |p| {
+            arweave.upload_file_from_path_with_sol(
+                p,
+                log_dir.clone(),
+                None,
+                last_tx.clone(),
+                price_terms,
+                solana_url.clone(),
+                sol_ar_url.clone(),
+                from_keypair,
+            )
         })
         .buffer_unordered(buffer)
 }
@@ -124,22 +160,23 @@ impl Arweave {
         Ok(BigUint::from(winstons))
     }
 
-    /// Returns price of uploading data to the network in winstons and usd per AR
+    /// Returns price of uploading data to the network in winstons and USD per AR and USD per SOL
     /// as a BigUint with two decimals.
-    pub async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint), Error> {
+    pub async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint, BigUint), Error> {
         let url = self.base_url.join("price/")?.join(&bytes.to_string())?;
         let winstons_per_bytes = reqwest::get(url).await?.json::<u64>().await?;
         let winstons_per_bytes = BigUint::from(winstons_per_bytes);
         let oracle_url =
-            "https://api.coingecko.com/api/v3/simple/price?ids=arweave&vs_currencies=usd";
+            "https://api.coingecko.com/api/v3/simple/price?ids=arweave,solana&vs_currencies=usd";
 
         let resp = reqwest::get(oracle_url).await?;
 
-        let usd_per_ar = resp.json::<OraclePrice>().await?.arweave.usd;
+        let prices = resp.json::<OraclePrice>().await?;
 
-        let usd_per_ar: BigUint = BigUint::from((usd_per_ar * 100.0).floor() as u32);
+        let usd_per_ar: BigUint = BigUint::from((prices.arweave.usd * 100.0).floor() as u32);
+        let usd_per_sol: BigUint = BigUint::from((prices.solana.usd * 100.0).floor() as u32);
 
-        Ok((winstons_per_bytes, usd_per_ar))
+        Ok((winstons_per_bytes, usd_per_ar, usd_per_sol))
     }
 
     pub async fn get_price_terms(&self) -> Result<(u64, u64), Error> {
@@ -356,6 +393,34 @@ impl Arweave {
         Ok(output)
     }
 
+    pub async fn write_manifest<IP>(&self, paths_iter: IP, log_dir: PathBuf) -> Result<(), Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        let statuses: Vec<Value> = self
+            .read_statuses(paths_iter, log_dir.clone())
+            .await?
+            .into_iter()
+            .map(|s| json!({s.file_path.unwrap().display().to_string(): {"id": s.id.to_string()}}))
+            .collect();
+
+        let manifest = json!({
+            "manifest": "arweave/paths",
+            "version": "0.1.0",
+            "paths": statuses
+        });
+
+        fs::write(
+            log_dir.join("manifest").with_extension("json"),
+            serde_json::to_string(&manifest)?
+                .replace("[", "")
+                .replace("]", ""),
+        )
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn update_status(
         &self,
         file_path: PathBuf,
@@ -414,6 +479,58 @@ impl Arweave {
             )
             .await?;
         let signed_transaction = self.sign_transaction(transaction)?;
+        let status = self
+            .post_transaction(&signed_transaction, Some(file_path))
+            .await?;
+
+        if let Some(log_dir) = log_dir {
+            self.write_status(status.clone(), log_dir).await?;
+        }
+        Ok(status)
+    }
+
+    /// Signs transaction with sol_ar service.
+    pub async fn sign_transaction_with_sol(
+        &self,
+        mut transaction: Transaction,
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: &Keypair,
+    ) -> Result<Transaction, Error> {
+        let lamports = std::cmp::max(&transaction.reward / RATE, FLOOR);
+        let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
+        let sig_repsonse =
+            get_sol_ar_signature(sol_ar_url, transaction.to_deep_hash_item()?, sol_tx).await?;
+        transaction.signature = sig_repsonse.ar_tx_sig;
+        transaction.id = sig_repsonse.ar_tx_id;
+        transaction.owner = sig_repsonse.ar_tx_owner;
+        Ok(transaction)
+    }
+
+    pub async fn upload_file_from_path_with_sol(
+        &self,
+        file_path: PathBuf,
+        log_dir: Option<PathBuf>,
+        additional_tags: Option<Vec<Tag>>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: &Keypair,
+    ) -> Result<Status, Error> {
+        let transaction = self
+            .create_transaction_from_file_path(
+                file_path.clone(),
+                additional_tags,
+                last_tx,
+                price_terms,
+            )
+            .await?;
+
+        let signed_transaction = self
+            .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
+            .await?;
+
         let status = self
             .post_transaction(&signed_transaction, Some(file_path))
             .await?;
