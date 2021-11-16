@@ -257,4 +257,14 @@ mod tests {
 
         assert_eq!(data_item, de_data_item)
     }
+
+    #[tokio::test]
+    async fn test_data_item_to_json() {
+        let data_item = get_test_data_item().await;
+        println!("{}", serde_json::to_string(&data_item).unwrap());
+        assert_eq!(
+            data_item.data.to_utf8_string().unwrap(),
+            "tasty".to_string()
+        );
+    }
 }
