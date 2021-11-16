@@ -191,7 +191,7 @@ mod tests {
     use std::{path::PathBuf, str::FromStr};
 
     #[tokio::test]
-    async fn test_deep_hash_alt2() -> Result<(), Error> {
+    async fn test_deep_hash() -> Result<(), Error> {
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",

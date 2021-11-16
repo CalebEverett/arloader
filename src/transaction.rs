@@ -4,11 +4,12 @@ use crate::{
     error::Error,
     merkle::{Node, Proof},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
 /// Transaction data structure per [Arweave spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Transaction {
     pub format: u8,
     pub id: Base64,
@@ -109,7 +110,7 @@ impl<'a> ToItems<'a, Transaction> for Transaction {
 }
 
 /// Transaction tag.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Tag {
     pub name: Base64,
     pub value: Base64,
@@ -156,7 +157,7 @@ impl<'a> ToItems<'a, Tag> for Tag {
 }
 
 /// A struct of [`Vec<u8>`] used for all data and address fields.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct Base64(pub Vec<u8>);
 
 impl Default for Base64 {

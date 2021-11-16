@@ -11,6 +11,8 @@ use url::ParseError;
 /// Errors propagated by library functions.
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("avro desserialize: {0}")]
+    AvroDeError(#[from] avro_rs::DeError),
     #[error("base64 decode: {0}")]
     Base64Decode(#[from] DecodeError),
     #[error("bincode: {0}")]
