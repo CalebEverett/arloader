@@ -2,7 +2,7 @@ use arloader::{
     error::Error,
     solana::{FLOOR, RATE, SOL_AR_BASE_URL},
     status::{OutputFormat, OutputHeader, Status, StatusCode},
-    transaction::{Base64, FromStrs, Tag},
+    transaction::{Base64, Tag},
     update_statuses_stream, upload_files_stream, upload_files_with_sol_stream, Arweave,
     WINSTONS_PER_AR,
 };
@@ -44,7 +44,7 @@ where
     T: AsRef<str> + Display,
 {
     let split: Vec<_> = tag.as_ref().split(":").collect();
-    match Tag::from_utf8_strs(split[0], split[1]) {
+    match Tag::<Base64>::from_utf8_strs(split[0], split[1]) {
         Ok(_) => Ok(()),
         Err(_) => Err(format!("Not a valid tag.")),
     }
@@ -60,13 +60,13 @@ fn is_valid_url(url_str: String) -> Result<(), String> {
     }
 }
 
-fn get_tags_vec(tag_values: Option<Values>) -> Option<Vec<Tag>> {
+fn get_tags_vec(tag_values: Option<Values>) -> Option<Vec<Tag<Base64>>> {
     if let Some(tag_strings) = tag_values {
         let tags = tag_strings
             .into_iter()
             .map(|t| {
                 let split: Vec<&str> = t.split(":").collect();
-                Tag::from_utf8_strs(split[0], split[1])
+                Tag::<Base64>::from_utf8_strs(split[0], split[1])
             })
             .flat_map(Result::ok)
             .collect();
@@ -551,7 +551,7 @@ async fn command_upload(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: Option<&str>,
-    _tags: Option<Vec<Tag>>,
+    _tags: Option<Vec<Tag<Base64>>>,
     output_format: Option<&str>,
     buffer: Option<&str>,
 ) -> CommandResult {
@@ -605,7 +605,7 @@ async fn command_upload_with_sol(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: Option<&str>,
-    _tags: Option<Vec<Tag>>,
+    _tags: Option<Vec<Tag<Base64>>>,
     sol_keypair_path: &str,
     output_format: Option<&str>,
     buffer: Option<&str>,

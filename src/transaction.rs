@@ -4,7 +4,6 @@ use crate::{
     error::Error,
     merkle::{Node, Proof},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
@@ -15,7 +14,7 @@ pub struct Transaction {
     pub id: Base64,
     pub last_tx: Base64,
     pub owner: Base64,
-    pub tags: Vec<Tag>,
+    pub tags: Vec<Tag<Base64>>,
     pub target: Base64,
     #[serde(with = "stringify")]
     pub quantity: u64,
@@ -110,19 +109,14 @@ impl<'a> ToItems<'a, Transaction> for Transaction {
 }
 
 /// Transaction tag.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct Tag {
-    pub name: Base64,
-    pub value: Base64,
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Tag<T> {
+    pub name: T,
+    pub value: T,
 }
 
-/// Implemented as a convenience to create [`Tag`]s from name, value pairs of utf8 strings.
-pub trait FromStrs<T> {
-    fn from_utf8_strs(name: &str, value: &str) -> Result<T, Error>;
-}
-
-impl FromStrs<Tag> for Tag {
-    fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
+impl Tag<Base64> {
+    pub fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
         let b64_name = Base64::from_utf8_str(name)?;
         let b64_value = Base64::from_utf8_str(value)?;
 
@@ -133,7 +127,16 @@ impl FromStrs<Tag> for Tag {
     }
 }
 
-impl<'a> ToItems<'a, Vec<Tag>> for Vec<Tag> {
+impl Tag<String> {
+    pub fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
+        let name = String::from(name);
+        let value = String::from(value);
+
+        Ok(Self { name, value })
+    }
+}
+
+impl<'a> ToItems<'a, Vec<Tag<Base64>>> for Vec<Tag<Base64>> {
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error> {
         if self.len() > 0 {
             Ok(DeepHashItem::List(
@@ -147,7 +150,7 @@ impl<'a> ToItems<'a, Vec<Tag>> for Vec<Tag> {
     }
 }
 
-impl<'a> ToItems<'a, Tag> for Tag {
+impl<'a> ToItems<'a, Tag<Base64>> for Tag<Base64> {
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error> {
         Ok(DeepHashItem::List(vec![
             DeepHashItem::Blob(self.name.0.to_vec()),
@@ -157,7 +160,7 @@ impl<'a> ToItems<'a, Tag> for Tag {
 }
 
 /// A struct of [`Vec<u8>`] used for all data and address fields.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Base64(pub Vec<u8>);
 
 impl Default for Base64 {
@@ -252,8 +255,6 @@ impl FromItemOrChild<DeepHashItem> for DeepHashItem {
 
 #[cfg(test)]
 mod tests {
-    use crate::transaction::FromStrs;
-
     use super::{Base64, ConvertUtf8, DeepHashItem, Error, Tag, ToItems};
     use serde_json;
     use std::str::FromStr;
@@ -293,8 +294,8 @@ mod tests {
     #[test]
     fn test_tags_deep_hash_item2() -> Result<(), Error> {
         let tags = vec![
-            Tag::from_utf8_strs("Content-Type", "text/html")?,
-            Tag::from_utf8_strs("key2", "value2")?,
+            Tag::<Base64>::from_utf8_strs("Content-Type", "text/html")?,
+            Tag::<Base64>::from_utf8_strs("key2", "value2")?,
         ];
 
         assert_eq!("Content-Type".to_string(), tags[0].name.to_utf8_string()?);

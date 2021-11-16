@@ -8,16 +8,17 @@ use jsonwebkey::JsonWebKey;
 use log::debug;
 use ring::{
     digest::{Context, SHA256, SHA384},
-    rand,
+    rand::{self, SecureRandom},
     signature::{self, KeyPair, RsaKeyPair},
 };
 use std::fs as fsSync;
 use std::path::PathBuf;
 use tokio::fs;
 
-/// Struct on which [`Methods`] for cryptographic functionality is implemented.
+/// Struct for for crypto methods.
 pub struct Provider {
     pub keypair: RsaKeyPair,
+    pub sr: rand::SystemRandom,
 }
 
 impl Provider {
@@ -30,6 +31,7 @@ impl Provider {
         let jwk_parsed: JsonWebKey = data.parse().unwrap();
         Ok(Self {
             keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
+            sr: rand::SystemRandom::new(),
         })
     }
     /// Sync version of [`Provider::from_keypair_path`].
@@ -39,6 +41,7 @@ impl Provider {
         let jwk_parsed: JsonWebKey = data.parse().unwrap();
         Ok(Self {
             keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
+            sr: rand::SystemRandom::new(),
         })
     }
 
@@ -180,12 +183,17 @@ impl Provider {
         };
         Ok(hash)
     }
+
+    fn fill_rand(&self, dest: &mut [u8]) -> Result<(), Error> {
+        let rand_bytes = self.sr.fill(dest)?;
+        Ok(rand_bytes)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        transaction::{Base64, FromStrs, Tag, ToItems},
+        transaction::{Base64, Tag, ToItems},
         Arweave, Error,
     };
     use std::{path::PathBuf, str::FromStr};
@@ -216,7 +224,7 @@ mod tests {
 
         for (file_stem, correct_hash) in file_stems.iter().zip(hashes) {
             let last_tx = Base64::from_str("LCwsLCwsLA")?;
-            let other_tags = vec![Tag::from_utf8_strs("key2", "value2")?];
+            let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
             let transaction = arweave
                 .create_transaction_from_file_path(
                     PathBuf::from("tests/fixtures/").join(file_stem),

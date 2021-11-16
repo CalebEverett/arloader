@@ -20,25 +20,25 @@ pub fn get_tags_schema() -> Schema {
         }
     "#;
 
-    let schema = Schema::parse_str(schema).unwrap();
-
-    schema
+    Schema::parse_str(schema).unwrap()
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct DataItem {
+    id: Base64,
     signature_type: u16,
     signature: Base64,
     owner: Base64,
     target: Option<Base64>,
     anchor: Option<Base64>,
-    tags: Vec<Tag>,
+    tags: Vec<Tag<String>>,
     data: Base64,
 }
 
 impl Default for DataItem {
     fn default() -> Self {
         Self {
+            id: Base64::default(),
             signature_type: 1,
             signature: Base64(vec![0; 512]),
             owner: Base64(vec![0; 512]),
@@ -94,38 +94,41 @@ impl DataItem {
         let result = [(); 2].map(|_| iter.next().unwrap());
         data_item.signature_type = u16::from_le_bytes(result);
 
-        data_item.signature.0 = data_item
-            .signature
-            .0
-            .iter()
-            .map(|_| iter.next().unwrap())
-            .collect();
+        for i in 0..512 {
+            data_item.signature.0[i] = iter.next().unwrap();
+        }
 
-        data_item.owner.0 = data_item
-            .owner
-            .0
-            .iter()
-            .map(|_| iter.next().unwrap())
-            .collect();
+        for i in 0..512 {
+            data_item.owner.0[i] = iter.next().unwrap();
+        }
 
         data_item.target = match iter.next().unwrap() {
             0 => None,
-            1 => Some(Base64([(); 32].map(|_| iter.next().unwrap()).to_vec())),
+            1 => {
+                let mut result = Base64(Vec::with_capacity(32));
+                for _ in 0..32 {
+                    result.0.push(iter.next().unwrap());
+                }
+                Some(result)
+            }
             _ => unreachable!(),
         };
 
         data_item.anchor = match iter.next().unwrap() {
             0 => None,
-            1 => Some(Base64([(); 32].map(|_| iter.next().unwrap()).to_vec())),
+            1 => {
+                let mut result = Base64(Vec::with_capacity(32));
+                for _ in 0..32 {
+                    result.0.push(iter.next().unwrap());
+                }
+                Some(result)
+            }
             _ => unreachable!(),
         };
 
-        let result = [(); 8].map(|_| iter.next().unwrap());
-        let number_of_tags = u64::from_le_bytes(result);
-        let result = [(); 8].map(|_| iter.next().unwrap());
-        let number_of_tag_bytes = u64::from_le_bytes(result) as usize;
-        println!("{:?}", &number_of_tag_bytes);
-
+        let number_of_tags = u64::from_le_bytes([(); 8].map(|_| iter.next().unwrap()));
+        let number_of_tag_bytes =
+            u64::from_le_bytes([(); 8].map(|_| iter.next().unwrap())) as usize;
         data_item.tags = if number_of_tags > 0 {
             let schema = get_tags_schema();
             let mut reader = Vec::<u8>::with_capacity(number_of_tag_bytes);
@@ -135,10 +138,10 @@ impl DataItem {
             }
 
             let value = avro_rs::from_avro_datum::<&[u8]>(&schema, &mut &*reader, None)?;
-            let tags: Vec<Tag> = avro_rs::from_value(&value)?;
+            let tags: Vec<Tag<String>> = avro_rs::from_value(&value)?;
             tags
         } else {
-            Vec::<Tag>::new()
+            Vec::<Tag<String>>::new()
         };
 
         data_item.data.0 = iter.collect();
@@ -152,7 +155,7 @@ mod tests {
     use super::DataItem;
     use crate::{
         crypto::Provider,
-        transaction::{Base64, ConvertUtf8, FromStrs, Tag},
+        transaction::{Base64, ConvertUtf8, Tag},
     };
     use std::path::PathBuf;
 
@@ -162,8 +165,16 @@ mod tests {
             .unwrap();
 
         let tags = vec![
-            Tag::from_utf8_strs(&"e".to_string().repeat(56), "testvalue").unwrap(),
-            Tag::from_utf8_strs(&"e".to_string().repeat(56), "testvalue").unwrap(),
+            Tag::<String>::from_utf8_strs(
+                &"ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWU",
+                &"dGVzdHZhbHVl",
+            )
+            .unwrap(),
+            Tag::<String>::from_utf8_strs(
+                &"ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWU",
+                &"dGVzdHZhbHVl",
+            )
+            .unwrap(),
         ];
         let owner = crypto.keypair_modulus().unwrap();
         let anchor = Some(Base64::from_utf8_str("TWF0aC5hcHQnI11nbmcoMzYpLnN1YnN0").unwrap());
@@ -261,7 +272,6 @@ mod tests {
     #[tokio::test]
     async fn test_data_item_to_json() {
         let data_item = get_test_data_item().await;
-        println!("{}", serde_json::to_string(&data_item).unwrap());
         assert_eq!(
             data_item.data.to_utf8_string().unwrap(),
             "tasty".to_string()

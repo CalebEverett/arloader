@@ -30,7 +30,7 @@ use std::{collections::HashMap, fmt::Write, path::PathBuf, str::FromStr};
 use tokio::fs;
 use url::Url;
 
-pub mod bundles;
+pub mod bundle;
 pub mod crypto;
 pub mod error;
 pub mod merkle;
@@ -42,7 +42,7 @@ pub mod utils;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use status::{Status, StatusCode};
-use transaction::{Base64, FromStrs, Tag, ToItems, Transaction};
+use transaction::{Base64, Tag, ToItems, Transaction};
 
 /// Winstons are a sub unit of the native Arweave network token, AR. There are 10<sup>12</sup> Winstons per AR.
 pub const WINSTONS_PER_AR: u64 = 1000000000000;
@@ -196,7 +196,7 @@ impl Arweave {
     pub async fn create_transaction_from_file_path(
         &self,
         file_path: PathBuf,
-        other_tags: Option<Vec<Tag>>,
+        other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
     ) -> Result<Transaction, Error> {
@@ -214,7 +214,7 @@ impl Arweave {
         } else {
             "application/json"
         };
-        let mut tags = vec![Tag::from_utf8_strs("Content-Type", content_type)?];
+        let mut tags = vec![Tag::<Base64>::from_utf8_strs("Content-Type", content_type)?];
 
         // Add other tags if provided.
         if let Some(other_tags) = other_tags {
@@ -459,7 +459,7 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         log_dir: Option<PathBuf>,
-        additional_tags: Option<Vec<Tag>>,
+        additional_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
     ) -> Result<Status, Error> {
@@ -504,7 +504,7 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         log_dir: Option<PathBuf>,
-        additional_tags: Option<Vec<Tag>>,
+        additional_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
         solana_url: Url,
@@ -548,7 +548,7 @@ impl Arweave {
     ) -> Result<Vec<Status>, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
-        IT: Iterator<Item = Option<Vec<Tag>>> + Send,
+        IT: Iterator<Item = Option<Vec<Tag<Base64>>>> + Send,
     {
         let statuses = if let Some(tags_iter) = tags_iter {
             try_join_all(paths_iter.zip(tags_iter).map(|(p, t)| {
@@ -627,7 +627,7 @@ impl Arweave {
 mod tests {
     use crate::{
         error::Error,
-        transaction::{Base64, FromStrs, Tag},
+        transaction::{Base64, Tag},
         utils::{TempDir, TempFrom},
         Arweave, Status,
     };
@@ -646,7 +646,7 @@ mod tests {
 
         let file_path = PathBuf::from("tests/fixtures/0.png");
         let last_tx = Base64::from_str("LCwsLCwsLA")?;
-        let other_tags = vec![Tag::from_utf8_strs("key2", "value2")?];
+        let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
         let transaction = arweave
             .create_transaction_from_file_path(file_path, Some(other_tags), Some(last_tx), (0, 0))
             .await?;
@@ -672,7 +672,7 @@ mod tests {
 
         let file_path = PathBuf::from("tests/fixtures/0.png");
         let last_tx = Base64::from_str("LCwsLCwsLA")?;
-        let other_tags = vec![Tag::from_utf8_strs("key2", "value2")?];
+        let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
         let transaction = arweave
             .create_transaction_from_file_path(
                 file_path.clone(),

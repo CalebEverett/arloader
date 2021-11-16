@@ -2,7 +2,7 @@ use arloader::{
     error::Error,
     solana::SOL_AR_BASE_URL,
     status::{OutputFormat, OutputHeader, Status, StatusCode},
-    transaction::Tag,
+    transaction::{Base64, Tag},
     upload_files_stream,
     utils::{TempDir, TempFrom},
     Arweave,
@@ -128,7 +128,7 @@ async fn test_upload_files_from_paths_without_tags() -> Result<(), Error> {
     let log_dir = temp_log_dir.0.clone();
 
     #[allow(unused_assignments)]
-    let mut tags_iter = Some(iter::repeat(Some(Vec::<Tag>::new())));
+    let mut tags_iter = Some(iter::repeat(Some(Vec::<Tag<Base64>>::new())));
     tags_iter = None;
 
     let statuses = arweave
@@ -155,7 +155,7 @@ async fn test_update_statuses() -> Result<(), Error> {
     let log_dir = temp_log_dir.0.clone();
 
     #[allow(unused_assignments)]
-    let mut tags_iter = Some(iter::repeat(Some(Vec::<Tag>::new())));
+    let mut tags_iter = Some(iter::repeat(Some(Vec::<Tag<Base64>>::new())));
     tags_iter = None;
 
     let statuses = arweave
@@ -196,7 +196,7 @@ async fn test_filter_statuses() -> Result<(), Error> {
     let log_dir = temp_log_dir.0.clone();
 
     #[allow(unused_assignments)]
-    let mut tags_iter = Some(iter::repeat(Some(Vec::<Tag>::new())));
+    let mut tags_iter = Some(iter::repeat(Some(Vec::<Tag<Base64>>::new())));
     tags_iter = None;
 
     // Upload the first five files.
@@ -332,7 +332,7 @@ async fn test_upload_files_stream() -> Result<(), Error> {
     let temp_log_dir = TempDir::from_str("./tests/").await?;
     let _log_dir = temp_log_dir.0.clone();
 
-    let mut _tags_iter = Some(iter::repeat(Some(Vec::<Tag>::new())));
+    let mut _tags_iter = Some(iter::repeat(Some(Vec::<Tag<Base64>>::new())));
     _tags_iter = None;
 
     let mut stream = upload_files_stream(&arweave, paths_iter, None, None, (0, 0), 3);
