@@ -29,7 +29,7 @@ pub enum Error {
     InvalidHash,
     #[error("invalid proof")]
     InvalidProof,
-    #[error("tags could not be parsed to slices")]
+    #[error("invalid tags")]
     InvalidTags,
     #[error("io: {0}")]
     IOError(#[from] std::io::Error),

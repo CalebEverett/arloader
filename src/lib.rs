@@ -30,8 +30,8 @@ use std::{collections::HashMap, fmt::Write, path::PathBuf, str::FromStr};
 use tokio::fs;
 use url::Url;
 
-pub mod bundle;
 pub mod crypto;
+pub mod data_item;
 pub mod error;
 pub mod merkle;
 pub mod solana;
@@ -39,10 +39,13 @@ pub mod status;
 pub mod transaction;
 pub mod utils;
 
+use data_item::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use status::{Status, StatusCode};
 use transaction::{Base64, Tag, ToItems, Transaction};
+
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 /// Winstons are a sub unit of the native Arweave network token, AR. There are 10<sup>12</sup> Winstons per AR.
 pub const WINSTONS_PER_AR: u64 = 1000000000000;
@@ -193,14 +196,13 @@ impl Arweave {
         Ok(resp)
     }
 
-    pub async fn create_transaction_from_file_path(
+    pub async fn create_transaction(
         &self,
-        file_path: PathBuf,
+        data: Vec<u8>,
         other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
     ) -> Result<Transaction, Error> {
-        let data = fs::read(file_path).await?;
         let chunks = generate_leaves(data.clone(), &self.crypto)?;
         let root = generate_data_root(chunks.clone(), &self.crypto)?;
         let data_root = Base64(root.id.clone().into_iter().collect());
@@ -212,9 +214,12 @@ impl Arweave {
         let content_type = if let Some(kind) = infer::get(&data) {
             kind.mime_type()
         } else {
-            "application/json"
+            "application/octet-stream"
         };
-        let mut tags = vec![Tag::<Base64>::from_utf8_strs("Content-Type", content_type)?];
+        let mut tags = vec![
+            Tag::<Base64>::from_utf8_strs("Content-Type", content_type)?,
+            Tag::<Base64>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?,
+        ];
 
         // Add other tags if provided.
         if let Some(other_tags) = other_tags {
@@ -247,6 +252,18 @@ impl Arweave {
             proofs,
             ..Default::default()
         })
+    }
+
+    pub async fn create_transaction_from_file_path(
+        &self,
+        file_path: PathBuf,
+        other_tags: Option<Vec<Tag<Base64>>>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+    ) -> Result<Transaction, Error> {
+        let data = fs::read(file_path).await?;
+        self.create_transaction(data, other_tags, last_tx, price_terms)
+            .await
     }
 
     /// Gets deep hash, signs and sets signature and id.
@@ -620,6 +637,86 @@ impl Arweave {
         };
 
         Ok(filtered)
+    }
+
+    // Create [`data_item::DataItem`] for bundle.
+    pub fn create_data_item(
+        &self,
+        data: Vec<u8>,
+        mut tags: Vec<Tag<String>>,
+    ) -> Result<DataItem, Error> {
+        let content_type = if let Some(kind) = infer::get(&data) {
+            kind.mime_type()
+        } else {
+            "application/octet-stream"
+        };
+        tags.extend(vec![
+            Tag::<String>::from_utf8_strs("Content-Type", content_type)?,
+            Tag::<String>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?,
+        ]);
+
+        let mut anchor = Base64(Vec::with_capacity(32));
+        self.crypto.fill_rand(&mut anchor.0)?;
+
+        Ok(DataItem {
+            data: Base64(data),
+            tags,
+            anchor,
+            ..DataItem::default()
+        })
+    }
+
+    pub fn sign_data_item(&self, mut data_item: DataItem) -> Result<DataItem, Error> {
+        let deep_hash = self.crypto.deep_hash(data_item.to_deep_hash_item()?)?;
+        let signature = self.crypto.sign(&deep_hash)?;
+        let id = self.crypto.hash_sha256(&signature)?;
+        data_item.signature = Base64(signature);
+        data_item.id = Base64(id.to_vec());
+        Ok(data_item)
+    }
+
+    pub async fn create_data_item_from_file_path(
+        &self,
+        file_path: PathBuf,
+        tags: Vec<Tag<String>>,
+    ) -> Result<DataItem, Error> {
+        let data = fs::read(file_path).await?;
+        let data_item = self.create_data_item(data, tags)?;
+        let data_item = self.sign_data_item(data_item)?;
+        Ok(data_item)
+    }
+
+    pub async fn create_data_items_from_file_paths<IP>(
+        &self,
+        paths_iter: IP,
+        tags: Vec<Tag<String>>,
+    ) -> Result<Vec<DataItem>, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        try_join_all(paths_iter.map(|p| self.create_data_item_from_file_path(p, tags.clone())))
+            .await
+    }
+
+    pub fn create_bundle_from_data_items(
+        &self,
+        data_items: Vec<DataItem>,
+    ) -> Result<Vec<u8>, Error> {
+        let data_items_len = data_items.len() as u16;
+        let (headers, binaries): (Vec<Vec<u8>>, Vec<Vec<u8>>) = data_items
+            .into_iter()
+            .map(|b| b.to_bundle_item().unwrap())
+            .unzip();
+
+        let binary: Vec<u8> = data_items_len
+            .to_le_bytes()
+            .into_iter()
+            .chain([0u8; 30].into_iter())
+            .chain(headers.into_iter().flatten())
+            .chain(binaries.into_iter().flatten())
+            .collect();
+
+        Ok(binary)
     }
 }
 

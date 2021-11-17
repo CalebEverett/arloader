@@ -185,22 +185,12 @@ impl FromStr for Base64 {
     }
 }
 
-/// Implemented on [`Base64`] to encode and decode utf8 strings.
-pub trait ConvertUtf8<T> {
-    fn from_utf8_str(str: &str) -> Result<T, Error>;
-    fn to_utf8_string(&self) -> Result<String, Error>;
-}
-
-impl ConvertUtf8<Base64> for Base64 {
-    fn from_utf8_str(str: &str) -> Result<Self, Error> {
-        let enc_string = base64::encode_config(str.as_bytes(), base64::URL_SAFE_NO_PAD);
-        let dec_bytes = base64::decode_config(enc_string, base64::URL_SAFE_NO_PAD)?;
-        Ok(Self(dec_bytes))
+impl Base64 {
+    pub fn from_utf8_str(str: &str) -> Result<Self, Error> {
+        Ok(Self(str.as_bytes().to_vec()))
     }
-    fn to_utf8_string(&self) -> Result<String, Error> {
-        let enc_string = base64::encode_config(&self.0, base64::URL_SAFE_NO_PAD);
-        let dec_bytes = base64::decode_config(enc_string, base64::URL_SAFE_NO_PAD)?;
-        Ok(String::from_utf8(dec_bytes)?)
+    pub fn to_utf8_string(&self) -> Result<String, Error> {
+        Ok(String::from_utf8(self.0.clone())?)
     }
 }
 
@@ -238,24 +228,18 @@ pub enum DeepHashItem {
     List(Vec<DeepHashItem>),
 }
 
-/// Implemented as a convenience to create [`DeepHashItem`]s.
-pub trait FromItemOrChild<T> {
-    fn from_item(item: &[u8]) -> Self;
-    fn from_children(children: Vec<T>) -> Self;
-}
-
-impl FromItemOrChild<DeepHashItem> for DeepHashItem {
-    fn from_item(item: &[u8]) -> DeepHashItem {
+impl DeepHashItem {
+    pub fn from_item(item: &[u8]) -> DeepHashItem {
         Self::Blob(item.to_vec())
     }
-    fn from_children(children: Vec<DeepHashItem>) -> DeepHashItem {
+    pub fn from_children(children: Vec<DeepHashItem>) -> DeepHashItem {
         Self::List(children)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Base64, ConvertUtf8, DeepHashItem, Error, Tag, ToItems};
+    use super::{Base64, DeepHashItem, Error, Tag, ToItems};
     use serde_json;
     use std::str::FromStr;
 
