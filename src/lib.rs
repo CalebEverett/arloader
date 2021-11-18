@@ -30,8 +30,8 @@ use std::{collections::HashMap, fmt::Write, path::PathBuf, str::FromStr};
 use tokio::fs;
 use url::Url;
 
+pub mod bundle;
 pub mod crypto;
-pub mod data_item;
 pub mod error;
 pub mod merkle;
 pub mod solana;
@@ -39,7 +39,7 @@ pub mod status;
 pub mod transaction;
 pub mod utils;
 
-use data_item::DataItem;
+use bundle::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use status::{Status, StatusCode};
@@ -926,12 +926,12 @@ mod tests {
         assert_eq!(u64::from_le_bytes(bundle[0..8].try_into().unwrap()), 2);
 
         // 2379 bytes in the first item
-        assert_eq!(u64::from_le_bytes(bundle[32..40].try_into().unwrap()), 2891);
+        assert_eq!(u64::from_le_bytes(bundle[32..40].try_into().unwrap()), 2892);
 
         // 2465 bytes in the secpnd item
         assert_eq!(
             u64::from_le_bytes(bundle[96..104].try_into().unwrap()),
-            2977
+            2978
         );
 
         // signature type is 1
@@ -966,14 +966,14 @@ mod tests {
                     .try_into()
                     .unwrap()
             ),
-            51u64
+            52u64
         );
 
         // sig type of second item is 1
         assert_eq!(
             u16::from_le_bytes(
-                bundle[(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 51 + &data_item_lens[0])
-                    ..(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 51 + &data_item_lens[0] + 2)]
+                bundle[(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 52 + &data_item_lens[0])
+                    ..(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 52 + &data_item_lens[0] + 2)]
                     .try_into()
                     .unwrap()
             ),
