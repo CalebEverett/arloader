@@ -97,6 +97,10 @@ impl DataItem {
 
         let result = [(); 2].map(|_| iter.next().unwrap());
         data_item.signature_type = u16::from_le_bytes(result);
+        if data_item.signature_type != 1 {
+            println!("invalid signature_type");
+            return Err(Error::InvalidDataItem);
+        }
 
         for _ in 0..512 {
             data_item.signature.0.push(iter.next().unwrap());
@@ -133,6 +137,10 @@ impl DataItem {
         let number_of_tags = u64::from_le_bytes([(); 8].map(|_| iter.next().unwrap()));
         let number_of_tag_bytes =
             u64::from_le_bytes([(); 8].map(|_| iter.next().unwrap())) as usize;
+        if number_of_tag_bytes > 2048 {
+            return Err(Error::InvalidDataItem);
+        }
+
         data_item.tags = if number_of_tags > 0 {
             let schema = get_tags_schema();
             let mut reader = Vec::<u8>::with_capacity(number_of_tag_bytes);
@@ -143,6 +151,9 @@ impl DataItem {
 
             let value = avro_rs::from_avro_datum::<&[u8]>(&schema, &mut &*reader, None)?;
             let tags: Vec<Tag<String>> = avro_rs::from_value(&value)?;
+            if tags.len() != number_of_tags as usize {
+                return Err(Error::InvalidDataItem);
+            }
             tags
         } else {
             Vec::<Tag<String>>::new()
@@ -153,18 +164,16 @@ impl DataItem {
         Ok(data_item)
     }
 
+    /// Header is 64 bytes with first 32 for the size of the bytes le. Second
+    /// 32 is id - hashed signature.
     pub fn to_bundle_item(&self) -> Result<(Vec<u8>, Vec<u8>), Error> {
         let binary = self.serialize()?;
         let binary_len = binary.len();
         let mut header = Vec::<u8>::with_capacity(64);
 
-        for b in (binary_len as u64).to_le_bytes() {
-            header.push(b)
-        }
+        header.extend((binary_len as u64).to_le_bytes());
         header.extend(&[0u8; 24]);
         header.extend(&self.id.0);
-
-        println!("{}", header.len());
 
         Ok((header, binary))
     }
@@ -198,10 +207,10 @@ impl<'a> ToItems<'a, DataItem> for DataItem {
 mod tests {
     use super::DataItem;
     use crate::{
-        transaction::{Base64, Tag},
+        transaction::{Base64, FromUtf8Strs, Tag, ToItems},
         Arweave,
     };
-    use std::{path::PathBuf, str::FromStr};
+    use std::path::PathBuf;
     use tokio::fs;
 
     async fn get_test_data_item() -> DataItem {
@@ -226,8 +235,10 @@ mod tests {
         let anchor = Base64::from_utf8_str("TWF0aC5hcHQnI11nbmcoMzYpLnN1YnN0").unwrap();
         let data = Base64::from_utf8_str("tasty").unwrap();
         let signature = Base64(vec![0; 512]);
+        let id = Base64(vec![0; 32]);
 
         DataItem {
+            id,
             signature,
             owner,
             anchor,
@@ -235,32 +246,6 @@ mod tests {
             data,
             ..Default::default()
         }
-    }
-
-    async fn get_test_data_items() -> Vec<DataItem> {
-        let arweave =
-            Arweave::from_keypair_path(PathBuf::from("tests/fixtures/test_key0.json"), None)
-                .await
-                .unwrap();
-
-        let tags = vec![Tag::<String>::from_utf8_strs(&"x", &"y").unwrap()];
-        let owner = arweave.crypto.keypair_modulus().unwrap();
-        let anchor = Base64::from_utf8_str("Math.randomgng(36).substring(30)").unwrap();
-        let target = Base64::from_str("pFwvlpz1x_nebBPxkK35NZm522XPnvUSveGf4Pz8y4A").unwrap();
-        let data = Base64::from_utf8_str("tasty").unwrap();
-
-        let data_item = DataItem {
-            owner,
-            target,
-            anchor,
-            tags,
-            data,
-            ..Default::default()
-        };
-
-        let data_item = arweave.sign_data_item(data_item).unwrap();
-
-        vec![data_item.clone(), data_item]
     }
 
     #[tokio::test]
@@ -283,7 +268,8 @@ mod tests {
 
         let bytes = data_item.serialize().unwrap();
 
-        let de_data_item = DataItem::deserialize(bytes).unwrap();
+        let mut de_data_item = DataItem::deserialize(bytes).unwrap();
+        de_data_item.id.0 = vec![0; 32];
 
         assert_eq!(data_item, de_data_item)
     }
@@ -298,14 +284,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_data_item_to_bundle_item() {
+    async fn test_data_item_deep_hash() {
         let arweave =
             Arweave::from_keypair_path(PathBuf::from("tests/fixtures/test_key0.json"), None)
                 .await
                 .unwrap();
 
         let data_item = get_test_data_item().await;
-        let data_item = arweave.sign_data_item(data_item).unwrap();
+        let deep_hash_item = data_item.to_deep_hash_item().unwrap();
+        let deep_hash = arweave.crypto.deep_hash(deep_hash_item).unwrap();
+        println!("deep_hash: {:#?}", deep_hash);
+        assert_eq!(
+            vec![
+                29, 28, 37, 35, 175, 82, 189, 135, 213, 51, 252, 26, 145, 181, 187, 1, 17, 143,
+                217, 152, 169, 208, 44, 36, 226, 59, 74, 90, 10, 218, 106, 216, 58, 210, 94, 10,
+                65, 74, 91, 185, 205, 198, 117, 220, 242, 169, 67, 224
+            ],
+            &deep_hash
+        );
+    }
+
+    #[tokio::test]
+    async fn test_data_items_to_bundle() {
+        let arweave =
+            Arweave::from_keypair_path(PathBuf::from("tests/fixtures/test_key0.json"), None)
+                .await
+                .unwrap();
+
+        let data_item = get_test_data_item().await;
+        let data_item_ser = data_item.serialize().unwrap();
 
         let bundle = arweave
             .create_bundle_from_data_items(vec![data_item.clone(), data_item])
@@ -315,7 +322,65 @@ mod tests {
             .unwrap();
         let expected_bytes: Vec<u8> = serde_json::from_str(&expected_bytes).unwrap();
 
-        let slice: std::ops::Range<usize> = 32..160;
-        assert_eq!(bundle[slice.clone()], expected_bytes[slice]);
+        // number of items in bundle is the same
+        assert_eq!(u32::from_le_bytes(bundle[0..4].try_into().unwrap()), 2);
+
+        // 1263 bytes in the first item
+        assert_eq!(
+            u32::from_le_bytes(bundle[32..36].try_into().unwrap()),
+            data_item_ser.len() as u32
+        );
+
+        // 1263 bytes in the second item
+        assert_eq!(
+            u32::from_le_bytes(bundle[96..100].try_into().unwrap()),
+            data_item_ser.len() as u32
+        );
+
+        // signature type is 1
+        assert_eq!(
+            u16::from_le_bytes(bundle[160..162].try_into().unwrap()),
+            1u16
+        );
+
+        // no target is present
+        assert_eq!(bundle[160 + 2 + 1024], 0);
+
+        // anchor is present
+        assert_eq!(bundle[160 + 2 + 1024 + 1], 1);
+
+        // number of tags is 2
+        assert_eq!(
+            u64::from_le_bytes(
+                bundle[(160 + 2 + 1024 + 1 + 1 + 32)..(160 + 2 + 1024 + 1 + 1 + 32 + 8)]
+                    .try_into()
+                    .unwrap()
+            ),
+            2u64
+        );
+
+        // number of tag bytes is 182
+        assert_eq!(
+            u64::from_le_bytes(
+                bundle[(160 + 2 + 1024 + 1 + 1 + 32 + 8)..(160 + 2 + 1024 + 1 + 1 + 32 + 8 + 8)]
+                    .try_into()
+                    .unwrap()
+            ),
+            182u64
+        );
+
+        // sig type of second item is 1
+        assert_eq!(
+            u16::from_le_bytes(
+                bundle[(160 + 2 + 1024 + 1 + 1 + 32 + 8 + 8 + 182 + 5)
+                    ..(160 + 2 + 1024 + 1 + 1 + 32 + 8 + 8 + 182 + 5 + 2)]
+                    .try_into()
+                    .unwrap()
+            ),
+            1u16
+        );
+
+        // bytes are the same
+        assert_eq!(bundle, expected_bytes);
     }
 }

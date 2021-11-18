@@ -25,6 +25,8 @@ pub enum Error {
     FromUtf8(#[from] FromUtf8Error),
     #[error("glob patters: {0}")]
     GlobPattern(#[from] glob::PatternError),
+    #[error("invalid bunlde item binary")]
+    InvalidDataItem,
     #[error("hashing failed")]
     InvalidHash,
     #[error("invalid proof")]

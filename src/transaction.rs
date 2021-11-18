@@ -115,8 +115,12 @@ pub struct Tag<T> {
     pub value: T,
 }
 
-impl Tag<Base64> {
-    pub fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
+pub trait FromUtf8Strs<T> {
+    fn from_utf8_strs(name: &str, value: &str) -> Result<T, Error>;
+}
+
+impl FromUtf8Strs<Tag<Base64>> for Tag<Base64> {
+    fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
         let b64_name = Base64::from_utf8_str(name)?;
         let b64_value = Base64::from_utf8_str(value)?;
 
@@ -127,8 +131,8 @@ impl Tag<Base64> {
     }
 }
 
-impl Tag<String> {
-    pub fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
+impl FromUtf8Strs<Tag<String>> for Tag<String> {
+    fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
         let name = String::from(name);
         let value = String::from(value);
 
@@ -239,7 +243,7 @@ impl DeepHashItem {
 
 #[cfg(test)]
 mod tests {
-    use super::{Base64, DeepHashItem, Error, Tag, ToItems};
+    use super::{Base64, DeepHashItem, Error, FromUtf8Strs, Tag, ToItems};
     use serde_json;
     use std::str::FromStr;
 

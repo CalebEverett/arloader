@@ -127,7 +127,7 @@ pub struct TxData {
     pub sol_tx: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct SigResponse {
     pub ar_tx_sig: Base64,
     pub ar_tx_id: Base64,

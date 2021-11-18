@@ -26,7 +26,7 @@ async fn mine(arweave: &Arweave) -> Result<(), Error> {
     let url = arweave.base_url.join("mine")?;
     let resp = reqwest::get(url).await?.text().await?;
     // Give the node server a chance
-    sleep(Duration::from_secs(1)).await;
+    sleep(Duration::from_secs(2)).await;
     println!("mine resp: {}", resp);
     Ok(())
 }
@@ -223,12 +223,13 @@ async fn test_filter_statuses() -> Result<(), Error> {
         .filter_statuses(
             paths_iter,
             log_dir.clone(),
-            Some(vec![StatusCode::Pending]),
+            // Some(vec![StatusCode::Pending]),
+            None,
             None,
         )
         .await?;
-    assert_eq!(pending.len(), 5);
     println!("{:?}", pending);
+    assert_eq!(pending.len(), 5);
 
     // Then mine
     let _ = mine(&arweave).await?;

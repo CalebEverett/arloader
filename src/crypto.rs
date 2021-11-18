@@ -193,7 +193,7 @@ impl Provider {
 #[cfg(test)]
 mod tests {
     use crate::{
-        transaction::{Base64, Tag, ToItems},
+        transaction::{Base64, FromUtf8Strs, Tag, ToItems},
         Arweave, Error,
     };
     use std::{path::PathBuf, str::FromStr};

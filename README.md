@@ -7,8 +7,8 @@
 
 Command line application and library for uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
 
-Now includes the ability to pay for transactions with SOL. You still need to connect an Arweave wallet, but you can just download a new one and connect your
-Solana keypair to pay for transactions without having to purchase AR.
+Now includes bundles, reward multiplier and pending count. You can upload files matching a glob in a bundle and pay in SOL. You still need to connect an Arweave wallet,
+but you can just download a new one and connect your Solana keypair to pay for transactions without having to purchase AR.
 
 Keep in mind that the Arweave network has a limit of 1,000 transactions per block every two minutes, so if you are going to upload thousands of files,
 check the network for pending transactions and upload in batches of less than 1,000.

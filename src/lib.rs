@@ -8,7 +8,7 @@
 //! files from filtered sets of statuses.
 
 #![feature(derive_default_enum)]
-use crate::solana::{create_sol_transaction, get_sol_ar_signature, FLOOR, RATE};
+use crate::solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR, RATE};
 use blake3;
 use chrono::Utc;
 use futures::{
@@ -43,7 +43,7 @@ use data_item::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use status::{Status, StatusCode};
-use transaction::{Base64, Tag, ToItems, Transaction};
+use transaction::{Base64, FromUtf8Strs, Tag, ToItems, Transaction};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -268,7 +268,8 @@ impl Arweave {
 
     /// Gets deep hash, signs and sets signature and id.
     pub fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
-        let deep_hash = self.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
+        let deep_hash_item = transaction.to_deep_hash_item()?;
+        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
         let signature = self.crypto.sign(&deep_hash)?;
         let id = self.crypto.hash_sha256(&signature)?;
         transaction.signature = Base64(signature);
@@ -307,6 +308,12 @@ impl Arweave {
         Ok(status)
     }
 
+    pub async fn get_pending_count(&self) -> Result<usize, Error> {
+        let url = self.base_url.join("tx/pending")?;
+        let tx_ids: Vec<String> = reqwest::get(url).await?.json().await?;
+        Ok(tx_ids.len())
+    }
+
     pub async fn get_raw_status(&self, id: &Base64) -> Result<reqwest::Response, Error> {
         let url = self.base_url.join(&format!("tx/{}/status", id))?;
         let resp = reqwest::get(url).await?;
@@ -320,22 +327,20 @@ impl Arweave {
     /// statuses for multiple uploads of the same file you can provide a different `log_dir` (or copy the
     /// file to a different directory and upload from there).
     pub async fn write_status(&self, status: Status, log_dir: PathBuf) -> Result<(), Error> {
-        if let Some(file_path) = &status.file_path {
+        let file_stem = if let Some(file_path) = &status.file_path {
             if status.id.0.is_empty() {
                 return Err(error::Error::UnsignedTransaction.into());
             }
-            let file_path_hash = blake3::hash(file_path.to_str().unwrap().as_bytes());
-            fs::write(
-                log_dir
-                    .join(file_path_hash.to_string())
-                    .with_extension("json"),
-                serde_json::to_string(&status)?,
-            )
-            .await?;
-            Ok(())
+            blake3::hash(file_path.to_str().unwrap().as_bytes()).to_string()
         } else {
-            Err(error::Error::MissingFilePath)
-        }
+            format!("id_{}", status.id)
+        };
+        fs::write(
+            log_dir.join(file_stem).with_extension("json"),
+            serde_json::to_string(&status)?,
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn read_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error> {
@@ -506,15 +511,16 @@ impl Arweave {
         solana_url: Url,
         sol_ar_url: Url,
         from_keypair: &Keypair,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<(Transaction, SigResponse), Error> {
         let lamports = std::cmp::max(&transaction.reward / RATE, FLOOR);
         let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
-        let sig_repsonse =
+        let sig_response =
             get_sol_ar_signature(sol_ar_url, transaction.to_deep_hash_item()?, sol_tx).await?;
-        transaction.signature = sig_repsonse.ar_tx_sig;
-        transaction.id = sig_repsonse.ar_tx_id;
-        transaction.owner = sig_repsonse.ar_tx_owner;
-        Ok(transaction)
+        let sig_response_copy = sig_response.clone();
+        transaction.signature = sig_response.ar_tx_sig;
+        transaction.id = sig_response.ar_tx_id;
+        transaction.owner = sig_response.ar_tx_owner;
+        Ok((transaction, sig_response_copy))
     }
 
     pub async fn upload_file_from_path_with_sol(
@@ -537,15 +543,16 @@ impl Arweave {
             )
             .await?;
 
-        let signed_transaction = self
+        let (signed_transaction, sig_response): (Transaction, SigResponse) = self
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let status = self
+        let mut status = self
             .post_transaction(&signed_transaction, Some(file_path))
             .await?;
 
         if let Some(log_dir) = log_dir {
+            status.sol_sig = Some(sig_response);
             self.write_status(status.clone(), log_dir).await?;
         }
         Ok(status)
@@ -655,21 +662,24 @@ impl Arweave {
             Tag::<String>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?,
         ]);
 
-        let mut anchor = Base64(Vec::with_capacity(32));
-        self.crypto.fill_rand(&mut anchor.0)?;
+        // let mut anchor = Base64(Vec::with_capacity(32));
+        // self.crypto.fill_rand(&mut anchor.0)?;
 
         Ok(DataItem {
             data: Base64(data),
             tags,
-            anchor,
+            // anchor,
             ..DataItem::default()
         })
     }
 
     pub fn sign_data_item(&self, mut data_item: DataItem) -> Result<DataItem, Error> {
-        let deep_hash = self.crypto.deep_hash(data_item.to_deep_hash_item()?)?;
+        data_item.owner = self.crypto.keypair_modulus()?;
+        let deep_hash_item = data_item.to_deep_hash_item()?;
+        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
         let signature = self.crypto.sign(&deep_hash)?;
         let id = self.crypto.hash_sha256(&signature)?;
+
         data_item.signature = Base64(signature);
         data_item.id = Base64(id.to_vec());
         Ok(data_item)
@@ -679,10 +689,21 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         tags: Vec<Tag<String>>,
+        log_dir: Option<PathBuf>,
     ) -> Result<DataItem, Error> {
-        let data = fs::read(file_path).await?;
+        let data = fs::read(&file_path).await?;
         let data_item = self.create_data_item(data, tags)?;
         let data_item = self.sign_data_item(data_item)?;
+
+        if let Some(log_dir) = log_dir {
+            let status = Status {
+                id: data_item.id.clone(),
+                file_path: Some(file_path),
+                ..Status::default()
+            };
+            self.write_status(status, log_dir).await?;
+        }
+
         Ok(data_item)
     }
 
@@ -690,19 +711,23 @@ impl Arweave {
         &self,
         paths_iter: IP,
         tags: Vec<Tag<String>>,
+        log_dir: Option<PathBuf>,
     ) -> Result<Vec<DataItem>, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
     {
-        try_join_all(paths_iter.map(|p| self.create_data_item_from_file_path(p, tags.clone())))
-            .await
+        try_join_all(
+            paths_iter
+                .map(|p| self.create_data_item_from_file_path(p, tags.clone(), log_dir.clone())),
+        )
+        .await
     }
 
     pub fn create_bundle_from_data_items(
         &self,
         data_items: Vec<DataItem>,
     ) -> Result<Vec<u8>, Error> {
-        let data_items_len = data_items.len() as u16;
+        let data_items_len = data_items.len() as u64;
         let (headers, binaries): (Vec<Vec<u8>>, Vec<Vec<u8>>) = data_items
             .into_iter()
             .map(|b| b.to_bundle_item().unwrap())
@@ -711,12 +736,88 @@ impl Arweave {
         let binary: Vec<u8> = data_items_len
             .to_le_bytes()
             .into_iter()
-            .chain([0u8; 30].into_iter())
+            .chain([0u8; 24].into_iter())
             .chain(headers.into_iter().flatten())
             .chain(binaries.into_iter().flatten())
             .collect();
 
         Ok(binary)
+    }
+
+    // Tested here instead of data_item to verify signature as well.
+    pub fn deserialize_bundle(&self, bundle: Vec<u8>) -> Result<Vec<DataItem>, Error> {
+        let mut bundle_iter = bundle.into_iter();
+        let result = [(); 8].map(|_| bundle_iter.next().unwrap());
+        let number_of_data_items = u64::from_le_bytes(result) as usize;
+        (0..24).for_each(|_| {
+            bundle_iter.next().unwrap();
+        });
+
+        // Parse headers.
+        let mut bytes_lens = Vec::<u64>::with_capacity(number_of_data_items);
+        let mut ids = vec![Vec::<u8>::with_capacity(32); 2];
+        (0..number_of_data_items).for_each(|i| {
+            let result = [(); 8].map(|_| bundle_iter.next().unwrap());
+            bytes_lens.push(u64::from_le_bytes(result));
+            (0..24).for_each(|_| {
+                bundle_iter.next().unwrap();
+            });
+            (0..32).for_each(|_| {
+                ids[i].push(bundle_iter.next().unwrap());
+            });
+        });
+
+        // Parse data_items - data_item verified during deserialization
+        let mut bytes_lens_iter = bytes_lens.into_iter();
+        let mut ids_iter = ids.into_iter();
+        let data_items: Result<Vec<DataItem>, _> = (0..number_of_data_items)
+            .map(|_| {
+                let bytes_len = bytes_lens_iter.next().unwrap() as usize;
+                let mut bytes_vec = Vec::<u8>::with_capacity(bytes_len);
+                (0..bytes_len).for_each(|_| bytes_vec.push(bundle_iter.next().unwrap()));
+                let mut data_item = DataItem::deserialize(bytes_vec)?;
+
+                let deep_hash = self
+                    .crypto
+                    .deep_hash(data_item.to_deep_hash_item()?)
+                    .unwrap();
+                self.crypto
+                    .verify(&data_item.signature.0, &deep_hash)
+                    .unwrap();
+
+                data_item.id.0 = ids_iter.next().unwrap();
+
+                Ok(data_item)
+            })
+            .collect();
+
+        data_items
+    }
+
+    pub async fn create_bundle_transaction_from_file_paths<IP>(
+        &self,
+        paths_iter: IP,
+        tags: Vec<Tag<String>>,
+        log_dir: Option<PathBuf>,
+        price_terms: (u64, u64),
+    ) -> Result<Transaction, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        let data_items = self
+            .create_data_items_from_file_paths(paths_iter, tags, log_dir)
+            .await?;
+
+        let bundle = self.create_bundle_from_data_items(data_items)?;
+        let other_tags = Some(vec![
+            Tag::<Base64>::from_utf8_strs("Bundle-Format", "binary")?,
+            Tag::<Base64>::from_utf8_strs("Bundle-Version", "2.0.0")?,
+        ]);
+
+        let transaction = self
+            .create_transaction(bundle, other_tags, None, price_terms)
+            .await?;
+        Ok(transaction)
     }
 }
 
@@ -724,10 +825,11 @@ impl Arweave {
 mod tests {
     use crate::{
         error::Error,
-        transaction::{Base64, Tag},
+        transaction::{Base64, FromUtf8Strs, Tag, ToItems},
         utils::{TempDir, TempFrom},
         Arweave, Status,
     };
+    use glob::glob;
     use matches::assert_matches;
     use std::{path::PathBuf, str::FromStr};
 
@@ -798,6 +900,109 @@ mod tests {
         let read_status = arweave.read_status(file_path, log_dir).await?;
 
         assert_eq!(status, read_status);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_deserialize_bundle() -> Result<(), Error> {
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from(
+                "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
+            ),
+            None,
+        )
+        .await?;
+
+        let paths_iter = glob("tests/fixtures/[0-1]*.png")?.filter_map(Result::ok);
+        let pre_data_items = arweave
+            .create_data_items_from_file_paths(paths_iter, Vec::new(), None)
+            .await?;
+
+        let data_item_lens: Vec<usize> = pre_data_items.iter().map(|d| d.data.0.len()).collect();
+        let bundle = arweave.create_bundle_from_data_items(pre_data_items.clone())?;
+
+        // 2 items in the bundle
+        assert_eq!(u64::from_le_bytes(bundle[0..8].try_into().unwrap()), 2);
+
+        // 2379 bytes in the first item
+        assert_eq!(u64::from_le_bytes(bundle[32..40].try_into().unwrap()), 2891);
+
+        // 2465 bytes in the secpnd item
+        assert_eq!(
+            u64::from_le_bytes(bundle[96..104].try_into().unwrap()),
+            2977
+        );
+
+        // signature type is 1
+        assert_eq!(
+            u16::from_le_bytes(bundle[160..162].try_into().unwrap()),
+            1u16
+        );
+
+        // owner is same as signer
+        assert_eq!(
+            &bundle[(162 + 512)..(162 + 1024)],
+            &arweave.crypto.keypair_modulus().unwrap().0
+        );
+
+        // anchor is present
+        assert_eq!(bundle[160 + 2 + 1024 + 1], 0);
+
+        // number of tags is 2
+        assert_eq!(
+            u64::from_le_bytes(
+                bundle[(160 + 2 + 1024 + 1 + 1)..(160 + 2 + 1024 + 1 + 1 + 8)]
+                    .try_into()
+                    .unwrap()
+            ),
+            2u64
+        );
+
+        // number of tag bytes is 51
+        assert_eq!(
+            u64::from_le_bytes(
+                bundle[(160 + 2 + 1024 + 1 + 1 + 8)..(160 + 2 + 1024 + 1 + 1 + 8 + 8)]
+                    .try_into()
+                    .unwrap()
+            ),
+            51u64
+        );
+
+        // sig type of second item is 1
+        assert_eq!(
+            u16::from_le_bytes(
+                bundle[(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 51 + &data_item_lens[0])
+                    ..(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 51 + &data_item_lens[0] + 2)]
+                    .try_into()
+                    .unwrap()
+            ),
+            1u16
+        );
+
+        // data items verify and deserialize
+        let post_data_items = arweave.deserialize_bundle(bundle)?;
+        assert_eq!(post_data_items.len(), 2);
+        let mut pre_data_items_iter = pre_data_items.into_iter();
+        let mut post_data_items_iter = post_data_items.into_iter();
+        // deep hash items and signatures are the same
+        for _ in 0..2 {
+            let pre_data_item = pre_data_items_iter.next().unwrap();
+            let post_data_item = post_data_items_iter.next().unwrap();
+            let pre_deep_hash = arweave
+                .crypto
+                .deep_hash(pre_data_item.to_deep_hash_item().unwrap())
+                .unwrap();
+            let post_deep_hash = arweave
+                .crypto
+                .deep_hash(post_data_item.to_deep_hash_item().unwrap())
+                .unwrap();
+            assert_eq!(pre_deep_hash, post_deep_hash);
+            assert_eq!(pre_data_item.signature, post_data_item.signature);
+            arweave
+                .crypto
+                .verify(&pre_data_item.signature.0, &pre_deep_hash)?;
+        }
 
         Ok(())
     }
