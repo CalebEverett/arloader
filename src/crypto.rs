@@ -8,16 +8,17 @@ use jsonwebkey::JsonWebKey;
 use log::debug;
 use ring::{
     digest::{Context, SHA256, SHA384},
-    rand,
+    rand::{self, SecureRandom},
     signature::{self, KeyPair, RsaKeyPair},
 };
 use std::fs as fsSync;
 use std::path::PathBuf;
 use tokio::fs;
 
-/// Struct on which [`Methods`] for cryptographic functionality is implemented.
+/// Struct for for crypto methods.
 pub struct Provider {
     pub keypair: RsaKeyPair,
+    pub sr: rand::SystemRandom,
 }
 
 impl Provider {
@@ -30,6 +31,7 @@ impl Provider {
         let jwk_parsed: JsonWebKey = data.parse().unwrap();
         Ok(Self {
             keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
+            sr: rand::SystemRandom::new(),
         })
     }
     /// Sync version of [`Provider::from_keypair_path`].
@@ -39,6 +41,7 @@ impl Provider {
         let jwk_parsed: JsonWebKey = data.parse().unwrap();
         Ok(Self {
             keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der())?,
+            sr: rand::SystemRandom::new(),
         })
     }
 
@@ -180,18 +183,23 @@ impl Provider {
         };
         Ok(hash)
     }
+
+    pub fn fill_rand(&self, dest: &mut [u8]) -> Result<(), Error> {
+        let rand_bytes = self.sr.fill(dest)?;
+        Ok(rand_bytes)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        transaction::{Base64, FromStrs, Tag, ToItems},
+        transaction::{Base64, FromUtf8Strs, Tag, ToItems},
         Arweave, Error,
     };
     use std::{path::PathBuf, str::FromStr};
 
     #[tokio::test]
-    async fn test_deep_hash_alt2() -> Result<(), Error> {
+    async fn test_deep_hash() -> Result<(), Error> {
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
@@ -203,20 +211,20 @@ mod tests {
         let file_stems = ["0.png", "1mb.bin"];
         let hashes: [[u8; 48]; 2] = [
             [
-                250, 147, 146, 233, 232, 245, 14, 213, 182, 94, 254, 251, 28, 124, 128, 225, 51, 7,
-                112, 16, 20, 209, 224, 26, 55, 78, 27, 4, 50, 223, 158, 240, 5, 64, 127, 126, 81,
-                156, 153, 245, 207, 219, 8, 108, 158, 120, 212, 214,
+                29, 33, 127, 224, 119, 237, 87, 170, 51, 71, 89, 209, 142, 163, 194, 84, 38, 2, 1,
+                45, 15, 243, 217, 40, 252, 253, 216, 159, 88, 29, 212, 119, 36, 232, 44, 169, 180,
+                181, 155, 82, 229, 188, 21, 114, 253, 2, 255, 91,
             ],
             [
-                196, 4, 241, 167, 159, 14, 68, 184, 220, 208, 48, 238, 148, 76, 125, 68, 62, 84,
-                192, 99, 165, 188, 36, 73, 249, 200, 16, 52, 193, 249, 190, 60, 85, 148, 252, 195,
-                118, 197, 52, 74, 173, 30, 58, 63, 46, 11, 56, 135,
+                24, 193, 132, 155, 239, 84, 161, 144, 216, 72, 223, 9, 31, 97, 236, 63, 188, 163,
+                82, 9, 215, 113, 188, 50, 130, 37, 188, 218, 178, 120, 157, 41, 171, 132, 167, 133,
+                137, 9, 201, 112, 217, 33, 59, 177, 64, 58, 105, 203,
             ],
         ];
 
         for (file_stem, correct_hash) in file_stems.iter().zip(hashes) {
             let last_tx = Base64::from_str("LCwsLCwsLA")?;
-            let other_tags = vec![Tag::from_utf8_strs("key2", "value2")?];
+            let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
             let transaction = arweave
                 .create_transaction_from_file_path(
                     PathBuf::from("tests/fixtures/").join(file_stem),

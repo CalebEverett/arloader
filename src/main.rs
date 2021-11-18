@@ -2,7 +2,7 @@ use arloader::{
     error::Error,
     solana::{FLOOR, RATE, SOL_AR_BASE_URL},
     status::{OutputFormat, OutputHeader, Status, StatusCode},
-    transaction::{Base64, FromStrs, Tag},
+    transaction::{Base64, FromUtf8Strs, Tag},
     update_statuses_stream, upload_files_stream, upload_files_with_sol_stream, Arweave,
     WINSTONS_PER_AR,
 };
@@ -14,6 +14,7 @@ use glob::glob;
 use num_traits::cast::ToPrimitive;
 use solana_sdk::signer::keypair;
 use std::{fmt::Display, path::PathBuf, str::FromStr};
+use tokio::time::{sleep, Duration};
 use url::Url;
 
 pub type CommandResult = Result<(), Error>;
@@ -44,7 +45,7 @@ where
     T: AsRef<str> + Display,
 {
     let split: Vec<_> = tag.as_ref().split(":").collect();
-    match Tag::from_utf8_strs(split[0], split[1]) {
+    match Tag::<Base64>::from_utf8_strs(split[0], split[1]) {
         Ok(_) => Ok(()),
         Err(_) => Err(format!("Not a valid tag.")),
     }
@@ -60,13 +61,35 @@ fn is_valid_url(url_str: String) -> Result<(), String> {
     }
 }
 
-fn get_tags_vec(tag_values: Option<Values>) -> Option<Vec<Tag>> {
+fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
+    match reward_mult.parse::<f32>() {
+        Ok(n) => {
+            if n > 0. && n < 10. {
+                Ok(())
+            } else {
+                Err(format!("Multiplier must be between 0 and 10."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid multiplier.")),
+    }
+}
+
+fn apply_reward_multplier(price_terms: (u64, u64), reward_mult: f32) -> (u64, u64) {
+    let base = (price_terms.0 as f32 * reward_mult) as u64;
+    let incremental = (price_terms.1 as f32 * reward_mult) as u64;
+    (base, incremental)
+}
+
+fn get_tags_vec<T>(tag_values: Option<Values>) -> Option<Vec<T>>
+where
+    T: FromUtf8Strs<T>,
+{
     if let Some(tag_strings) = tag_values {
         let tags = tag_strings
             .into_iter()
             .map(|t| {
                 let split: Vec<&str> = t.split(":").collect();
-                Tag::from_utf8_strs(split[0], split[1])
+                T::from_utf8_strs(split[0], split[1])
             })
             .flat_map(Result::ok)
             .collect();
@@ -177,6 +200,19 @@ fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
         )
 }
 
+fn reward_multiplier_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("reward_multiplier")
+        .long("reward-multiplier")
+        .value_name("REWARD_MULT")
+        .takes_value(true)
+        .validator(is_valid_reward_multiplier)
+        .help(
+            "Specify a reward multiplier as float. \
+            This reward from the network will be multiplied
+            by this amount for submission.",
+        )
+}
+
 fn get_app() -> App<'static, 'static> {
     let app_matches = App::new(crate_name!())
         .about(crate_description!())
@@ -261,6 +297,9 @@ fn get_app() -> App<'static, 'static> {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("get-pending-count").about("Prints the balance of a wallet."),
+        )
+        .subcommand(
             SubCommand::with_name("get-transaction")
                 .about("Gets a transaction from the network and writes to disk as a file.")
                 .arg(id_arg()),
@@ -270,7 +309,16 @@ fn get_app() -> App<'static, 'static> {
                 .about("Uploads one or more files that match the specified glob.")
                 .arg(glob_arg(true))
                 .arg(log_dir_arg())
-                .arg(tags_arg()),
+                .arg(tags_arg())
+                .arg(reward_multiplier_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("upload-bundle")
+                .about("Uploads one or more files that match the specified glob as a bundle.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg())
+                .arg(tags_arg())
+                .arg(reward_multiplier_arg()),
         )
         .subcommand(
             SubCommand::with_name("upload-with-sol")
@@ -278,7 +326,17 @@ fn get_app() -> App<'static, 'static> {
                 .arg(glob_arg(true))
                 .arg(log_dir_arg())
                 .arg(tags_arg())
-                .arg(sol_keypair_path_arg()),
+                .arg(sol_keypair_path_arg())
+                .arg(reward_multiplier_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("upload-bundle-with-sol")
+                .about("Uploads one or more files that match the specified glob as a bundle, paying with SOL.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg())
+                .arg(tags_arg())
+                .arg(sol_keypair_path_arg())
+                .arg(reward_multiplier_arg()),
         )
         .subcommand(
             SubCommand::with_name("get-raw-status")
@@ -354,6 +412,7 @@ async fn main() -> CommandResult {
                 .map(|v| v.to_string());
             command_wallet_balance(&arweave, wallet_address).await
         }
+        ("get-pending-count", Some(_)) => command_get_pending_count(&arweave).await,
         ("get-transaction", Some(sub_arg_matches)) => {
             let id = sub_arg_matches.value_of("id").unwrap();
             command_get_transaction(&arweave, id).await
@@ -362,14 +421,41 @@ async fn main() -> CommandResult {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir");
             let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
+            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
             let buffer = app_matches.value_of("buffer");
             let output_format = app_matches.value_of("output_format");
-            command_upload(&arweave, glob_str, log_dir, tags, output_format, buffer).await
+            command_upload(
+                &arweave,
+                glob_str,
+                log_dir,
+                tags,
+                reward_mult,
+                output_format,
+                buffer,
+            )
+            .await
+        }
+        ("upload-bundle", Some(sub_arg_matches)) => {
+            let glob_str = sub_arg_matches.value_of("glob").unwrap();
+            let log_dir = sub_arg_matches.value_of("log_dir");
+            let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
+            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
+            let output_format = app_matches.value_of("output_format");
+            command_upload_bundle(
+                &arweave,
+                glob_str,
+                log_dir,
+                tags,
+                reward_mult,
+                output_format,
+            )
+            .await
         }
         ("upload-with-sol", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir");
             let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
+            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
             let sol_keypair_path = sub_arg_matches.value_of("sol_keypair_path").unwrap();
             let buffer = app_matches.value_of("buffer");
             let output_format = app_matches.value_of("output_format");
@@ -378,9 +464,28 @@ async fn main() -> CommandResult {
                 glob_str,
                 log_dir,
                 tags,
+                reward_mult,
                 sol_keypair_path,
                 output_format,
                 buffer,
+            )
+            .await
+        }
+        ("upload-bundle-with-sol", Some(sub_arg_matches)) => {
+            let glob_str = sub_arg_matches.value_of("glob").unwrap();
+            let log_dir = sub_arg_matches.value_of("log_dir");
+            let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
+            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
+            let sol_keypair_path = sub_arg_matches.value_of("sol_keypair_path").unwrap();
+            let output_format = app_matches.value_of("output_format");
+            command_upload_bundle_with_sol(
+                &arweave,
+                glob_str,
+                log_dir,
+                tags,
+                reward_mult,
+                sol_keypair_path,
+                output_format,
             )
             .await
         }
@@ -536,14 +641,36 @@ async fn command_wallet_balance(
     let usd_per_kb = (&winstons_per_kb * &usd_per_ar).to_f32().unwrap() / 1e14_f32;
 
     println!(
-            "Wallet balance is {} {units} (${balance_usd}). At the current price of {price} {units} (${usd_price:.4}) per MB, you can upload {max} MB of data.",
+            "Wallet balance is {} {units} (${balance_usd:.2} at ${ar_price:.2} USD per AR). At the current price of {price} {units} (${usd_price:.4}) per MB, you can upload {max} MB of data.",
             &balance,
             units = arweave.units,
             max = &balance / &winstons_per_kb,
             price = &winstons_per_kb,
             balance_usd = balance_usd,
+            ar_price = &usd_per_ar.to_f32().unwrap()
+            / 100_f32,
             usd_price = usd_per_kb
     );
+    Ok(())
+}
+
+async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
+    println!(" {}\n{:-<97}", "pending tx", "");
+
+    let mut counter = 0;
+    while counter < 60 {
+        sleep(Duration::from_secs(1)).await;
+        let count = arweave.get_pending_count().await?;
+        println!(
+            "{:>5} {} {}",
+            count,
+            124u8 as char,
+            std::iter::repeat('\u{25A5}')
+                .take(count / 50)
+                .collect::<String>()
+        );
+        counter += 1;
+    }
     Ok(())
 }
 
@@ -551,7 +678,8 @@ async fn command_upload(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: Option<&str>,
-    _tags: Option<Vec<Tag>>,
+    _tags: Option<Vec<Tag<Base64>>>,
+    reward_mult: Option<&str>,
     output_format: Option<&str>,
     buffer: Option<&str>,
 ) -> CommandResult {
@@ -559,7 +687,12 @@ async fn command_upload(
     let log_dir = log_dir.map(|s| PathBuf::from(s));
     let output_format = get_output_format(output_format.unwrap_or(""));
     let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
-    let price_terms = arweave.get_price_terms().await?;
+
+    let mut price_terms = arweave.get_price_terms().await?;
+    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
+    if let Some(reward_mult) = reward_mult {
+        price_terms = apply_reward_multplier(price_terms, reward_mult);
+    }
 
     let mut stream = upload_files_stream(
         arweave,
@@ -601,11 +734,49 @@ async fn command_upload(
     Ok(())
 }
 
+async fn command_upload_bundle(
+    arweave: &Arweave,
+    glob_str: &str,
+    log_dir: Option<&str>,
+    tags: Option<Vec<Tag<String>>>,
+    reward_mult: Option<&str>,
+    output_format: Option<&str>,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let log_dir = log_dir.map(|s| PathBuf::from(s));
+    let output_format = get_output_format(output_format.unwrap_or(""));
+    let tags = tags.unwrap_or(Vec::new());
+
+    let mut price_terms = arweave.get_price_terms().await?;
+    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
+    if let Some(reward_mult) = reward_mult {
+        price_terms = apply_reward_multplier(price_terms, reward_mult);
+    }
+
+    let transaction = arweave
+        .create_bundle_transaction_from_file_paths(paths_iter, tags, log_dir.clone(), price_terms)
+        .await?;
+
+    let signed_transaction = arweave.sign_transaction(transaction)?;
+
+    let status = arweave.post_transaction(&signed_transaction, None).await?;
+    println!("{}", Status::header_string(&output_format));
+    print!("{}", output_format.formatted_string(&status));
+
+    if let Some(log_dir) = log_dir {
+        println!("Logging statuses to {}", &log_dir.display());
+        arweave.write_status(status, log_dir).await?;
+    }
+
+    Ok(())
+}
+
 async fn command_upload_with_sol(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: Option<&str>,
-    _tags: Option<Vec<Tag>>,
+    _tags: Option<Vec<Tag<Base64>>>,
+    reward_mult: Option<&str>,
     sol_keypair_path: &str,
     output_format: Option<&str>,
     buffer: Option<&str>,
@@ -614,10 +785,15 @@ async fn command_upload_with_sol(
     let log_dir = log_dir.map(|s| PathBuf::from(s));
     let output_format = get_output_format(output_format.unwrap_or(""));
     let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
-    let price_terms = arweave.get_price_terms().await?;
     let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
+
+    let mut price_terms = arweave.get_price_terms().await?;
+    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
+    if let Some(reward_mult) = reward_mult {
+        price_terms = apply_reward_multplier(price_terms, reward_mult);
+    }
 
     let mut stream = upload_files_with_sol_stream(
         arweave,
@@ -657,6 +833,50 @@ async fn command_upload_with_sol(
             glob_str,
             &log_dir.unwrap_or(PathBuf::from("")).display()
         );
+    }
+
+    Ok(())
+}
+
+async fn command_upload_bundle_with_sol(
+    arweave: &Arweave,
+    glob_str: &str,
+    log_dir: Option<&str>,
+    tags: Option<Vec<Tag<String>>>,
+    reward_mult: Option<&str>,
+    sol_keypair_path: &str,
+    output_format: Option<&str>,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let log_dir = log_dir.map(|s| PathBuf::from(s));
+    let output_format = get_output_format(output_format.unwrap_or(""));
+    let tags = tags.unwrap_or(Vec::new());
+    let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
+    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
+    let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
+
+    let mut price_terms = arweave.get_price_terms().await?;
+    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
+    if let Some(reward_mult) = reward_mult {
+        price_terms = apply_reward_multplier(price_terms, reward_mult);
+    }
+
+    let transaction = arweave
+        .create_bundle_transaction_from_file_paths(paths_iter, tags, log_dir.clone(), price_terms)
+        .await?;
+
+    let (signed_transaction, sig_response) = arweave
+        .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, &from_keypair)
+        .await?;
+
+    let mut status = arweave.post_transaction(&signed_transaction, None).await?;
+    println!("{}", Status::header_string(&output_format));
+    print!("{}", output_format.formatted_string(&status));
+
+    if let Some(log_dir) = log_dir {
+        println!("Logging statuses to {}", &log_dir.display());
+        status.sol_sig = Some(sig_response);
+        arweave.write_status(status, log_dir).await?;
     }
 
     Ok(())

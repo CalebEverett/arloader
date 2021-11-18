@@ -11,6 +11,8 @@ use url::ParseError;
 /// Errors propagated by library functions.
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("avro desserialize: {0}")]
+    AvroDeError(#[from] avro_rs::DeError),
     #[error("base64 decode: {0}")]
     Base64Decode(#[from] DecodeError),
     #[error("bincode: {0}")]
@@ -23,11 +25,13 @@ pub enum Error {
     FromUtf8(#[from] FromUtf8Error),
     #[error("glob patters: {0}")]
     GlobPattern(#[from] glob::PatternError),
+    #[error("invalid bunlde item binary")]
+    InvalidDataItem,
     #[error("hashing failed")]
     InvalidHash,
     #[error("invalid proof")]
     InvalidProof,
-    #[error("tags could not be parsed to slices")]
+    #[error("invalid tags")]
     InvalidTags,
     #[error("io: {0}")]
     IOError(#[from] std::io::Error),

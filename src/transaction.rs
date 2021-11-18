@@ -8,13 +8,13 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
 /// Transaction data structure per [Arweave spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Transaction {
     pub format: u8,
     pub id: Base64,
     pub last_tx: Base64,
     pub owner: Base64,
-    pub tags: Vec<Tag>,
+    pub tags: Vec<Tag<Base64>>,
     pub target: Base64,
     #[serde(with = "stringify")]
     pub quantity: u64,
@@ -109,18 +109,17 @@ impl<'a> ToItems<'a, Transaction> for Transaction {
 }
 
 /// Transaction tag.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Tag {
-    pub name: Base64,
-    pub value: Base64,
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Tag<T> {
+    pub name: T,
+    pub value: T,
 }
 
-/// Implemented as a convenience to create [`Tag`]s from name, value pairs of utf8 strings.
-pub trait FromStrs<T> {
+pub trait FromUtf8Strs<T> {
     fn from_utf8_strs(name: &str, value: &str) -> Result<T, Error>;
 }
 
-impl FromStrs<Tag> for Tag {
+impl FromUtf8Strs<Tag<Base64>> for Tag<Base64> {
     fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
         let b64_name = Base64::from_utf8_str(name)?;
         let b64_value = Base64::from_utf8_str(value)?;
@@ -132,7 +131,16 @@ impl FromStrs<Tag> for Tag {
     }
 }
 
-impl<'a> ToItems<'a, Vec<Tag>> for Vec<Tag> {
+impl FromUtf8Strs<Tag<String>> for Tag<String> {
+    fn from_utf8_strs(name: &str, value: &str) -> Result<Self, Error> {
+        let name = String::from(name);
+        let value = String::from(value);
+
+        Ok(Self { name, value })
+    }
+}
+
+impl<'a> ToItems<'a, Vec<Tag<Base64>>> for Vec<Tag<Base64>> {
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error> {
         if self.len() > 0 {
             Ok(DeepHashItem::List(
@@ -146,7 +154,7 @@ impl<'a> ToItems<'a, Vec<Tag>> for Vec<Tag> {
     }
 }
 
-impl<'a> ToItems<'a, Tag> for Tag {
+impl<'a> ToItems<'a, Tag<Base64>> for Tag<Base64> {
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error> {
         Ok(DeepHashItem::List(vec![
             DeepHashItem::Blob(self.name.0.to_vec()),
@@ -181,22 +189,12 @@ impl FromStr for Base64 {
     }
 }
 
-/// Implemented on [`Base64`] to encode and decode utf8 strings.
-pub trait ConvertUtf8<T> {
-    fn from_utf8_str(str: &str) -> Result<T, Error>;
-    fn to_utf8_string(&self) -> Result<String, Error>;
-}
-
-impl ConvertUtf8<Base64> for Base64 {
-    fn from_utf8_str(str: &str) -> Result<Self, Error> {
-        let enc_string = base64::encode_config(str.as_bytes(), base64::URL_SAFE_NO_PAD);
-        let dec_bytes = base64::decode_config(enc_string, base64::URL_SAFE_NO_PAD)?;
-        Ok(Self(dec_bytes))
+impl Base64 {
+    pub fn from_utf8_str(str: &str) -> Result<Self, Error> {
+        Ok(Self(str.as_bytes().to_vec()))
     }
-    fn to_utf8_string(&self) -> Result<String, Error> {
-        let enc_string = base64::encode_config(&self.0, base64::URL_SAFE_NO_PAD);
-        let dec_bytes = base64::decode_config(enc_string, base64::URL_SAFE_NO_PAD)?;
-        Ok(String::from_utf8(dec_bytes)?)
+    pub fn to_utf8_string(&self) -> Result<String, Error> {
+        Ok(String::from_utf8(self.0.clone())?)
     }
 }
 
@@ -234,26 +232,18 @@ pub enum DeepHashItem {
     List(Vec<DeepHashItem>),
 }
 
-/// Implemented as a convenience to create [`DeepHashItem`]s.
-pub trait FromItemOrChild<T> {
-    fn from_item(item: &[u8]) -> Self;
-    fn from_children(children: Vec<T>) -> Self;
-}
-
-impl FromItemOrChild<DeepHashItem> for DeepHashItem {
-    fn from_item(item: &[u8]) -> DeepHashItem {
+impl DeepHashItem {
+    pub fn from_item(item: &[u8]) -> DeepHashItem {
         Self::Blob(item.to_vec())
     }
-    fn from_children(children: Vec<DeepHashItem>) -> DeepHashItem {
+    pub fn from_children(children: Vec<DeepHashItem>) -> DeepHashItem {
         Self::List(children)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::transaction::FromStrs;
-
-    use super::{Base64, ConvertUtf8, DeepHashItem, Error, Tag, ToItems};
+    use super::{Base64, DeepHashItem, Error, FromUtf8Strs, Tag, ToItems};
     use serde_json;
     use std::str::FromStr;
 
@@ -292,8 +282,8 @@ mod tests {
     #[test]
     fn test_tags_deep_hash_item2() -> Result<(), Error> {
         let tags = vec![
-            Tag::from_utf8_strs("Content-Type", "text/html")?,
-            Tag::from_utf8_strs("key2", "value2")?,
+            Tag::<Base64>::from_utf8_strs("Content-Type", "text/html")?,
+            Tag::<Base64>::from_utf8_strs("key2", "value2")?,
         ];
 
         assert_eq!("Content-Type".to_string(), tags[0].name.to_utf8_string()?);

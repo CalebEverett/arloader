@@ -1,6 +1,8 @@
 //! Data structures for reporting transaction statuses.
 
+use crate::solana::SigResponse;
 use crate::transaction::Base64;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Eq, fmt, hash::Hash, path::PathBuf};
@@ -49,6 +51,8 @@ pub struct Status {
     pub reward: u64,
     #[serde(flatten)]
     pub raw_status: Option<RawStatus>,
+    #[serde(flatten)]
+    pub sol_sig: Option<SigResponse>,
 }
 
 impl Default for Status {
@@ -61,6 +65,7 @@ impl Default for Status {
             last_modified: Utc::now(),
             reward: 0,
             raw_status: None,
+            sol_sig: None,
         }
     }
 }
