@@ -183,10 +183,10 @@ impl Arweave {
         Ok((winstons_per_bytes, usd_per_ar, usd_per_sol))
     }
 
-    pub async fn get_price_terms(&self) -> Result<(u64, u64), Error> {
+    pub async fn get_price_terms(&self, reward_mult: f32) -> Result<(u64, u64), Error> {
         let (prices1, prices2) = try_join(self.get_price(&1), self.get_price(&2)).await?;
-        let base = prices1.0.to_u64_digits()[0];
-        let incremental = prices2.0.to_u64_digits()[0] - &base;
+        let base = (prices1.0.to_u64_digits()[0] as f32 * reward_mult) as u64;
+        let incremental = (prices2.0.to_u64_digits()[0] as f32 * reward_mult) as u64 - &base;
         Ok((base, incremental))
     }
 
@@ -925,10 +925,10 @@ mod tests {
         // 2 items in the bundle
         assert_eq!(u64::from_le_bytes(bundle[0..8].try_into().unwrap()), 2);
 
-        // 2379 bytes in the first item
+        // 2892 bytes in the first item
         assert_eq!(u64::from_le_bytes(bundle[32..40].try_into().unwrap()), 2892);
 
-        // 2465 bytes in the secpnd item
+        // 2978 bytes in the secpnd item
         assert_eq!(
             u64::from_le_bytes(bundle[96..104].try_into().unwrap()),
             2978
@@ -959,7 +959,7 @@ mod tests {
             2u64
         );
 
-        // number of tag bytes is 51
+        // number of tag bytes is 52
         assert_eq!(
             u64::from_le_bytes(
                 bundle[(160 + 2 + 1024 + 1 + 1 + 8)..(160 + 2 + 1024 + 1 + 1 + 8 + 8)]
@@ -985,7 +985,8 @@ mod tests {
         assert_eq!(post_data_items.len(), 2);
         let mut pre_data_items_iter = pre_data_items.into_iter();
         let mut post_data_items_iter = post_data_items.into_iter();
-        // deep hash items and signatures are the same
+
+        // deep hash items and signatures are the same and singatures verify
         for _ in 0..2 {
             let pre_data_item = pre_data_items_iter.next().unwrap();
             let post_data_item = post_data_items_iter.next().unwrap();

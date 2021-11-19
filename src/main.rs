@@ -7,7 +7,8 @@ use arloader::{
     WINSTONS_PER_AR,
 };
 use clap::{
-    self, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand, Values,
+    self, crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
+    Values,
 };
 use futures::StreamExt;
 use glob::glob;
@@ -72,12 +73,6 @@ fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
         }
         Err(_) => Err(format!("Not a valid multiplier.")),
     }
-}
-
-fn apply_reward_multplier(price_terms: (u64, u64), reward_mult: f32) -> (u64, u64) {
-    let base = (price_terms.0 as f32 * reward_mult) as u64;
-    let incremental = (price_terms.1 as f32 * reward_mult) as u64;
-    (base, incremental)
 }
 
 fn get_tags_vec<T>(tag_values: Option<Values>) -> Option<Vec<T>>
@@ -170,20 +165,6 @@ fn statuses_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Status codes to filter by. Multiple Ok.")
 }
 
-fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("sol_keypair_path")
-        .long("sol-keypair-path")
-        .value_name("SOL_KEYPAIR_PATH")
-        .validator(is_parsable::<PathBuf>)
-        .env("SOL_KEYPAIR_PATH")
-        .required(true)
-        .help(
-            "Path of Solana keypair file to use to pay for transactions. \
-        Will use value from SOL_KEYPAIR_PATH environment variable \
-        if it exists",
-        )
-}
-
 fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("tags")
         .long("tags")
@@ -203,14 +184,68 @@ fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn reward_multiplier_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("reward_multiplier")
         .long("reward-multiplier")
+        .short("rx")
         .value_name("REWARD_MULT")
-        .takes_value(true)
+        .default_value("1.0")
         .validator(is_valid_reward_multiplier)
         .help(
             "Specify a reward multiplier as float. \
-            This reward from the network will be multiplied
-            by this amount for submission.",
+        The reward from the network will be multiplied \
+        by this amount for submission.",
         )
+}
+
+fn with_sol_arg<'a, 'b>(req_sol_key: bool) -> Arg<'a, 'b> {
+    let mut arg = Arg::with_name("with_sol")
+        .long("with-sol")
+        .value_name("WITH_SOL")
+        .required(false)
+        .takes_value(false)
+        .help(
+            "Specify whether to pay for transaction(s) \
+            with SOL.",
+        );
+    if req_sol_key {
+        arg = arg.requires("sol_keypair_path");
+    }
+    arg
+}
+
+fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("sol_keypair_path")
+        .long("sol-keypair-path")
+        .value_name("SOL_KEYPAIR_PATH")
+        .required(false)
+        .validator(is_parsable::<PathBuf>)
+        .env("SOL_KEYPAIR_PATH")
+        .help(
+            "Path of Solana keypair file to use to pay for transactions. \
+        Will use value from SOL_KEYPAIR_PATH environment variable \
+        if it exists",
+        )
+}
+
+fn no_bundle_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("no_bundle")
+        .long("no-bundle")
+        .short("nb")
+        .value_name("NO_BUNDLE")
+        .required(false)
+        .takes_value(false)
+        .help(
+            "Specify whether to upload with individual \
+            transactions intead of in a bundle.",
+        )
+}
+
+fn buffer_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("buffer")
+        .long("buffer")
+        .value_name("BUFFER")
+        .takes_value(true)
+        .validator(is_parsable::<usize>)
+        .default_value("1")
+        .help("Sets the maximum number of concurrent network requests. Defaults to 1.")
 }
 
 fn get_app() -> App<'static, 'static> {
@@ -227,43 +262,32 @@ fn get_app() -> App<'static, 'static> {
                 .env("AR_BASE_URL")
                 .help(
                     "Base url for network requests. \
-                    Can also be set with AR_BASE_URL environment \
-                    variable",
+                Can also be set with AR_BASE_URL environment \
+                variable",
                 ),
         )
         .arg(
-            Arg::with_name("keypair_path")
-                .long("keypair-path")
+            Arg::with_name("ar_keypair_path")
+                .long("ar-keypair-path")
                 .value_name("AR_KEYPAIR_PATH")
                 .validator(is_parsable::<PathBuf>)
                 .env("AR_KEYPAIR_PATH")
                 .required(true)
                 .help(
                     "Path of keypair file to use to pay for transactions. \
-                    Will use value from AR_KEYPAIR_PATH environment variable \
-                    if it exists",
+                Will use value from AR_KEYPAIR_PATH environment variable \
+                if it exists",
                 ),
         )
         .arg(
             Arg::with_name("output_format")
                 .long("output")
+                .short("o")
                 .value_name("FORMAT")
                 .global(true)
                 .takes_value(true)
                 .possible_values(&["quiet", "verbose", "json", "json-compact"])
                 .help("Return information in specified output format."),
-        )
-        .arg(
-            Arg::with_name("buffer")
-                .long("buffer")
-                .value_name("BUFFER")
-                .global(true)
-                .takes_value(true)
-                .validator(is_parsable::<usize>)
-                .help(
-                    "Sets the maximum number of concurrent network requests. \
-                Defaults to 1.",
-                ),
         )
         .subcommand(
             SubCommand::with_name("estimate")
@@ -271,19 +295,14 @@ fn get_app() -> App<'static, 'static> {
                     "Prints the estimated cost of uploading file(s) \
                 matching provided glob.",
                 )
-                .arg(glob_arg(true)),
-        )
-        .subcommand(
-            SubCommand::with_name("estimate-with-sol")
-                .about(
-                    "Prints the estimated cost of uploading file(s) \
-                matching provided glob in SOL.",
-                )
-                .arg(glob_arg(true)),
+                .arg(glob_arg(true))
+                .arg(reward_multiplier_arg())
+                .arg(with_sol_arg(false))
+                .arg(no_bundle_arg()),
         )
         .subcommand(
             SubCommand::with_name("wallet-balance")
-                .about("Prints the balance of a wallet.")
+                .about("Prints the balance of an Arweave wallet.")
                 .arg(
                     Arg::with_name("wallet_address")
                         .value_name("WALLET_ADDRESS")
@@ -292,12 +311,13 @@ fn get_app() -> App<'static, 'static> {
                         .help(
                             "Specify the address of the wallet to print \
                             the balance for. Defaults to the keypair
-                            specified in `keypair_path`.",
+                            specified in `ar_keypair_path`.",
                         ),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("get-pending-count").about("Prints the balance of a wallet."),
+            SubCommand::with_name("get-pending-count")
+                .about("Displays the count of pending transactions in the mempool."),
         )
         .subcommand(
             SubCommand::with_name("get-transaction")
@@ -310,36 +330,14 @@ fn get_app() -> App<'static, 'static> {
                 .arg(glob_arg(true))
                 .arg(log_dir_arg())
                 .arg(tags_arg())
-                .arg(reward_multiplier_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("upload-bundle")
-                .about("Uploads one or more files that match the specified glob as a bundle.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg())
-                .arg(tags_arg())
-                .arg(reward_multiplier_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("upload-with-sol")
-                .about("Uploads one or more files that match the specified glob, paying with SOL.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg())
-                .arg(tags_arg())
+                .arg(reward_multiplier_arg())
+                .arg(with_sol_arg(true))
                 .arg(sol_keypair_path_arg())
-                .arg(reward_multiplier_arg()),
+                .arg(no_bundle_arg())
+                .arg(buffer_arg()),
         )
         .subcommand(
-            SubCommand::with_name("upload-bundle-with-sol")
-                .about("Uploads one or more files that match the specified glob as a bundle, paying with SOL.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg())
-                .arg(tags_arg())
-                .arg(sol_keypair_path_arg())
-                .arg(reward_multiplier_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("get-raw-status")
+            SubCommand::with_name("raw-status")
                 .about("Prints the raw status of a transaction from the network.")
                 .arg(id_arg()),
         )
@@ -366,6 +364,7 @@ fn get_app() -> App<'static, 'static> {
                 .about("Re-uploads files that meet filter criteria.")
                 .arg(glob_arg(true))
                 .arg(log_dir_arg())
+                .arg(reward_multiplier_arg())
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
         )
@@ -385,13 +384,13 @@ fn get_app() -> App<'static, 'static> {
 async fn main() -> CommandResult {
     env_logger::init();
     let app_matches = get_app().get_matches();
-    let keypair_path = app_matches.value_of("keypair_path").unwrap();
+    let ar_keypair_path = app_matches.value_of("ar_keypair_path").unwrap();
     let base_url = app_matches
         .value_of("base_url")
         .map(Url::from_str)
         .transpose()?;
 
-    let arweave = Arweave::from_keypair_path(PathBuf::from(keypair_path), base_url)
+    let arweave = Arweave::from_keypair_path(PathBuf::from(ar_keypair_path), base_url)
         .await
         .unwrap();
 
@@ -400,11 +399,10 @@ async fn main() -> CommandResult {
     match (sub_command, arg_matches) {
         ("estimate", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            command_get_cost(&arweave, glob_str).await
-        }
-        ("estimate-with-sol", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            command_get_cost_with_sol(&arweave, glob_str).await
+            let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
+            let with_sol = sub_arg_matches.is_present("with_sol");
+            let no_bundle = sub_arg_matches.is_present("no_bundle");
+            command_get_cost(&arweave, glob_str, reward_mult, with_sol, no_bundle).await
         }
         ("wallet-balance", Some(sub_arg_matches)) => {
             let wallet_address = sub_arg_matches
@@ -420,76 +418,64 @@ async fn main() -> CommandResult {
         ("upload", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir");
-            let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
-            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
-            let buffer = app_matches.value_of("buffer");
+            let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
+            let with_sol = sub_arg_matches.is_present("with_sol");
+            let no_bundle = sub_arg_matches.is_present("no_bundle");
+            let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
             let output_format = app_matches.value_of("output_format");
-            command_upload(
-                &arweave,
-                glob_str,
-                log_dir,
-                tags,
-                reward_mult,
-                output_format,
-                buffer,
-            )
-            .await
+
+            match (with_sol, no_bundle) {
+                (false, false) => {
+                    command_upload_bundle(
+                        &arweave,
+                        glob_str,
+                        log_dir,
+                        get_tags_vec(sub_arg_matches.values_of("tags")),
+                        reward_mult,
+                        output_format,
+                    )
+                    .await
+                }
+                (false, true) => {
+                    command_upload(
+                        &arweave,
+                        glob_str,
+                        log_dir,
+                        get_tags_vec(sub_arg_matches.values_of("tags")),
+                        reward_mult,
+                        output_format,
+                        buffer,
+                    )
+                    .await
+                }
+                (true, false) => {
+                    command_upload_bundle_with_sol(
+                        &arweave,
+                        glob_str,
+                        log_dir,
+                        get_tags_vec(sub_arg_matches.values_of("tags")),
+                        reward_mult,
+                        sub_arg_matches.value_of("sol_keypair_path").unwrap(),
+                        output_format,
+                    )
+                    .await
+                }
+                (true, true) => {
+                    command_upload_with_sol(
+                        &arweave,
+                        glob_str,
+                        log_dir,
+                        get_tags_vec(sub_arg_matches.values_of("tags")),
+                        reward_mult,
+                        sub_arg_matches.value_of("sol_keypair_path").unwrap(),
+                        output_format,
+                        buffer,
+                    )
+                    .await
+                }
+            }
         }
-        ("upload-bundle", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir");
-            let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
-            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
-            let output_format = app_matches.value_of("output_format");
-            command_upload_bundle(
-                &arweave,
-                glob_str,
-                log_dir,
-                tags,
-                reward_mult,
-                output_format,
-            )
-            .await
-        }
-        ("upload-with-sol", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir");
-            let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
-            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
-            let sol_keypair_path = sub_arg_matches.value_of("sol_keypair_path").unwrap();
-            let buffer = app_matches.value_of("buffer");
-            let output_format = app_matches.value_of("output_format");
-            command_upload_with_sol(
-                &arweave,
-                glob_str,
-                log_dir,
-                tags,
-                reward_mult,
-                sol_keypair_path,
-                output_format,
-                buffer,
-            )
-            .await
-        }
-        ("upload-bundle-with-sol", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir");
-            let tags = get_tags_vec(sub_arg_matches.values_of("tags"));
-            let reward_mult = sub_arg_matches.value_of("reward_multiplier");
-            let sol_keypair_path = sub_arg_matches.value_of("sol_keypair_path").unwrap();
-            let output_format = app_matches.value_of("output_format");
-            command_upload_bundle_with_sol(
-                &arweave,
-                glob_str,
-                log_dir,
-                tags,
-                reward_mult,
-                sol_keypair_path,
-                output_format,
-            )
-            .await
-        }
-        ("get-raw-status", Some(sub_arg_matches)) => {
+        ("raw-status", Some(sub_arg_matches)) => {
             let id = sub_arg_matches.value_of("id").unwrap();
             command_get_raw_status(&arweave, id).await
         }
@@ -535,6 +521,7 @@ async fn main() -> CommandResult {
         ("upload-filter", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
 
             let statuses = if let Some(values) = sub_arg_matches.values_of("statuses") {
                 Some(values.map(get_status_code).collect())
@@ -549,6 +536,7 @@ async fn main() -> CommandResult {
                 &arweave,
                 glob_str,
                 log_dir,
+                reward_mult,
                 statuses,
                 max_confirms,
                 output_format,
@@ -560,51 +548,66 @@ async fn main() -> CommandResult {
     }
 }
 
-async fn command_get_cost(arweave: &Arweave, glob_str: &str) -> CommandResult {
+async fn command_get_cost(
+    arweave: &Arweave,
+    glob_str: &str,
+    reward_mult: f32,
+    with_sol: bool,
+    no_bundle: bool,
+) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let (base, incremental) = arweave.get_price_terms().await?;
+    let (base, incremental) = arweave.get_price_terms(reward_mult).await?;
+    let (_, usd_per_ar, usd_per_sol) = arweave.get_price(&1).await?;
 
-    let (num, cost, bytes) = paths_iter.fold((0, 0, 0), |(n, c, b), p| {
+    // set units
+    let units = match with_sol {
+        true => "lamports",
+        false => "winstons",
+    };
+
+    // get total number of file and bytes and cost if not bundled
+    let (num, mut cost, bytes) = paths_iter.fold((0, 0, 0), |(n, c, b), p| {
         (
             n + 1,
             c + {
                 let data_len = p.metadata().unwrap().len();
-                base + incremental * (data_len - 1)
+                match with_sol {
+                    true => {
+                        std::cmp::max((base + incremental * (data_len - 1)) / RATE, FLOOR) + 5000
+                    }
+                    false => base + incremental * (data_len - 1),
+                }
             },
             b + p.metadata().unwrap().len(),
         )
     });
 
-    let (_, usd_per_ar, _) = arweave.get_price(&1).await?;
-    let usd_per_bytes = (&cost * &usd_per_ar).to_f32().unwrap() / 1e14_f32;
-    println!(
-        "The price to upload {} files with {} total bytes is {} {} (${}).",
-        num, bytes, cost, arweave.units, usd_per_bytes
-    );
-    Ok(())
-}
+    if num == 0 {
+        println!("No files matched glob.");
+    } else {
+        // adjust cost if bundling
+        if !no_bundle {
+            match with_sol {
+                true => {
+                    cost = std::cmp::max((base + incremental * (bytes - 1)) / RATE, FLOOR) + 5000;
+                }
+                false => {
+                    cost = base + incremental * (bytes - 1);
+                }
+            }
+        }
 
-async fn command_get_cost_with_sol(arweave: &Arweave, glob_str: &str) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let (base, incremental) = arweave.get_price_terms().await?;
+        // get usd cost based on calculated cost
+        let usd_cost = match with_sol {
+            true => (&cost * &usd_per_sol).to_f32().unwrap() / 1e11_f32,
+            false => (&cost * &usd_per_ar).to_f32().unwrap() / 1e14_f32,
+        };
 
-    let (num, cost, bytes) = paths_iter.fold((0, 0, 0), |(n, c, b), p| {
-        (
-            n + 1,
-            c + {
-                let data_len = p.metadata().unwrap().len();
-                std::cmp::max((base + incremental * (data_len - 1)) / RATE, FLOOR) + 5000
-            },
-            b + p.metadata().unwrap().len(),
-        )
-    });
-
-    let (_, _, usd_per_sol) = arweave.get_price(&1).await?;
-    let usd_per_bytes = (&cost * &usd_per_sol).to_f32().unwrap() / 1e11_f32;
-    println!(
-        "The price to upload {} files with {} total bytes is {} {} (${}).",
-        num, bytes, cost, "lamports", usd_per_bytes
-    );
+        println!(
+            "The price to upload {} files with {} total bytes is {} {} (${:.4}).",
+            num, bytes, cost, units, usd_cost
+        );
+    }
     Ok(())
 }
 
@@ -679,20 +682,14 @@ async fn command_upload(
     glob_str: &str,
     log_dir: Option<&str>,
     _tags: Option<Vec<Tag<Base64>>>,
-    reward_mult: Option<&str>,
+    reward_mult: f32,
     output_format: Option<&str>,
-    buffer: Option<&str>,
+    buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let log_dir = log_dir.map(|s| PathBuf::from(s));
     let output_format = get_output_format(output_format.unwrap_or(""));
-    let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
-
-    let mut price_terms = arweave.get_price_terms().await?;
-    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
-    if let Some(reward_mult) = reward_mult {
-        price_terms = apply_reward_multplier(price_terms, reward_mult);
-    }
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
 
     let mut stream = upload_files_stream(
         arweave,
@@ -724,7 +721,7 @@ async fn command_upload(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir {} to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir \"{}\"` to confirm transaction(s).",
             counter,
             glob_str,
             &log_dir.unwrap_or(PathBuf::from("")).display()
@@ -739,35 +736,46 @@ async fn command_upload_bundle(
     glob_str: &str,
     log_dir: Option<&str>,
     tags: Option<Vec<Tag<String>>>,
-    reward_mult: Option<&str>,
+    reward_mult: f32,
     output_format: Option<&str>,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let log_dir = log_dir.map(|s| PathBuf::from(s));
     let output_format = get_output_format(output_format.unwrap_or(""));
     let tags = tags.unwrap_or(Vec::new());
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
 
-    let mut price_terms = arweave.get_price_terms().await?;
-    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
-    if let Some(reward_mult) = reward_mult {
-        price_terms = apply_reward_multplier(price_terms, reward_mult);
+    let num: usize = paths_iter.collect::<Vec<PathBuf>>().len();
+
+    if num == 0 {
+        println!("The pattern \"{}\" didn't match any files.", glob_str);
+    } else {
+        let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+        let transaction = arweave
+            .create_bundle_transaction_from_file_paths(
+                paths_iter,
+                tags,
+                log_dir.clone(),
+                price_terms,
+            )
+            .await?;
+
+        let signed_transaction = arweave.sign_transaction(transaction)?;
+
+        let status = arweave.post_transaction(&signed_transaction, None).await?;
+        let id = status.id.clone();
+        println!("{}", Status::header_string(&output_format));
+        print!("{}", output_format.formatted_string(&status));
+
+        if let Some(log_dir) = log_dir {
+            arweave.write_status(status, log_dir).await?;
+        }
+        println!(
+            "Uploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
+            num,
+            id
+        )
     }
-
-    let transaction = arweave
-        .create_bundle_transaction_from_file_paths(paths_iter, tags, log_dir.clone(), price_terms)
-        .await?;
-
-    let signed_transaction = arweave.sign_transaction(transaction)?;
-
-    let status = arweave.post_transaction(&signed_transaction, None).await?;
-    println!("{}", Status::header_string(&output_format));
-    print!("{}", output_format.formatted_string(&status));
-
-    if let Some(log_dir) = log_dir {
-        println!("Logging statuses to {}", &log_dir.display());
-        arweave.write_status(status, log_dir).await?;
-    }
-
     Ok(())
 }
 
@@ -776,24 +784,19 @@ async fn command_upload_with_sol(
     glob_str: &str,
     log_dir: Option<&str>,
     _tags: Option<Vec<Tag<Base64>>>,
-    reward_mult: Option<&str>,
+    reward_mult: f32,
     sol_keypair_path: &str,
     output_format: Option<&str>,
-    buffer: Option<&str>,
+    buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let log_dir = log_dir.map(|s| PathBuf::from(s));
     let output_format = get_output_format(output_format.unwrap_or(""));
-    let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
     let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
 
-    let mut price_terms = arweave.get_price_terms().await?;
-    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
-    if let Some(reward_mult) = reward_mult {
-        price_terms = apply_reward_multplier(price_terms, reward_mult);
-    }
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
 
     let mut stream = upload_files_with_sol_stream(
         arweave,
@@ -828,7 +831,7 @@ async fn command_upload_with_sol(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir {} to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir \"{}\"` to confirm transaction(s).",
             counter,
             glob_str,
             &log_dir.unwrap_or(PathBuf::from("")).display()
@@ -843,7 +846,7 @@ async fn command_upload_bundle_with_sol(
     glob_str: &str,
     log_dir: Option<&str>,
     tags: Option<Vec<Tag<String>>>,
-    reward_mult: Option<&str>,
+    reward_mult: f32,
     sol_keypair_path: &str,
     output_format: Option<&str>,
 ) -> CommandResult {
@@ -854,29 +857,41 @@ async fn command_upload_bundle_with_sol(
     let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
 
-    let mut price_terms = arweave.get_price_terms().await?;
-    let reward_mult = reward_mult.map(|s| s.parse::<f32>().unwrap());
-    if let Some(reward_mult) = reward_mult {
-        price_terms = apply_reward_multplier(price_terms, reward_mult);
-    }
+    let num: usize = paths_iter.collect::<Vec<PathBuf>>().len();
 
-    let transaction = arweave
-        .create_bundle_transaction_from_file_paths(paths_iter, tags, log_dir.clone(), price_terms)
-        .await?;
+    if num == 0 {
+        println!("The pattern \"{}\" didn't match any files.", glob_str);
+    } else {
+        let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+        let transaction = arweave
+            .create_bundle_transaction_from_file_paths(
+                paths_iter,
+                tags,
+                log_dir.clone(),
+                price_terms,
+            )
+            .await?;
 
-    let (signed_transaction, sig_response) = arweave
-        .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, &from_keypair)
-        .await?;
+        let (signed_transaction, sig_response) = arweave
+            .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, &from_keypair)
+            .await?;
 
-    let mut status = arweave.post_transaction(&signed_transaction, None).await?;
-    println!("{}", Status::header_string(&output_format));
-    print!("{}", output_format.formatted_string(&status));
+        let mut status = arweave.post_transaction(&signed_transaction, None).await?;
+        let id = status.id.clone();
+        println!("{}", Status::header_string(&output_format));
+        print!("{}", output_format.formatted_string(&status));
 
-    if let Some(log_dir) = log_dir {
-        println!("Logging statuses to {}", &log_dir.display());
-        status.sol_sig = Some(sig_response);
-        arweave.write_status(status, log_dir).await?;
+        if let Some(log_dir) = log_dir {
+            status.sol_sig = Some(sig_response);
+            arweave.write_status(status, log_dir).await?;
+        }
+        println!(
+            "Uploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
+            num,
+            id
+        )
     }
 
     Ok(())
@@ -976,6 +991,7 @@ async fn command_upload_filter(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: &str,
+    reward_mult: f32,
     statuses: Option<Vec<StatusCode>>,
     max_confirms: Option<&str>,
     output_format: Option<&str>,
@@ -986,7 +1002,7 @@ async fn command_upload_filter(
     let output_format = get_output_format(output_format.unwrap_or(""));
     let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
     let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
-    let price_terms = arweave.get_price_terms().await?;
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
 
     // Should be refactored to be included in the stream.
     let filtered_paths_iter = arweave
@@ -1023,4 +1039,116 @@ async fn command_upload_filter(
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_app;
+    use clap::{value_t, ErrorKind};
+    use std::env;
+
+    #[test]
+    fn estimate_command() {
+        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+        let m = get_app().get_matches_from(vec!["arloader", "estimate", "tests/fixtures/*.png"]);
+        let sub_m = m.subcommand_matches("estimate").unwrap();
+        assert_eq!(sub_m.value_of("glob").unwrap(), "tests/fixtures/*.png");
+        assert_eq!(
+            value_t!(sub_m.value_of("reward_multiplier"), f32).unwrap(),
+            1f32
+        );
+    }
+
+    #[test]
+    fn estimate_command_with_sol() {
+        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+        let m = get_app().get_matches_from(vec![
+            "arloader",
+            "estimate",
+            "tests/fixtures/*.png",
+            "--with-sol",
+            "-n",
+            "--reward-multiplier",
+            "1.5",
+        ]);
+        let sub_m = m.subcommand_matches("estimate").unwrap();
+        assert_eq!(sub_m.value_of("glob").unwrap(), "tests/fixtures/*.png");
+        assert_eq!(sub_m.is_present("with_sol"), true);
+        assert_eq!(sub_m.is_present("no_bundle"), true);
+        assert_eq!(
+            value_t!(sub_m.value_of("reward_multiplier"), f32).unwrap(),
+            1.5f32
+        );
+    }
+
+    #[test]
+    fn upload_command() {
+        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+        let m = get_app().get_matches_from(vec!["arloader", "upload", "tests/fixtures/*.png"]);
+        let sub_m = m.subcommand_matches("upload").unwrap();
+        assert_eq!(sub_m.value_of("glob").unwrap(), "tests/fixtures/*.png");
+        assert_eq!(
+            value_t!(sub_m.value_of("reward_multiplier"), f32).unwrap(),
+            1f32
+        );
+    }
+
+    #[test]
+    fn upload_command_with_sol() {
+        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+
+        let resp = get_app().get_matches_from_safe(vec![
+            "arloader",
+            "upload",
+            "tests/fixtures/*.png",
+            "--with-sol",
+        ]);
+
+        assert_eq!(resp.unwrap_err().kind, ErrorKind::MissingRequiredArgument);
+
+        env::set_var("SOL_KEYPAIR_PATH", "some_path/some_sol_keypair.json");
+        let m = get_app().get_matches_from(vec![
+            "arloader",
+            "upload",
+            "tests/fixtures/*.png",
+            "--with-sol",
+        ]);
+        let sub_m = m.subcommand_matches("upload").unwrap();
+        assert_eq!(
+            sub_m.value_of("sol_keypair_path").unwrap(),
+            "some_path/some_sol_keypair.json"
+        );
+        assert!(sub_m.is_present("with_sol"));
+    }
+
+    // #[test]
+    // fn estimate_with_sol_command() {
+    //     env::set_var("AR_KEY_PAIR_PATH", "some_path/some_ar_keypair.json");
+    //     let res = get_app().get_matches_from_safe(vec![
+    //         "arloader",
+    //         "estimate",
+    //         "tests/fixtures/*.png",
+    //         "--with-sol",
+    //     ]);
+    //     let sub_m = m.subcommand_matches("estimate").unwrap();
+    //     assert_eq!(
+    //         sub_m.value_of("sol_keypair_path").unwrap(),
+    //         "some_path/some_sol_keypair.json"
+    //     );
+
+    //     assert_eq!(res.unwrap_err().kind, ErrorKind::MissingRequiredArgument);
+
+    //     env::set_var("SOL_KEYPAIR_PATH", "some_path/some_sol_keypair.json");
+    //     let m = get_app().get_matches_from(vec![
+    //         "arloader",
+    //         "estimate",
+    //         "tests/fixtures/*.png",
+    //         "--with-sol",
+    //     ]);
+    //     let sub_m = m.subcommand_matches("estimate").unwrap();
+    //     assert_eq!(
+    //         sub_m.value_of("sol_keypair_path").unwrap(),
+    //         "some_path/some_sol_keypair.json"
+    //     );
+    // }
 }

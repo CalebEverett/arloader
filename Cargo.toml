@@ -11,6 +11,9 @@ repository = "https://github.com/CalebEverett/arloader"
 name = "arloader"
 path = "src/lib.rs"
 
+[profile.release]
+lto = true
+
 [dependencies]
 avro-rs = "0.13"
 async-trait = "0.1.51"
