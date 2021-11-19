@@ -49,6 +49,7 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 /// Winstons are a sub unit of the native Arweave network token, AR. There are 10<sup>12</sup> Winstons per AR.
 pub const WINSTONS_PER_AR: u64 = 1000000000000;
+pub const BLOCK_SIZE: u64 = 1024 * 256;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct OraclePrice {
@@ -184,7 +185,11 @@ impl Arweave {
     }
 
     pub async fn get_price_terms(&self, reward_mult: f32) -> Result<(u64, u64), Error> {
-        let (prices1, prices2) = try_join(self.get_price(&1), self.get_price(&2)).await?;
+        let (prices1, prices2) = try_join(
+            self.get_price(&(256 * 1024)),
+            self.get_price(&(256 * 1024 * 2)),
+        )
+        .await?;
         let base = (prices1.0.to_u64_digits()[0] as f32 * reward_mult) as u64;
         let incremental = (prices2.0.to_u64_digits()[0] as f32 * reward_mult) as u64 - &base;
         Ok((base, incremental))
@@ -237,7 +242,8 @@ impl Arweave {
         };
 
         let data_len = data.len() as u64;
-        let reward = price_terms.0 + price_terms.1 * (data_len - 1);
+        let blocks_len = data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
+        let reward = price_terms.0 + price_terms.1 * (blocks_len - 1);
 
         Ok(Transaction {
             format: 2,
@@ -1005,6 +1011,23 @@ mod tests {
                 .verify(&pre_data_item.signature.0, &pre_deep_hash)?;
         }
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_price_points() -> Result<(), Error> {
+        let mut price = 0 as u64;
+        println!("{:>6}  {:>12} {:>12}", "size", "winstons", "incremental");
+        println!("{:-<40}", "");
+        for p in 1..10 {
+            let size = p * 100 * 256;
+            let new_price = reqwest::get(format!("https://arweave.net/price/{}", size * 1024))
+                .await?
+                .json::<u64>()
+                .await?;
+            println!("{:>6}k {:>12} {:>12}", size, new_price, new_price - price);
+            price = new_price;
+        }
         Ok(())
     }
 }

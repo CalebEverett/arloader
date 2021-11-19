@@ -3,7 +3,7 @@ use arloader::{
     solana::{FLOOR, RATE, SOL_AR_BASE_URL},
     status::{OutputFormat, OutputHeader, Status, StatusCode},
     transaction::{Base64, FromUtf8Strs, Tag},
-    update_statuses_stream, upload_files_stream, upload_files_with_sol_stream, Arweave,
+    update_statuses_stream, upload_files_stream, upload_files_with_sol_stream, Arweave, BLOCK_SIZE,
     WINSTONS_PER_AR,
 };
 use clap::{
@@ -571,11 +571,12 @@ async fn command_get_cost(
             n + 1,
             c + {
                 let data_len = p.metadata().unwrap().len();
+                let blocks_len = data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
                 match with_sol {
                     true => {
-                        std::cmp::max((base + incremental * (data_len - 1)) / RATE, FLOOR) + 5000
+                        std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR) + 5000
                     }
-                    false => base + incremental * (data_len - 1),
+                    false => base + incremental * (blocks_len - 1),
                 }
             },
             b + p.metadata().unwrap().len(),
@@ -587,12 +588,14 @@ async fn command_get_cost(
     } else {
         // adjust cost if bundling
         if !no_bundle {
+            let blocks_len = bytes / BLOCK_SIZE + (bytes % BLOCK_SIZE != 0) as u64;
             match with_sol {
                 true => {
-                    cost = std::cmp::max((base + incremental * (bytes - 1)) / RATE, FLOOR) + 5000;
+                    cost =
+                        std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR) + 5000;
                 }
                 false => {
-                    cost = base + incremental * (bytes - 1);
+                    cost = base + incremental * (blocks_len - 1);
                 }
             }
         }
@@ -858,6 +861,7 @@ async fn command_upload_bundle_with_sol(
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
     let price_terms = arweave.get_price_terms(reward_mult).await?;
+    println!("price_terms: {:?}", price_terms);
 
     let num: usize = paths_iter.collect::<Vec<PathBuf>>().len();
 
@@ -1095,6 +1099,7 @@ mod tests {
 
     #[test]
     fn upload_command_with_sol() {
+        env::remove_var("SOL_KEYPAIR_PATH");
         env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
 
         let resp = get_app().get_matches_from_safe(vec![
@@ -1120,35 +1125,4 @@ mod tests {
         );
         assert!(sub_m.is_present("with_sol"));
     }
-
-    // #[test]
-    // fn estimate_with_sol_command() {
-    //     env::set_var("AR_KEY_PAIR_PATH", "some_path/some_ar_keypair.json");
-    //     let res = get_app().get_matches_from_safe(vec![
-    //         "arloader",
-    //         "estimate",
-    //         "tests/fixtures/*.png",
-    //         "--with-sol",
-    //     ]);
-    //     let sub_m = m.subcommand_matches("estimate").unwrap();
-    //     assert_eq!(
-    //         sub_m.value_of("sol_keypair_path").unwrap(),
-    //         "some_path/some_sol_keypair.json"
-    //     );
-
-    //     assert_eq!(res.unwrap_err().kind, ErrorKind::MissingRequiredArgument);
-
-    //     env::set_var("SOL_KEYPAIR_PATH", "some_path/some_sol_keypair.json");
-    //     let m = get_app().get_matches_from(vec![
-    //         "arloader",
-    //         "estimate",
-    //         "tests/fixtures/*.png",
-    //         "--with-sol",
-    //     ]);
-    //     let sub_m = m.subcommand_matches("estimate").unwrap();
-    //     assert_eq!(
-    //         sub_m.value_of("sol_keypair_path").unwrap(),
-    //         "some_path/some_sol_keypair.json"
-    //     );
-    // }
 }
