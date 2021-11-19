@@ -110,29 +110,17 @@ impl DataItem {
             data_item.owner.0.push(iter.next().unwrap());
         }
 
-        data_item.target = {
-            if iter.next().unwrap() == 0 {
-                Base64::default()
-            } else {
-                let mut result = Base64(Vec::with_capacity(32));
-                for _ in 0..32 {
-                    result.0.push(iter.next().unwrap());
-                }
-                result
+        if iter.next().unwrap() == 1 {
+            for _ in 0..32 {
+                data_item.target.0.push(iter.next().unwrap());
             }
-        };
+        }
 
-        data_item.anchor = {
-            if iter.next().unwrap() == 0 {
-                Base64::default()
-            } else {
-                let mut result = Base64(Vec::with_capacity(32));
-                for _ in 0..32 {
-                    result.0.push(iter.next().unwrap());
-                }
-                result
+        if iter.next().unwrap() == 1 {
+            for _ in 0..32 {
+                data_item.anchor.0.push(iter.next().unwrap());
             }
-        };
+        }
 
         let number_of_tags = u64::from_le_bytes([(); 8].map(|_| iter.next().unwrap()));
         let number_of_tag_bytes =
