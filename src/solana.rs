@@ -1,8 +1,11 @@
 use crate::error::Error;
 use crate::transaction::{Base64, DeepHashItem};
+use futures::future::try_join;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use solana_sdk::{hash::Hash, pubkey::Pubkey, signer::keypair, system_transaction};
+use serde_json::{json, Value};
+use solana_sdk::{
+    hash::Hash, pubkey::Pubkey, signature::Signer, signer::keypair, system_transaction,
+};
 use std::str::FromStr;
 
 pub const SOL_AR_PUBKEY: &str = "6AaM5L2SeA7ciwDNaYLhKqQzsDVaQM9CRqXVDdWPeAQ9";
@@ -37,12 +40,67 @@ pub async fn get_recent_blockhash(base_url: url::Url) -> Result<Hash, Error> {
     Ok(hash)
 }
 
+pub async fn get_sol_wallet_balance(
+    base_url: url::Url,
+    keypair: &keypair::Keypair,
+) -> Result<u64, Error> {
+    let client = reqwest::Client::new();
+
+    let mut config = serde_json::Map::new();
+    config.insert("commitment".to_string(), json!("confirmed".to_string()));
+
+    let post_object = PostObject {
+        method: String::from("getBalance"),
+        params: vec![json!(bs58::encode(keypair.pubkey()).into_string())],
+        ..Default::default()
+    };
+
+    let result: Value = client
+        .post(base_url)
+        .json(&post_object)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let balance = result["result"]["value"].as_u64().unwrap();
+    Ok(balance)
+}
+
+pub async fn request_airdrop(base_url: url::Url, keypair: &keypair::Keypair) -> Result<(), Error> {
+    let client = reqwest::Client::new();
+
+    let mut config = serde_json::Map::new();
+    config.insert("commitment".to_string(), json!("confirmed".to_string()));
+
+    let post_object = PostObject {
+        method: String::from("getBalance"),
+        params: vec![
+            json!(bs58::encode(keypair.pubkey()).into_string()),
+            json!(1000000000),
+        ],
+        ..Default::default()
+    };
+
+    let _ = client.post(base_url).json(&post_object).send().await?;
+    Ok(())
+}
+
 pub async fn create_sol_transaction(
     base_url: url::Url,
     from_keypair: &keypair::Keypair,
     lamports: u64,
 ) -> Result<String, Error> {
-    let recent_blockhash = get_recent_blockhash(base_url).await?;
+    let (recent_blockhash, balance) = try_join(
+        get_recent_blockhash(base_url.clone()),
+        get_sol_wallet_balance(base_url, from_keypair),
+    )
+    .await?;
+
+    if balance < lamports {
+        return Err(Error::InsufficientSolFunds);
+    }
+
     let transaction = system_transaction::transfer(
         from_keypair,
         &Pubkey::from_str(SOL_AR_PUBKEY).unwrap(),
@@ -50,6 +108,7 @@ pub async fn create_sol_transaction(
         recent_blockhash,
     );
     let serialized = bincode::serialize(&transaction)?;
+
     Ok(bs58::encode(serialized).into_string())
 }
 
@@ -97,9 +156,11 @@ impl Default for PostObject {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_sol_transaction, get_recent_blockhash};
+    use super::{
+        create_sol_transaction, get_recent_blockhash, get_sol_wallet_balance, request_airdrop,
+    };
     use crate::error::Error;
-    use solana_sdk::signer::keypair::Keypair;
+    use solana_sdk::signer::keypair::{self, Keypair};
 
     #[tokio::test]
     async fn test_get_recent_blockhash() -> Result<(), Error> {
@@ -113,10 +174,21 @@ mod tests {
     #[tokio::test]
     async fn test_get_sol_transaction() -> Result<(), Error> {
         let base_url = "https://api.devnet.solana.com".parse::<url::Url>().unwrap();
-        let keypair = Keypair::new();
+        let keypair = keypair::read_keypair_file("tests/fixtures/solana_test.json")?;
+        request_airdrop(base_url.clone(), &keypair).await?;
 
         let result = create_sol_transaction(base_url, &keypair, 42).await?;
         println!("{}", result);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_sol_wallet_balance() -> Result<(), Error> {
+        let base_url = "https://api.devnet.solana.com".parse::<url::Url>().unwrap();
+        let keypair = Keypair::new();
+
+        let balance = get_sol_wallet_balance(base_url, &keypair).await?;
+        println!("{}", balance);
         Ok(())
     }
 }

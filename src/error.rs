@@ -33,6 +33,8 @@ pub enum Error {
     InvalidProof,
     #[error("invalid tags")]
     InvalidTags,
+    #[error("insufficient sol funds")]
+    InsufficientSolFunds,
     #[error("io: {0}")]
     IOError(#[from] std::io::Error),
     #[error("key rejected: {0}")]

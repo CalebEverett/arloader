@@ -519,6 +519,7 @@ impl Arweave {
         from_keypair: &Keypair,
     ) -> Result<(Transaction, SigResponse), Error> {
         let lamports = std::cmp::max(&transaction.reward / RATE, FLOOR);
+
         let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
         let sig_response =
             get_sol_ar_signature(sol_ar_url, transaction.to_deep_hash_item()?, sol_tx).await?;

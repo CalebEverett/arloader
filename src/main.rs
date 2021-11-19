@@ -861,7 +861,6 @@ async fn command_upload_bundle_with_sol(
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
     let price_terms = arweave.get_price_terms(reward_mult).await?;
-    println!("price_terms: {:?}", price_terms);
 
     let num: usize = paths_iter.collect::<Vec<PathBuf>>().len();
 
