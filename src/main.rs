@@ -513,11 +513,6 @@ async fn main() -> CommandResult {
             let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
             command_status_report(&arweave, glob_str, log_dir).await
         }
-        ("generate-manifest", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
-            command_generate_manifest(&arweave, glob_str, log_dir).await
-        }
         ("upload-filter", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
@@ -971,21 +966,6 @@ async fn command_status_report(arweave: &Arweave, glob_str: &str, log_dir: &str)
     let summary = arweave.status_summary(paths_iter, log_dir).await?;
 
     println!("{}", summary);
-
-    Ok(())
-}
-
-async fn command_generate_manifest(
-    arweave: &Arweave,
-    glob_str: &str,
-    log_dir: &str,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = PathBuf::from(log_dir);
-
-    let _ = arweave.write_manifest(paths_iter, log_dir.clone()).await?;
-
-    println!("manifest.json written to {}", log_dir.display());
 
     Ok(())
 }

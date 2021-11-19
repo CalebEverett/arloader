@@ -153,7 +153,7 @@ impl DataItem {
     }
 
     /// Header is 64 bytes with first 32 for the size of the bytes le. Second
-    /// 32 is id - hashed signature.
+    /// 32 is id, which is the hashed signature.
     pub fn to_bundle_item(&self) -> Result<(Vec<u8>, Vec<u8>), Error> {
         let binary = self.serialize()?;
         let binary_len = binary.len();
@@ -195,6 +195,7 @@ impl<'a> ToItems<'a, DataItem> for DataItem {
 mod tests {
     use super::DataItem;
     use crate::{
+        status::Status,
         transaction::{Base64, FromUtf8Strs, Tag, ToItems},
         Arweave,
     };
@@ -300,18 +301,65 @@ mod tests {
                 .unwrap();
 
         let data_item = get_test_data_item().await;
+        let status = Status {
+            id: data_item.id.clone(),
+            file_path: Some(PathBuf::from("file.name")),
+            ..Status::default()
+        };
+
         let data_item_ser = data_item.serialize().unwrap();
 
-        let bundle = arweave
-            .create_bundle_from_data_items(vec![data_item.clone(), data_item])
+        let (bundle, manifest_object) = arweave
+            .create_bundle_from_data_items(vec![
+                (data_item.clone(), status.clone()),
+                (data_item, status),
+            ])
             .unwrap();
-        let expected_bytes = fs::read_to_string("tests/fixtures/bundle_ser.json")
-            .await
-            .unwrap();
-        let expected_bytes: Vec<u8> = serde_json::from_str(&expected_bytes).unwrap();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&manifest_object).unwrap()
+        );
+
+        // bytes offsets
+        // ---------------------------------
+        // number_of_data_items: 0
+        // headers: 32
+        //  data_item_0: 32
+        //      number_of_bytes: 32
+        //      id: 64
+        //  data_item_1: 96
+        //      number_of_bytes: 96
+        //      id: 128
+        //  manifest: 160
+        //      number_of_bytes: 160
+        //      id: 192
+        // binaries: 224
+        //  data_item_0: 224
+        //      signature_type: 224
+        //      signature: 226
+        //      owner: 738
+        //      target_present: 1250
+        //      anchor_present: 1251
+        //      anchor: 1252
+        //      tags: 1284
+        //          number_of_tags: 1284
+        //          number_of_tags_bytes: 1292
+        //          tag_bytes: 1300
+        //      data: 1482
+        //  data_item_1: 1487
+        //      signature_type: 1487
+        //      signature: 1307
+        //      owner: 1819
+        //      target_present: 2331
+        //      anchor_present: 2332
+        //      anchor: 2333
+        //      tags: 2365
+        //          number_of_tags: 2365
+        //          number_of_tags_bytes: 2373
+        //      data: 2381
 
         // number of items in bundle is the same
-        assert_eq!(u32::from_le_bytes(bundle[0..4].try_into().unwrap()), 2);
+        assert_eq!(u32::from_le_bytes(bundle[0..4].try_into().unwrap()), 3);
 
         // 1263 bytes in the first item
         assert_eq!(
@@ -325,50 +373,40 @@ mod tests {
             data_item_ser.len() as u32
         );
 
+        // 1243 bytes in the manifest data item
+        assert_eq!(
+            u32::from_le_bytes(bundle[160..164].try_into().unwrap()),
+            1243u32
+        );
+
         // signature type is 1
         assert_eq!(
-            u16::from_le_bytes(bundle[160..162].try_into().unwrap()),
+            u16::from_le_bytes(bundle[224..226].try_into().unwrap()),
             1u16
         );
 
         // no target is present
-        assert_eq!(bundle[160 + 2 + 1024], 0);
+        assert_eq!(bundle[1250], 0);
 
         // anchor is present
-        assert_eq!(bundle[160 + 2 + 1024 + 1], 1);
+        assert_eq!(bundle[1251], 1);
 
         // number of tags is 2
         assert_eq!(
-            u64::from_le_bytes(
-                bundle[(160 + 2 + 1024 + 1 + 1 + 32)..(160 + 2 + 1024 + 1 + 1 + 32 + 8)]
-                    .try_into()
-                    .unwrap()
-            ),
+            u64::from_le_bytes(bundle[1284..1292].try_into().unwrap()),
             2u64
         );
 
         // number of tag bytes is 182
         assert_eq!(
-            u64::from_le_bytes(
-                bundle[(160 + 2 + 1024 + 1 + 1 + 32 + 8)..(160 + 2 + 1024 + 1 + 1 + 32 + 8 + 8)]
-                    .try_into()
-                    .unwrap()
-            ),
+            u64::from_le_bytes(bundle[1292..1300].try_into().unwrap()),
             182u64
         );
 
         // sig type of second item is 1
         assert_eq!(
-            u16::from_le_bytes(
-                bundle[(160 + 2 + 1024 + 1 + 1 + 32 + 8 + 8 + 182 + 5)
-                    ..(160 + 2 + 1024 + 1 + 1 + 32 + 8 + 8 + 182 + 5 + 2)]
-                    .try_into()
-                    .unwrap()
-            ),
+            u16::from_le_bytes(bundle[1487..1489].try_into().unwrap()),
             1u16
         );
-
-        // bytes are the same
-        assert_eq!(bundle, expected_bytes);
     }
 }
