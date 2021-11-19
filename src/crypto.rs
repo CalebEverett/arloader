@@ -193,10 +193,10 @@ impl Provider {
 #[cfg(test)]
 mod tests {
     use crate::{
-        transaction::{Base64, FromUtf8Strs, Tag, ToItems},
         Arweave, Error,
+        {transaction::Transaction, ToItems},
     };
-    use std::{path::PathBuf, str::FromStr};
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn test_deep_hash() -> Result<(), Error> {
@@ -208,36 +208,20 @@ mod tests {
         )
         .await?;
 
-        let file_stems = ["0.png", "1mb.bin"];
-        let hashes: [[u8; 48]; 2] = [
-            [
-                33, 15, 123, 25, 130, 241, 78, 142, 43, 190, 25, 126, 103, 73, 62, 218, 252, 174,
-                222, 154, 1, 40, 208, 17, 222, 174, 106, 45, 43, 110, 13, 164, 175, 141, 219, 99,
-                34, 120, 217, 42, 88, 64, 233, 173, 214, 171, 252, 149,
-            ],
-            [
-                116, 164, 229, 161, 253, 132, 147, 121, 222, 156, 174, 146, 225, 87, 86, 128, 159,
-                228, 176, 145, 79, 109, 137, 26, 199, 118, 41, 185, 188, 41, 13, 160, 20, 61, 72,
-                56, 156, 95, 54, 171, 46, 127, 205, 230, 130, 11, 61, 82,
-            ],
+        let transaction = Transaction {
+            format: 2,
+            ..Transaction::default()
+        };
+        let deep_hash = arweave.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
+
+        let correct_hash: [u8; 48] = [
+            72, 43, 204, 204, 122, 20, 48, 138, 114, 252, 43, 128, 87, 244, 105, 231, 189, 246, 94,
+            44, 150, 163, 165, 136, 133, 204, 158, 192, 28, 46, 222, 95, 55, 159, 23, 15, 3, 169,
+            32, 27, 222, 153, 54, 137, 100, 159, 17, 247,
         ];
 
-        for (file_stem, correct_hash) in file_stems.iter().zip(hashes) {
-            let last_tx = Base64::from_str("LCwsLCwsLA")?;
-            let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
-            let transaction = arweave
-                .create_transaction_from_file_path(
-                    PathBuf::from("tests/fixtures/").join(file_stem),
-                    Some(other_tags),
-                    Some(last_tx),
-                    (0, 0),
-                )
-                .await?;
+        assert_eq!(deep_hash, correct_hash);
 
-            let deep_hash = arweave.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
-
-            assert_eq!(deep_hash, correct_hash);
-        }
         Ok(())
     }
 }
