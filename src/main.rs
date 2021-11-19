@@ -1053,7 +1053,7 @@ mod tests {
 
     #[test]
     fn estimate_command() {
-        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
         let m = get_app().get_matches_from(vec!["arloader", "estimate", "tests/fixtures/*.png"]);
         let sub_m = m.subcommand_matches("estimate").unwrap();
         assert_eq!(sub_m.value_of("glob").unwrap(), "tests/fixtures/*.png");
@@ -1065,7 +1065,7 @@ mod tests {
 
     #[test]
     fn estimate_command_with_sol() {
-        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
         let m = get_app().get_matches_from(vec![
             "arloader",
             "estimate",
@@ -1087,7 +1087,7 @@ mod tests {
 
     #[test]
     fn upload_command() {
-        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
         let m = get_app().get_matches_from(vec!["arloader", "upload", "tests/fixtures/*.png"]);
         let sub_m = m.subcommand_matches("upload").unwrap();
         assert_eq!(sub_m.value_of("glob").unwrap(), "tests/fixtures/*.png");
@@ -1100,7 +1100,7 @@ mod tests {
     #[test]
     fn upload_command_with_sol() {
         env::remove_var("SOL_KEYPAIR_PATH");
-        env::set_var("AR_KEY_PAIR_PATH", "some_path/some_keypair.json");
+        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
 
         let resp = get_app().get_matches_from_safe(vec![
             "arloader",
