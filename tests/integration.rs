@@ -271,6 +271,7 @@ async fn test_filter_statuses() -> Result<(), Error> {
                         ..Default::default()
                     },
                     log_dir.clone(),
+                    None,
                 )
             }),
     )

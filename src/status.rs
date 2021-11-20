@@ -80,7 +80,7 @@ impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(
             f,
-            " {:<30}  {}  {:<9}  {:>8}",
+            " {:<43}  {}  {:<9}  {:>8}",
             self.file_path
                 .as_ref()
                 .map(|f| f.display().to_string())
@@ -138,8 +138,19 @@ impl OutputHeader<Status> for Status {
         match output_format {
             OutputFormat::Display => {
                 format!(
-                    " {:<30}  {:<43}  {:<9}  {}\n{:-<97}",
+                    " {:<43}  {:<43}  {:<9}  {}\n{:-<110}",
                     "path", "id", "status", "confirms", ""
+                )
+            }
+            _ => format!("{}", ""),
+        }
+    }
+    fn bundle_header_string(output_format: &OutputFormat) -> String {
+        match output_format {
+            OutputFormat::Display => {
+                format!(
+                    " {:<43}  {:<43}  {:<9}  {}\n{:-<110}",
+                    "manifest", "id", "status", "confirms", ""
                 )
             }
             _ => format!("{}", ""),
@@ -191,6 +202,9 @@ impl OutputFormat {
 /// Implements header for output with multiple records.
 pub trait OutputHeader<T> {
     fn header_string(output_format: &OutputFormat) -> String
+    where
+        T: Serialize + fmt::Display + QuietDisplay + VerboseDisplay;
+    fn bundle_header_string(output_format: &OutputFormat) -> String
     where
         T: Serialize + fmt::Display + QuietDisplay + VerboseDisplay;
 }

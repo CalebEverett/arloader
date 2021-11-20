@@ -332,15 +332,25 @@ impl Arweave {
     /// one status object can exist for a given `file_path`. If for some reason you wanted to record
     /// statuses for multiple uploads of the same file you can provide a different `log_dir` (or copy the
     /// file to a different directory and upload from there).
-    pub async fn write_status(&self, status: Status, log_dir: PathBuf) -> Result<(), Error> {
-        let file_stem = if let Some(file_path) = &status.file_path {
-            if status.id.0.is_empty() {
-                return Err(error::Error::UnsignedTransaction.into());
-            }
-            blake3::hash(file_path.to_str().unwrap().as_bytes()).to_string()
+    pub async fn write_status(
+        &self,
+        status: Status,
+        log_dir: PathBuf,
+        file_stem: Option<String>,
+    ) -> Result<(), Error> {
+        let file_stem = if let Some(stem) = file_stem {
+            stem
         } else {
-            format!("id_{}", status.id)
+            if let Some(file_path) = &status.file_path {
+                if status.id.0.is_empty() {
+                    return Err(error::Error::UnsignedTransaction.into());
+                }
+                blake3::hash(file_path.to_str().unwrap().as_bytes()).to_string()
+            } else {
+                format!("txid_{}", status.id)
+            }
         };
+
         fs::write(
             log_dir.join(file_stem).with_extension("json"),
             serde_json::to_string(&status)?,
@@ -414,32 +424,24 @@ impl Arweave {
         Ok(output)
     }
 
-    pub async fn write_manifest<IP>(&self, paths_iter: IP, log_dir: PathBuf) -> Result<(), Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-    {
-        let statuses: Vec<Value> = self
-            .read_statuses(paths_iter, log_dir.clone())
-            .await?
+    pub fn create_manifest(&self, statuses: Vec<Status>) -> Result<Value, Error> {
+        let paths = statuses
             .into_iter()
-            .map(|s| json!({s.file_path.unwrap().display().to_string(): {"id": s.id.to_string()}}))
-            .collect();
+            .fold(serde_json::Map::new(), |mut m, s| {
+                m.insert(
+                    s.file_path.unwrap().display().to_string(),
+                    json!({"id": s.id.to_string()}),
+                );
+                m
+            });
 
         let manifest = json!({
             "manifest": "arweave/paths",
             "version": "0.1.0",
-            "paths": statuses
+            "paths": Value::Object(paths)
         });
 
-        fs::write(
-            log_dir.join("manifest").with_extension("json"),
-            serde_json::to_string(&manifest)?
-                .replace("[", "")
-                .replace("]", ""),
-        )
-        .await?;
-
-        Ok(())
+        Ok(manifest)
     }
 
     pub async fn update_status(
@@ -468,7 +470,7 @@ impl Arweave {
             }
             _ => unreachable!(),
         }
-        self.write_status(status.clone(), log_dir).await?;
+        self.write_status(status.clone(), log_dir, None).await?;
         Ok(status)
     }
 
@@ -505,7 +507,7 @@ impl Arweave {
             .await?;
 
         if let Some(log_dir) = log_dir {
-            self.write_status(status.clone(), log_dir).await?;
+            self.write_status(status.clone(), log_dir, None).await?;
         }
         Ok(status)
     }
@@ -560,7 +562,7 @@ impl Arweave {
 
         if let Some(log_dir) = log_dir {
             status.sol_sig = Some(sig_response);
-            self.write_status(status.clone(), log_dir).await?;
+            self.write_status(status.clone(), log_dir, None).await?;
         }
         Ok(status)
     }
@@ -696,62 +698,82 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         tags: Vec<Tag<String>>,
-        log_dir: Option<PathBuf>,
-    ) -> Result<DataItem, Error> {
+    ) -> Result<(DataItem, Status), Error> {
         let data = fs::read(&file_path).await?;
         let data_item = self.create_data_item(data, tags)?;
         let data_item = self.sign_data_item(data_item)?;
 
-        if let Some(log_dir) = log_dir {
-            let status = Status {
-                id: data_item.id.clone(),
-                file_path: Some(file_path),
-                ..Status::default()
-            };
-            self.write_status(status, log_dir).await?;
-        }
+        let status = Status {
+            id: data_item.id.clone(),
+            file_path: Some(file_path),
+            ..Status::default()
+        };
 
-        Ok(data_item)
+        Ok((data_item, status))
+    }
+
+    pub fn create_data_item_from_manifest(&self, manifest: Value) -> Result<DataItem, Error> {
+        let tags = vec![
+            Tag::<String>::from_utf8_strs("Content-Type", "application/x.arweave-manifest+json")?,
+            Tag::<String>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?,
+        ];
+
+        // let mut anchor = Base64(Vec::with_capacity(32));
+        // self.crypto.fill_rand(&mut anchor.0)?;
+
+        Ok(DataItem {
+            data: Base64(serde_json::to_string(&manifest)?.as_bytes().to_vec()),
+            tags,
+            // anchor,
+            ..DataItem::default()
+        })
     }
 
     pub async fn create_data_items_from_file_paths<IP>(
         &self,
         paths_iter: IP,
         tags: Vec<Tag<String>>,
-        log_dir: Option<PathBuf>,
-    ) -> Result<Vec<DataItem>, Error>
+    ) -> Result<Vec<(DataItem, Status)>, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
     {
-        try_join_all(
-            paths_iter
-                .map(|p| self.create_data_item_from_file_path(p, tags.clone(), log_dir.clone())),
-        )
-        .await
+        try_join_all(paths_iter.map(|p| self.create_data_item_from_file_path(p, tags.clone())))
+            .await
     }
 
     pub fn create_bundle_from_data_items(
         &self,
-        data_items: Vec<DataItem>,
-    ) -> Result<Vec<u8>, Error> {
-        let data_items_len = data_items.len() as u64;
-        let (headers, binaries): (Vec<Vec<u8>>, Vec<Vec<u8>>) = data_items
-            .into_iter()
-            .map(|b| b.to_bundle_item().unwrap())
-            .unzip();
+        data_items: Vec<(DataItem, Status)>,
+    ) -> Result<(Vec<u8>, Value), Error> {
+        let data_items_len = (data_items.len() + 1) as u64;
+        let ((headers, binaries), statuses): ((Vec<Vec<u8>>, Vec<Vec<u8>>), Vec<Status>) =
+            data_items
+                .into_iter()
+                .map(|(d, s)| (d.to_bundle_item().unwrap(), s))
+                .unzip();
+
+        let manifest = self.create_manifest(statuses)?;
+        let manifest_data_item = self.create_data_item_from_manifest(manifest.clone())?;
+        let signed_manifest_data_item = self.sign_data_item(manifest_data_item)?;
+        let manifest_object =
+            json!({"id": signed_manifest_data_item.clone().id.to_string(), "manifest": manifest });
+
+        let (manifest_header, manifest_binary) = signed_manifest_data_item.to_bundle_item()?;
 
         let binary: Vec<u8> = data_items_len
             .to_le_bytes()
             .into_iter()
             .chain([0u8; 24].into_iter())
             .chain(headers.into_iter().flatten())
+            .chain(manifest_header.into_iter())
             .chain(binaries.into_iter().flatten())
+            .chain(manifest_binary.into_iter())
             .collect();
 
-        Ok(binary)
+        Ok((binary, manifest_object))
     }
 
-    // Tested here instead of data_item to verify signature as well.
+    // Tested here instead of data_item to verify signature as well - crytpo on data_item.
     pub fn deserialize_bundle(&self, bundle: Vec<u8>) -> Result<Vec<DataItem>, Error> {
         let mut bundle_iter = bundle.into_iter();
         let result = [(); 8].map(|_| bundle_iter.next().unwrap());
@@ -762,7 +784,7 @@ impl Arweave {
 
         // Parse headers.
         let mut bytes_lens = Vec::<u64>::with_capacity(number_of_data_items);
-        let mut ids = vec![Vec::<u8>::with_capacity(32); 2];
+        let mut ids = vec![Vec::<u8>::with_capacity(32); number_of_data_items];
         (0..number_of_data_items).for_each(|i| {
             let result = [(); 8].map(|_| bundle_iter.next().unwrap());
             bytes_lens.push(u64::from_le_bytes(result));
@@ -774,7 +796,8 @@ impl Arweave {
             });
         });
 
-        // Parse data_items - data_item verified during deserialization
+        // Parse data_items - data_item verified during deserialization - signatures verified
+        // TODO: verify signature against data_item id.
         let mut bytes_lens_iter = bytes_lens.into_iter();
         let mut ids_iter = ids.into_iter();
         let data_items: Result<Vec<DataItem>, _> = (0..number_of_data_items)
@@ -807,15 +830,15 @@ impl Arweave {
         tags: Vec<Tag<String>>,
         log_dir: Option<PathBuf>,
         price_terms: (u64, u64),
-    ) -> Result<Transaction, Error>
+    ) -> Result<(Transaction, Value), Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
     {
         let data_items = self
-            .create_data_items_from_file_paths(paths_iter, tags, log_dir)
+            .create_data_items_from_file_paths(paths_iter, tags)
             .await?;
 
-        let bundle = self.create_bundle_from_data_items(data_items)?;
+        let (bundle, manifest_object) = self.create_bundle_from_data_items(data_items)?;
         let other_tags = Some(vec![
             Tag::<Base64>::from_utf8_strs("Bundle-Format", "binary")?,
             Tag::<Base64>::from_utf8_strs("Bundle-Version", "2.0.0")?,
@@ -824,7 +847,34 @@ impl Arweave {
         let transaction = self
             .create_transaction(bundle, other_tags, None, price_terms)
             .await?;
-        Ok(transaction)
+
+        if let Some(log_dir) = log_dir {
+            fs::write(
+                log_dir
+                    .join(format!("manifest_{}", transaction.id))
+                    .with_extension("json"),
+                serde_json::to_string(&manifest_object)?,
+            )
+            .await?;
+        }
+
+        Ok((transaction, manifest_object))
+    }
+
+    pub async fn write_manifest(
+        &self,
+        manifest_object: Value,
+        transaction_id: String,
+        log_dir: PathBuf,
+    ) -> Result<(), Error> {
+        fs::write(
+            log_dir
+                .join(format!("manifest_{}", transaction_id))
+                .with_extension("json"),
+            serde_json::to_string(&manifest_object)?,
+        )
+        .await?;
+        Ok(())
     }
 }
 
@@ -832,12 +882,13 @@ impl Arweave {
 mod tests {
     use crate::{
         error::Error,
-        transaction::{Base64, FromUtf8Strs, Tag, ToItems},
+        transaction::{Base64, FromUtf8Strs, Tag},
         utils::{TempDir, TempFrom},
         Arweave, Status,
     };
     use glob::glob;
     use matches::assert_matches;
+    use serde_json;
     use std::{path::PathBuf, str::FromStr};
 
     #[tokio::test]
@@ -901,7 +952,7 @@ mod tests {
         let log_dir = temp_log_dir.0.clone();
 
         arweave
-            .write_status(status.clone(), log_dir.clone())
+            .write_status(status.clone(), log_dir.clone(), None)
             .await?;
 
         let read_status = arweave.read_status(file_path, log_dir).await?;
@@ -923,94 +974,18 @@ mod tests {
 
         let paths_iter = glob("tests/fixtures/[0-1]*.png")?.filter_map(Result::ok);
         let pre_data_items = arweave
-            .create_data_items_from_file_paths(paths_iter, Vec::new(), None)
+            .create_data_items_from_file_paths(paths_iter, Vec::new())
             .await?;
 
-        let data_item_lens: Vec<usize> = pre_data_items.iter().map(|d| d.data.0.len()).collect();
-        let bundle = arweave.create_bundle_from_data_items(pre_data_items.clone())?;
+        let (bundle, manifest_object) =
+            arweave.create_bundle_from_data_items(pre_data_items.clone())?;
 
-        // 2 items in the bundle
-        assert_eq!(u64::from_le_bytes(bundle[0..8].try_into().unwrap()), 2);
-
-        // 2892 bytes in the first item
-        assert_eq!(u64::from_le_bytes(bundle[32..40].try_into().unwrap()), 2892);
-
-        // 2978 bytes in the secpnd item
-        assert_eq!(
-            u64::from_le_bytes(bundle[96..104].try_into().unwrap()),
-            2978
+        println!(
+            "manifest_obj: {}",
+            serde_json::to_string_pretty(&manifest_object).unwrap()
         );
-
-        // signature type is 1
-        assert_eq!(
-            u16::from_le_bytes(bundle[160..162].try_into().unwrap()),
-            1u16
-        );
-
-        // owner is same as signer
-        assert_eq!(
-            &bundle[(162 + 512)..(162 + 1024)],
-            &arweave.crypto.keypair_modulus().unwrap().0
-        );
-
-        // anchor is present
-        assert_eq!(bundle[160 + 2 + 1024 + 1], 0);
-
-        // number of tags is 2
-        assert_eq!(
-            u64::from_le_bytes(
-                bundle[(160 + 2 + 1024 + 1 + 1)..(160 + 2 + 1024 + 1 + 1 + 8)]
-                    .try_into()
-                    .unwrap()
-            ),
-            2u64
-        );
-
-        // number of tag bytes is 52
-        assert_eq!(
-            u64::from_le_bytes(
-                bundle[(160 + 2 + 1024 + 1 + 1 + 8)..(160 + 2 + 1024 + 1 + 1 + 8 + 8)]
-                    .try_into()
-                    .unwrap()
-            ),
-            52u64
-        );
-
-        // sig type of second item is 1
-        assert_eq!(
-            u16::from_le_bytes(
-                bundle[(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 52 + &data_item_lens[0])
-                    ..(160 + 2 + 1024 + 1 + 1 + 8 + 8 + 52 + &data_item_lens[0] + 2)]
-                    .try_into()
-                    .unwrap()
-            ),
-            1u16
-        );
-
-        // data items verify and deserialize
         let post_data_items = arweave.deserialize_bundle(bundle)?;
-        assert_eq!(post_data_items.len(), 2);
-        let mut pre_data_items_iter = pre_data_items.into_iter();
-        let mut post_data_items_iter = post_data_items.into_iter();
-
-        // deep hash items and signatures are the same and singatures verify
-        for _ in 0..2 {
-            let pre_data_item = pre_data_items_iter.next().unwrap();
-            let post_data_item = post_data_items_iter.next().unwrap();
-            let pre_deep_hash = arweave
-                .crypto
-                .deep_hash(pre_data_item.to_deep_hash_item().unwrap())
-                .unwrap();
-            let post_deep_hash = arweave
-                .crypto
-                .deep_hash(post_data_item.to_deep_hash_item().unwrap())
-                .unwrap();
-            assert_eq!(pre_deep_hash, post_deep_hash);
-            assert_eq!(pre_data_item.signature, post_data_item.signature);
-            arweave
-                .crypto
-                .verify(&pre_data_item.signature.0, &pre_deep_hash)?;
-        }
+        assert_eq!(post_data_items.len(), 3);
 
         Ok(())
     }

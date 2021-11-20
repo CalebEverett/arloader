@@ -135,11 +135,12 @@ fn id_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Specify the transaction id.")
 }
 
-fn log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
+fn log_dir_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
     Arg::with_name("log_dir")
         .long("log-dir")
         .value_name("LOG_DIR")
         .takes_value(true)
+        .takes_value(required)
         .validator(is_parsable::<PathBuf>)
         .help(
             "Directory that status updates will be written to. If not \
@@ -316,7 +317,7 @@ fn get_app() -> App<'static, 'static> {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("get-pending-count")
+            SubCommand::with_name("pending")
                 .about("Displays the count of pending transactions in the mempool."),
         )
         .subcommand(
@@ -328,7 +329,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("upload")
                 .about("Uploads one or more files that match the specified glob.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg())
+                .arg(log_dir_arg(true))
                 .arg(tags_arg())
                 .arg(reward_multiplier_arg())
                 .arg(with_sol_arg(true))
@@ -345,25 +346,19 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("update-status")
                 .about("Updates statuses stored in `log_dir` from the network.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg()),
+                .arg(log_dir_arg(true)),
         )
         .subcommand(
             SubCommand::with_name("status-report")
                 .about("Prints a summary of statuses stored in `log_dir`.")
-                .arg(glob_arg(false))
-                .arg(log_dir_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("generate-manifest")
-                .about("Writes a manifest.json to `log_dir`.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg()),
+                .arg(log_dir_arg(true)),
         )
         .subcommand(
             SubCommand::with_name("upload-filter")
                 .about("Re-uploads files that meet filter criteria.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg())
+                .arg(log_dir_arg(true))
                 .arg(reward_multiplier_arg())
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
@@ -373,7 +368,7 @@ fn get_app() -> App<'static, 'static> {
                 .about("Lists statuses as currently store in `log_dir`.")
                 .help("")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg())
+                .arg(log_dir_arg(true))
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
         );
@@ -410,7 +405,7 @@ async fn main() -> CommandResult {
                 .map(|v| v.to_string());
             command_wallet_balance(&arweave, wallet_address).await
         }
-        ("get-pending-count", Some(_)) => command_get_pending_count(&arweave).await,
+        ("pending", Some(_)) => command_get_pending_count(&arweave).await,
         ("get-transaction", Some(sub_arg_matches)) => {
             let id = sub_arg_matches.value_of("id").unwrap();
             command_get_transaction(&arweave, id).await
@@ -512,11 +507,6 @@ async fn main() -> CommandResult {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
             command_status_report(&arweave, glob_str, log_dir).await
-        }
-        ("generate-manifest", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
-            command_generate_manifest(&arweave, glob_str, log_dir).await
         }
         ("upload-filter", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
@@ -672,7 +662,7 @@ async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
             count,
             124u8 as char,
             std::iter::repeat('\u{25A5}')
-                .take(count / 50)
+                .take(count / 50 + 1)
                 .collect::<String>()
         );
         counter += 1;
@@ -754,7 +744,7 @@ async fn command_upload_bundle(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-        let transaction = arweave
+        let (transaction, manifest_object) = arweave
             .create_bundle_transaction_from_file_paths(
                 paths_iter,
                 tags,
@@ -765,18 +755,32 @@ async fn command_upload_bundle(
 
         let signed_transaction = arweave.sign_transaction(transaction)?;
 
-        let status = arweave.post_transaction(&signed_transaction, None).await?;
+        let mut status = arweave.post_transaction(&signed_transaction, None).await?;
+        status.file_path = Some(PathBuf::from(manifest_object["id"].as_str().unwrap()));
         let id = status.id.clone();
-        println!("{}", Status::header_string(&output_format));
+
+        println!("{}", Status::bundle_header_string(&output_format));
         print!("{}", output_format.formatted_string(&status));
 
-        if let Some(log_dir) = log_dir {
-            arweave.write_status(status, log_dir).await?;
+        if let Some(log_dir) = log_dir.clone() {
+            arweave
+                .write_status(status, log_dir.clone(), Some(format!("txid_{}", id)))
+                .await?;
+            arweave
+                .write_manifest(manifest_object.clone(), id.to_string(), log_dir)
+                .await?;
         }
+
         println!(
-            "Uploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
+            "\nUploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
             num,
             id
+        );
+        println!(
+            "\nFiles will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
+            \nThey will also be available at https://arweave.net/{manifest_id}/<file_path>.
+            \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
+            logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
         )
     }
     Ok(())
@@ -868,7 +872,7 @@ async fn command_upload_bundle_with_sol(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-        let transaction = arweave
+        let (transaction, manifest_object) = arweave
             .create_bundle_transaction_from_file_paths(
                 paths_iter,
                 tags,
@@ -882,18 +886,31 @@ async fn command_upload_bundle_with_sol(
             .await?;
 
         let mut status = arweave.post_transaction(&signed_transaction, None).await?;
+        status.file_path = Some(PathBuf::from(manifest_object["id"].as_str().unwrap()));
         let id = status.id.clone();
-        println!("{}", Status::header_string(&output_format));
+
+        println!("{}", Status::bundle_header_string(&output_format));
         print!("{}", output_format.formatted_string(&status));
 
-        if let Some(log_dir) = log_dir {
+        if let Some(log_dir) = log_dir.clone() {
             status.sol_sig = Some(sig_response);
-            arweave.write_status(status, log_dir).await?;
+            arweave
+                .write_status(status, log_dir.clone(), Some(format!("txid_{}", id)))
+                .await?;
+            arweave
+                .write_manifest(manifest_object.clone(), id.to_string(), log_dir)
+                .await?;
         }
         println!(
-            "Uploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
+            "\nUploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
             num,
             id
+        );
+        println!(
+            "\nFiles will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
+            \nThey will also be available at https://arweave.net/{manifest_id}/<file_path>.
+            \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
+            logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
         )
     }
 
@@ -971,21 +988,6 @@ async fn command_status_report(arweave: &Arweave, glob_str: &str, log_dir: &str)
     let summary = arweave.status_summary(paths_iter, log_dir).await?;
 
     println!("{}", summary);
-
-    Ok(())
-}
-
-async fn command_generate_manifest(
-    arweave: &Arweave,
-    glob_str: &str,
-    log_dir: &str,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = PathBuf::from(log_dir);
-
-    let _ = arweave.write_manifest(paths_iter, log_dir.clone()).await?;
-
-    println!("manifest.json written to {}", log_dir.display());
 
     Ok(())
 }
