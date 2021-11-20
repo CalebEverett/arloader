@@ -749,7 +749,7 @@ async fn command_upload_bundle(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-        let transaction = arweave
+        let (transaction, manifest_object) = arweave
             .create_bundle_transaction_from_file_paths(
                 paths_iter,
                 tags,
@@ -760,18 +760,32 @@ async fn command_upload_bundle(
 
         let signed_transaction = arweave.sign_transaction(transaction)?;
 
-        let status = arweave.post_transaction(&signed_transaction, None).await?;
+        let mut status = arweave.post_transaction(&signed_transaction, None).await?;
+        status.file_path = Some(PathBuf::from(manifest_object["id"].as_str().unwrap()));
         let id = status.id.clone();
-        println!("{}", Status::header_string(&output_format));
+
+        println!("{}", Status::bundle_header_string(&output_format));
         print!("{}", output_format.formatted_string(&status));
 
-        if let Some(log_dir) = log_dir {
-            arweave.write_status(status, log_dir).await?;
+        if let Some(log_dir) = log_dir.clone() {
+            arweave
+                .write_status(status, log_dir.clone(), Some(format!("txid_{}", id)))
+                .await?;
+            arweave
+                .write_manifest(manifest_object.clone(), id.to_string(), log_dir)
+                .await?;
         }
+
         println!(
-            "Uploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
+            "\nUploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
             num,
             id
+        );
+        println!(
+            "\nFiles will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
+            \nThey will also be available at https://arweave.net/{manifest_id}/<file_path>.
+            \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
+            logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
         )
     }
     Ok(())
@@ -863,7 +877,7 @@ async fn command_upload_bundle_with_sol(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-        let transaction = arweave
+        let (transaction, manifest_object) = arweave
             .create_bundle_transaction_from_file_paths(
                 paths_iter,
                 tags,
@@ -877,18 +891,31 @@ async fn command_upload_bundle_with_sol(
             .await?;
 
         let mut status = arweave.post_transaction(&signed_transaction, None).await?;
+        status.file_path = Some(PathBuf::from(manifest_object["id"].as_str().unwrap()));
         let id = status.id.clone();
-        println!("{}", Status::header_string(&output_format));
+
+        println!("{}", Status::bundle_header_string(&output_format));
         print!("{}", output_format.formatted_string(&status));
 
-        if let Some(log_dir) = log_dir {
+        if let Some(log_dir) = log_dir.clone() {
             status.sol_sig = Some(sig_response);
-            arweave.write_status(status, log_dir).await?;
+            arweave
+                .write_status(status, log_dir.clone(), Some(format!("txid_{}", id)))
+                .await?;
+            arweave
+                .write_manifest(manifest_object.clone(), id.to_string(), log_dir)
+                .await?;
         }
         println!(
-            "Uploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
+            "\nUploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
             num,
             id
+        );
+        println!(
+            "\nFiles will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
+            \nThey will also be available at https://arweave.net/{manifest_id}/<file_path>.
+            \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
+            logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
         )
     }
 

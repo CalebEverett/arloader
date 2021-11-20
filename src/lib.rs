@@ -332,15 +332,25 @@ impl Arweave {
     /// one status object can exist for a given `file_path`. If for some reason you wanted to record
     /// statuses for multiple uploads of the same file you can provide a different `log_dir` (or copy the
     /// file to a different directory and upload from there).
-    pub async fn write_status(&self, status: Status, log_dir: PathBuf) -> Result<(), Error> {
-        let file_stem = if let Some(file_path) = &status.file_path {
-            if status.id.0.is_empty() {
-                return Err(error::Error::UnsignedTransaction.into());
-            }
-            blake3::hash(file_path.to_str().unwrap().as_bytes()).to_string()
+    pub async fn write_status(
+        &self,
+        status: Status,
+        log_dir: PathBuf,
+        file_stem: Option<String>,
+    ) -> Result<(), Error> {
+        let file_stem = if let Some(stem) = file_stem {
+            stem
         } else {
-            format!("id_{}", status.id)
+            if let Some(file_path) = &status.file_path {
+                if status.id.0.is_empty() {
+                    return Err(error::Error::UnsignedTransaction.into());
+                }
+                blake3::hash(file_path.to_str().unwrap().as_bytes()).to_string()
+            } else {
+                format!("txid_{}", status.id)
+            }
         };
+
         fs::write(
             log_dir.join(file_stem).with_extension("json"),
             serde_json::to_string(&status)?,
@@ -460,7 +470,7 @@ impl Arweave {
             }
             _ => unreachable!(),
         }
-        self.write_status(status.clone(), log_dir).await?;
+        self.write_status(status.clone(), log_dir, None).await?;
         Ok(status)
     }
 
@@ -497,7 +507,7 @@ impl Arweave {
             .await?;
 
         if let Some(log_dir) = log_dir {
-            self.write_status(status.clone(), log_dir).await?;
+            self.write_status(status.clone(), log_dir, None).await?;
         }
         Ok(status)
     }
@@ -552,7 +562,7 @@ impl Arweave {
 
         if let Some(log_dir) = log_dir {
             status.sol_sig = Some(sig_response);
-            self.write_status(status.clone(), log_dir).await?;
+            self.write_status(status.clone(), log_dir, None).await?;
         }
         Ok(status)
     }
@@ -820,7 +830,7 @@ impl Arweave {
         tags: Vec<Tag<String>>,
         log_dir: Option<PathBuf>,
         price_terms: (u64, u64),
-    ) -> Result<Transaction, Error>
+    ) -> Result<(Transaction, Value), Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
     {
@@ -848,7 +858,23 @@ impl Arweave {
             .await?;
         }
 
-        Ok(transaction)
+        Ok((transaction, manifest_object))
+    }
+
+    pub async fn write_manifest(
+        &self,
+        manifest_object: Value,
+        transaction_id: String,
+        log_dir: PathBuf,
+    ) -> Result<(), Error> {
+        fs::write(
+            log_dir
+                .join(format!("manifest_{}", transaction_id))
+                .with_extension("json"),
+            serde_json::to_string(&manifest_object)?,
+        )
+        .await?;
+        Ok(())
     }
 }
 
@@ -926,7 +952,7 @@ mod tests {
         let log_dir = temp_log_dir.0.clone();
 
         arweave
-            .write_status(status.clone(), log_dir.clone())
+            .write_status(status.clone(), log_dir.clone(), None)
             .await?;
 
         let read_status = arweave.read_status(file_path, log_dir).await?;
