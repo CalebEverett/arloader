@@ -745,12 +745,7 @@ async fn command_upload_bundle(
     } else {
         let paths_iter = glob(glob_str)?.filter_map(Result::ok);
         let (transaction, manifest_object) = arweave
-            .create_bundle_transaction_from_file_paths(
-                paths_iter,
-                tags,
-                log_dir.clone(),
-                price_terms,
-            )
+            .create_bundle_transaction_from_file_paths(paths_iter, tags, price_terms)
             .await?;
 
         let signed_transaction = arweave.sign_transaction(transaction)?;
@@ -777,8 +772,8 @@ async fn command_upload_bundle(
             id
         );
         println!(
-            "\nFiles will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
-            \nThey will also be available at https://arweave.net/{manifest_id}/<file_path>.
+            "\nFiles will be available at https://arweave.net/<BUNDLE_ITEM_ID> once the bundle transaction has been confirmed.
+            \nThey will also be available at https://arweave.net/{manifest_id}/<FILE_PATH>.
             \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
             logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
         )
@@ -873,12 +868,7 @@ async fn command_upload_bundle_with_sol(
     } else {
         let paths_iter = glob(glob_str)?.filter_map(Result::ok);
         let (transaction, manifest_object) = arweave
-            .create_bundle_transaction_from_file_paths(
-                paths_iter,
-                tags,
-                log_dir.clone(),
-                price_terms,
-            )
+            .create_bundle_transaction_from_file_paths(paths_iter, tags, price_terms)
             .await?;
 
         let (signed_transaction, sig_response) = arweave
@@ -907,8 +897,8 @@ async fn command_upload_bundle_with_sol(
             id
         );
         println!(
-            "\nFiles will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
-            \nThey will also be available at https://arweave.net/{manifest_id}/<file_path>.
+            "\nFiles will be available at https://arweave.net/<BUNDLE_ITEM_ID> once the bundle transaction has been confirmed.
+            \nThey will also be available at https://arweave.net/{manifest_id}/<FILE_PATH>.
             \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
             logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
         )
