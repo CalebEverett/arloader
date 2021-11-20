@@ -135,11 +135,12 @@ fn id_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Specify the transaction id.")
 }
 
-fn log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
+fn log_dir_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
     Arg::with_name("log_dir")
         .long("log-dir")
         .value_name("LOG_DIR")
         .takes_value(true)
+        .takes_value(required)
         .validator(is_parsable::<PathBuf>)
         .help(
             "Directory that status updates will be written to. If not \
@@ -316,7 +317,7 @@ fn get_app() -> App<'static, 'static> {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("get-pending-count")
+            SubCommand::with_name("pending")
                 .about("Displays the count of pending transactions in the mempool."),
         )
         .subcommand(
@@ -328,7 +329,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("upload")
                 .about("Uploads one or more files that match the specified glob.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg())
+                .arg(log_dir_arg(true))
                 .arg(tags_arg())
                 .arg(reward_multiplier_arg())
                 .arg(with_sol_arg(true))
@@ -345,25 +346,19 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("update-status")
                 .about("Updates statuses stored in `log_dir` from the network.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg()),
+                .arg(log_dir_arg(true)),
         )
         .subcommand(
             SubCommand::with_name("status-report")
                 .about("Prints a summary of statuses stored in `log_dir`.")
-                .arg(glob_arg(false))
-                .arg(log_dir_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("generate-manifest")
-                .about("Writes a manifest.json to `log_dir`.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg()),
+                .arg(log_dir_arg(true)),
         )
         .subcommand(
             SubCommand::with_name("upload-filter")
                 .about("Re-uploads files that meet filter criteria.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg())
+                .arg(log_dir_arg(true))
                 .arg(reward_multiplier_arg())
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
@@ -373,7 +368,7 @@ fn get_app() -> App<'static, 'static> {
                 .about("Lists statuses as currently store in `log_dir`.")
                 .help("")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg())
+                .arg(log_dir_arg(true))
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
         );
@@ -410,7 +405,7 @@ async fn main() -> CommandResult {
                 .map(|v| v.to_string());
             command_wallet_balance(&arweave, wallet_address).await
         }
-        ("get-pending-count", Some(_)) => command_get_pending_count(&arweave).await,
+        ("pending", Some(_)) => command_get_pending_count(&arweave).await,
         ("get-transaction", Some(sub_arg_matches)) => {
             let id = sub_arg_matches.value_of("id").unwrap();
             command_get_transaction(&arweave, id).await
@@ -667,7 +662,7 @@ async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
             count,
             124u8 as char,
             std::iter::repeat('\u{25A5}')
-                .take(count / 50)
+                .take(count / 50 + 1)
                 .collect::<String>()
         );
         counter += 1;

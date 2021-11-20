@@ -5,206 +5,101 @@
 
 # arloader
 
-Command line application and library for uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
+Command line application and library for effortlessly uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
 
-Now includes bundles, reward multiplier and pending count. You can upload files matching a glob in a bundle and pay in SOL. You still need to connect an Arweave wallet,
-but you can just download a new one and connect your Solana keypair to pay for transactions without having to purchase AR.
+## Installation
 
-With bundles, you can upload large numbers of files in a single transaction and know the ids of your files before the bundle transaction is confirmed. You also avoid network
-congestion by uploading in a single transaction and with a single, large transaction, you get the benefit of offering a single large reward, instead of multiple small ones, 
-which is more attractive to miners, increasing the likelihood that your transaction will get written quickly.
+1. If you're on Linux, you can install the binary from the [releases on github](https://github.com/CalebEverett/arloader/releases). Otherwise, of if you prefer you can install from [crates.io] once you have [rust installed](https://www.rust-lang.org/tools/install).
+
+```
+cargo install arloader
+```
+
+2. Get an Arweave wallet json file [here](https://faucet.arweave.net/).
+
+3. If you're going to use AR to pay for transactions, get AR tokens. I've been using gate.io despite the high withdrawal fees and KYC delays.
+
+4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
+
+## Usage
+
+If you're uploading more than one file, you should pretty much always be using bundles. Bundles take multiple files and package them together in a single transaction. This is better than uploading multiple individual files because you only have to wait for one transaction to be confirmed. Once the bundle transaction is confirmed, all of your files will be available. Larger transactions with larger rewards are more attractive to miners, which means a larger bundled transaction is more likely to get written quickly than a bunch of smaller individual ones.
+
+Arloader accepts file glob patterns and defaults to creating a bundle for your files.
+
+Arweave gateways only index bundles up to 250MB, so if tjhe aggregate size of all your files is greater than that, you should create multiple bundle transacions each less than 250MB.
+
+1. To get an estimate of the cost of uploading your files run
+
+```
+arloader estimate "<GLOB>"
+```
+
+Make sure to include quotes around your glob patterns, otherwise your shell will expand them into a list of files. Arloader expects a glob pattern, not a list of files.
+
+2. To upload your files run
+
+```
+arloader upload "<GLOB>" --log-dir "<LOG_DIR>"
+```
+
+A json status object gets written to `LOG_DIR` with a file name of `txid_<TXID>.json` that has the transaction id, reward and creation time in it. A manifest file will also be written with a file name of `manifest_<TXID>.json`. This has all of the ids of the files that were included in your bundle it. This manifest was automtically included in your bundle, which means that in addition to being available individually at `https://arweave.net/<BUNDLE_ITEM_ID>`, they will also be available at `https://arweave.net<MANIFEST_ID>/<FILE_PATH>` where `MANIFEST_ID` is the id of the manifest item included in the bundle and `FILE_PATH` is the relative file path of the file included in the `GLOB` pattern you specified. The manifest file is named with the bundle transaction id so you can match them up. `MANIFEST_ID` gets printed out following the upload command and can also be found in the manifest json file in `LOG_DIR` at the `id` key.
+
+```
+ manifest                                     id                                           status     confirms
+--------------------------------------------------------------------------------------------------------------
+ aHYRHIQg2BRqzQcyfYdG7vvsbZZZLkmsUJ8SsDQPsmE  a3USnDu6Goq2O6ndbhtornjDPM3nk9v61E-Oklzgle8  Submitted         0
+
+Uploaded 10 files in 1 bundle transaction. Run `arloader raw-status a3USnDu6Goq2O6ndbhtornjDPM3nk9v61E-Oklzgle8` to confirm status.
+
+Files will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
+
+They will also be available at https://arweave.net/aHYRHIQg2BRqzQcyfYdG7vvsbZZZLkmsUJ8SsDQPsmE/<file_path>.
+```
 
 ## Usage with SOL
 
-1. Get an Arweave wallet json file.
+You can use SOL to pay for your tranactions without going through the hassle of procuring AR tokens.
 
-2. Install
-```
-cargo install arloader
-```
+Arloader usage is pretty much exactly the same as above, with the addtion of the `--with-sol` flag.
 
-3. Get an estimate of how much it is going to cost to store your files:
+1. To get an estimate of the cost of uploading your files run
 
 ```
-arloader estimate-with-sol "tests/fixtures/*.png"
+arloader estimate "<GLOB>" --with-sol
 ```
 
-4. Check the balance of the service wallet to make sure there is enough balance to upload your files.
+2. To upload your files run
 
 ```
-arloader wallet-balance 7nbOsbMYb86qN1YSS0FM514DBctzJ1Swq1PiuXJEWsk
+arloader upload "<GLOB>" --log-dir "<LOG_DIR>" --with sol
 ```
 
-5. Upload your files, specifying a `log_dir` to write statuses to so you check them later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
-```
-arloader upload-with-sol "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
-```
+This will create the same bundle that gets created without using SOL and then goes out to an api to get your transaction signed. Once the SOL payment transaction has gone through, the signature comes back from the api and gets added to your bundle transaction and then your transaction. Then it gets uploaded directly to the [arweave.net] gateway from your computer.
+
+## Reward Multiplier
+
+Arweave is limited to approximately 1,000 transactions every two minutes so if you happen to submit your transaction at a time when there are a lot of pending transactions, it may take longer to get written, or if there are enough more attractive transaction, i.e, with higher rewards, it may not get written at all. To check the current number of pending transactions, run 
 
 ```
- path                            id                                           status     confirms
+arloader pending
+```
+and that will print the number of pending transctions every second for one minute.
+
+```
+ pending tx
 -------------------------------------------------------------------------------------------------
- tests/fixtures/1.png            s0BdmZ6KDfvjWojSr-BW7RnEcJaC44yNboQsL4V4o2c  Submitted         0
- tests/fixtures/2.png            jLBrbCm5gGpxomIFh0GBCxxYkelF-CPaxbxy8hUW2kE  Submitted         0
- tests/fixtures/3.png            rgudrIf_hVF_VRz3-el9-kVaki8U4OEfxTEYEoZ6eME  Submitted         0
- tests/fixtures/4.png            GK6FieopUSDQ7MLPJ1GvoO9227BhdcY8c0AewPF_ZhY  Submitted         0
- tests/fixtures/5.png            Frj44HRVdfvz98x7zR63sTkVLa7I159HI6IsphLHhQc  Submitted         0
- Uploaded 5 files. Run `update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/` to confirm transaction(s).
- ```
+  118 | ▥▥▥
+  123 | ▥▥▥
+  124 | ▥▥▥
+  224 | ▥▥▥▥▥
+  125 | ▥▥▥
+  326 | ▥▥▥▥▥▥▥
+  128 | ▥▥▥
+  ```
 
-## Usage with AR
+Given that Arloader bundles by default, your transaction is hopefully relatively attractive and you don't need to increase the reward to get it written in a timely fashion. However, if you see that there are a lot of transaction pending and you want to be sure your transaction goes through quickly, you can adjust the reward with `--reward-multipler` followed by something tha can be parsed as a float between `1.0` and `10.0`. The reward included in your transaction will then be multiplied by this factor when it gets submitted. Similar to the `--with-sol` flag, you can add `--reward-multipler` to both `estimate` and `upload` commands.
 
-1. Get an Arweave wallet json file and purchase AR tokens.
+## Usage without Bundles
 
-2. Install
-```
-cargo install arloader
-```
-
-3. Get an estimate of how much it is going to cost to store your files:
-
-```
-arloader estimate "tests/fixtures/*.png"
-```
-
-```
-The price to upload 10 files with 18265 total bytes is 9071040 winstons ($0.00045219137).
-```
-4. Check your wallet balance
-```
-arloader wallet-balance
-```
-```
-Wallet balance is 1549658342531 winstons ($49.82). At the current price of 444274406 winstons ($0.0221) per MB, you can upload 3488 MB of data.
-```
-5. Upload your files, specifying a `log_dir` to write statuses to so you check them later. Make sure to wrap your paths in quotes to avoid your shell expanding them into lists of files.
-```
-arloader upload "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
-```
-
-```
- path                            id                                           status     confirms
--------------------------------------------------------------------------------------------------
- tests/fixtures/1.png            s0BdmZ6KDfvjWojSr-BW7RnEcJaC44yNboQsL4V4o2c  Submitted         0
- tests/fixtures/2.png            jLBrbCm5gGpxomIFh0GBCxxYkelF-CPaxbxy8hUW2kE  Submitted         0
- tests/fixtures/3.png            rgudrIf_hVF_VRz3-el9-kVaki8U4OEfxTEYEoZ6eME  Submitted         0
- tests/fixtures/4.png            GK6FieopUSDQ7MLPJ1GvoO9227BhdcY8c0AewPF_ZhY  Submitted         0
- tests/fixtures/5.png            Frj44HRVdfvz98x7zR63sTkVLa7I159HI6IsphLHhQc  Submitted         0
- Uploaded 5 files. Run `update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/` to confirm transaction(s).
- ```
-
-Uploads are async and utilize streams, although the default buffer size is 1. To increase the buffer size, pass the flag `--buffer` followed by the size.
-
-6. Your transactions may not be written write away, depending on network traffic and how long it takes miners to add them to the blockchain. To check the status of your transactions run:
-
-```
-arloader update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
-```
-```
- path                            id                                           status     confirms
--------------------------------------------------------------------------------------------------
- tests/fixtures/1.png            s0BdmZ6KDfvjWojSr-BW7RnEcJaC44yNboQsL4V4o2c  Confirmed         3
- tests/fixtures/2.png            jLBrbCm5gGpxomIFh0GBCxxYkelF-CPaxbxy8hUW2kE  Confirmed         2
- tests/fixtures/3.png            rgudrIf_hVF_VRz3-el9-kVaki8U4OEfxTEYEoZ6eME  Confirmed         1
- tests/fixtures/4.png            GK6FieopUSDQ7MLPJ1GvoO9227BhdcY8c0AewPF_ZhY  Confirmed         1
- tests/fixtures/5.png            Frj44HRVdfvz98x7zR63sTkVLa7I159HI6IsphLHhQc  Confirmed         1
- ```
-
-6. To get a summary report of the status of your uploads, run:
-```
-arloader status-report "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
-```
-```
- status                count
------------------------------
- Submitted                 0
- Pending                   0
- NotFound                  0
- Confirmed                 5
------------------------------
- Total                     5
- ```
-
-7. If you wanted to determine whether any of your upload transactions were unsuccessful - you can filter the statuses of your files by status and by number of confirmations.
-
-```
-arloader list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ -max-confirms 1
-```
-
-```
- path                            id                                           status     confirms
--------------------------------------------------------------------------------------------------
- tests/fixtures/3.png            rgudrIf_hVF_VRz3-el9-kVaki8U4OEfxTEYEoZ6eME  Confirmed         1
- tests/fixtures/4.png            GK6FieopUSDQ7MLPJ1GvoO9227BhdcY8c0AewPF_ZhY  Confirmed         1
- tests/fixtures/5.png            Frj44HRVdfvz98x7zR63sTkVLa7I159HI6IsphLHhQc  Confirmed         1
-Found 3 files matching filter criteria.
-```
-
-8. If you then want to re-upload some of your files, you can run 
-```
-arloader upload-filter "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --max-confirms 1 --buffer 3
-```
-with the same filter criteria you used above.
-```
- path                            id                                           status     confirms
--------------------------------------------------------------------------------------------------
- tests/fixtures/4.png            NaB-1fZzzu1ntIe7APxhXZQlmEWz6PDi3oKkfIqYsLg  Submitted         0
- tests/fixtures/3.png            MUaEgj2qzrRfIEgRXyJJFw-ilKk7YvTVqBMnT6K7kaM  Submitted         0
- tests/fixtures/5.png            NLkmVtUAsphbmjNYMWTMMbZ7Kd6l40Fsj4MagKDkgRA  Submitted         0
-Uploaded 3 files. Run `update-statuses` to confirm acceptance.
-
-and then if you run 
-```
-arloader update-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/
-```
-you can see that your files have been re-uploaded.
-```
-```
- path                            id                                           status     confirms
--------------------------------------------------------------------------------------------------
- tests/fixtures/1.png            s0BdmZ6KDfvjWojSr-BW7RnEcJaC44yNboQsL4V4o2c  Confirmed        14
- tests/fixtures/2.png            jLBrbCm5gGpxomIFh0GBCxxYkelF-CPaxbxy8hUW2kE  Confirmed        14
- tests/fixtures/3.png            cA2ZrJSzEH4dJWQgTIrk7uVd9WSXPJTDBsONWk779No  Pending           0
- tests/fixtures/4.png            OTSp9uxU02ZlTDnSuZT70CzFl1VCN5bveW2-W7hrUZ0  Pending           0
- tests/fixtures/5.png            nWChdcmmIBLYHAjD90IuRVEsd3D3-WzUaknskK9f790  Pending           0
-Updated 5 statuses.
-```
-9. If you want to get the transaction ids for all your uploads, the status objects are written to json files in `log_dir` or you can get json output by passing `json` to the `output flag`.
-
-```
-arloader list-status "tests/fixtures/[1-5]*.png" --log-dir target/tmp/ --output json
-```
-
-```
-{
-  "id": "s0BdmZ6KDfvjWojSr-BW7RnEcJaC44yNboQsL4V4o2c",
-  "status": "Confirmed",
-  "file_path": "tests/fixtures/1.png",
-  "created_at": "2021-10-31T08:22:48.026149300Z",
-  "last_modified": "2021-10-31T09:00:56.406929800Z",
-  "reward": 2150860,
-  "block_height": 801254,
-  "block_indep_hash": "QixYntgtTrp83jB97bxyJEKsihZnIACZ7mowGmTxRPbqUXuCHMhM9YywwX5Y6rpO",
-  "number_of_confirmations": 14
-},
-{
-  "id": "jLBrbCm5gGpxomIFh0GBCxxYkelF-CPaxbxy8hUW2kE",
-  "status": "Confirmed",
-  "file_path": "tests/fixtures/2.png",
-  "created_at": "2021-10-31T08:22:50.477367700Z",
-  "last_modified": "2021-10-31T09:00:57.849300500Z",
-  "reward": 2150860,
-  "block_height": 801255,
-  "block_indep_hash": "4qPA3zuROGZ6HKkjf7YtUJxyEBJaUMnZQojCSknuGg8g5bgs6aZGJUSXEp-maSyT",
-  "number_of_confirmations": 14
-},
-{
-  "id": "cA2ZrJSzEH4dJWQgTIrk7uVd9WSXPJTDBsONWk779No",
-  "status": "Pending",
-  "file_path": "tests/fixtures/3.png",
-  "created_at": "2021-10-31T09:00:43.362172200Z",
-  "last_modified": "2021-10-31T09:00:59.089684200Z",
-  "reward": 2150860
-},
-```
-
-Keep in mind that the `list-status` command is just reading statuses from disk. You need to run `update-status` to get them updated from the network.
+You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `LOG_DIR` and you can run `update` status to update them from the network and `status-report` for a count of transactions by status.
