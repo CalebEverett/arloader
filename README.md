@@ -9,7 +9,7 @@ Command line application and library for effortlessly uploading files to [Arweav
 
 ## Installation
 
-1. If you're on Linux, you can install the binary from the [releases on github](https://github.com/CalebEverett/arloader/releases). Otherwise, of if you prefer you can install from [crates.io] once you have [rust installed](https://www.rust-lang.org/tools/install).
+1. If you're on Linux, you can install the binary from the [releases on github](https://github.com/CalebEverett/arloader/releases). Otherwise, of if you prefer, you can install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install).
 
 ```
 cargo install arloader
@@ -17,7 +17,7 @@ cargo install arloader
 
 2. Get an Arweave wallet json file [here](https://faucet.arweave.net/).
 
-3. If you're going to use AR to pay for transactions, get AR tokens. I've been using gate.io despite the high withdrawal fees and KYC delays.
+3. If you're going to use AR to pay for transactions, get AR tokens. I've been using [gate.io](https://gate.io) despite the high withdrawal fees and KYC delays.
 
 4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
 
@@ -27,7 +27,7 @@ If you're uploading more than one file, you should pretty much always be using b
 
 Arloader accepts file glob patterns and defaults to creating a bundle for your files.
 
-Arweave gateways only index bundles up to 250MB, so if tjhe aggregate size of all your files is greater than that, you should create multiple bundle transacions each less than 250MB.
+Arweave gateways only index bundles up to 250MB, so if the aggregate size of all your files is greater than that, you should create multiple bundle transactions each less than 250MB.
 
 1. To get an estimate of the cost of uploading your files run
 
@@ -43,7 +43,7 @@ Make sure to include quotes around your glob patterns, otherwise your shell will
 arloader upload "<GLOB>" --log-dir "<LOG_DIR>"
 ```
 
-A json status object gets written to `LOG_DIR` with a file name of `txid_<TXID>.json` that has the transaction id, reward and creation time in it. A manifest file will also be written with a file name of `manifest_<TXID>.json`. This has all of the ids of the files that were included in your bundle it. This manifest was automtically included in your bundle, which means that in addition to being available individually at `https://arweave.net/<BUNDLE_ITEM_ID>`, they will also be available at `https://arweave.net<MANIFEST_ID>/<FILE_PATH>` where `MANIFEST_ID` is the id of the manifest item included in the bundle and `FILE_PATH` is the relative file path of the file included in the `GLOB` pattern you specified. The manifest file is named with the bundle transaction id so you can match them up. `MANIFEST_ID` gets printed out following the upload command and can also be found in the manifest json file in `LOG_DIR` at the `id` key.
+A json status object gets written to `LOG_DIR` with a file name of `txid_<TXID>.json` that has the transaction id, reward and creation time in it. A manifest file will also be written with a file name of `manifest_<TXID>.json`. This has all of the ids of the files that were included in your bundle it. This manifest was automtically included in your bundle, which means that in addition to being available individually at `https://arweave.net/<BUNDLE_ITEM_ID>`, they will also be available at `https://arweave.net<MANIFEST_ID>/<FILE_PATH>` where `MANIFEST_ID` is the id of the manifest item included in the bundle and `FILE_PATH` is the relative file path of the file included in the `GLOB` pattern you specified. The manifest file is named with the bundle transaction id so you can match them up. `MANIFEST_ID` gets printed out following the upload command and can also be found in the manifest json file in `LOG_DIR` at the `manifest_id` key. Paths relative to `MANIFEST_ID` can be found at the `relative_paths` key and paths with the `BUNDLE_ITEM_ID` can be found at the `id_paths` key, with corresponding indexes.
 
 ```
  manifest                                     id                                           status     confirms
@@ -52,16 +52,16 @@ A json status object gets written to `LOG_DIR` with a file name of `txid_<TXID>.
 
 Uploaded 10 files in 1 bundle transaction. Run `arloader raw-status a3USnDu6Goq2O6ndbhtornjDPM3nk9v61E-Oklzgle8` to confirm status.
 
-Files will be available at https://arweave.net/<bundle_item_id> once the bundle transaction has been confirmed.
+Files will be available at https://arweave.net/<BUNDLE_ITEM_ID> once the bundle transaction has been confirmed.
 
-They will also be available at https://arweave.net/aHYRHIQg2BRqzQcyfYdG7vvsbZZZLkmsUJ8SsDQPsmE/<file_path>.
+They will also be available at https://arweave.net/aHYRHIQg2BRqzQcyfYdG7vvsbZZZLkmsUJ8SsDQPsmE/<FILE_PATH>.
 ```
 
 ## Usage with SOL
 
 You can use SOL to pay for your tranactions without going through the hassle of procuring AR tokens.
 
-Arloader usage is pretty much exactly the same as above, with the addtion of the `--with-sol` flag.
+Arloader usage is pretty much exactly the same as above, with the addition of the `--with-sol` flag.
 
 1. To get an estimate of the cost of uploading your files run
 
@@ -75,7 +75,7 @@ arloader estimate "<GLOB>" --with-sol
 arloader upload "<GLOB>" --log-dir "<LOG_DIR>" --with sol
 ```
 
-This will create the same bundle that gets created without using SOL and then goes out to an api to get your transaction signed. Once the SOL payment transaction has gone through, the signature comes back from the api and gets added to your bundle transaction and then your transaction. Then it gets uploaded directly to the [arweave.net] gateway from your computer.
+This will create the same bundle that gets created without using SOL and then goes out to an api to get your transaction signed. Once the SOL payment transaction has gone through, the signature comes back from the api and gets added to your bundle transaction and then your transaction. Then it gets uploaded directly to the [arweave.net](https:://arweave.net) gateway from your computer.
 
 ## Reward Multiplier
 

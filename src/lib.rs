@@ -848,16 +848,6 @@ impl Arweave {
             .create_transaction(bundle, other_tags, None, price_terms)
             .await?;
 
-        if let Some(log_dir) = log_dir {
-            fs::write(
-                log_dir
-                    .join(format!("manifest_{}", transaction.id))
-                    .with_extension("json"),
-                serde_json::to_string(&manifest_object)?,
-            )
-            .await?;
-        }
-
         Ok((transaction, manifest_object))
     }
 
@@ -867,11 +857,22 @@ impl Arweave {
         transaction_id: String,
         log_dir: PathBuf,
     ) -> Result<(), Error> {
+        let manifest_id = manifest_object["id"].as_str().unwrap();
+        let mut relative_paths = Vec::<String>::new();
+        let mut id_paths = Vec::<String>::new();
+        for (file_path, id_obj) in manifest_object["manifest"]["paths"].as_object().unwrap() {
+            relative_paths.push(format!("https://arweave.net/{}/{}", manifest_id, file_path));
+            id_paths.push(format!(
+                "https://arweave.net/{}",
+                id_obj["id"].as_str().unwrap()
+            ));
+        }
+        let value = json!({"manifest_id": manifest_id, "relative_paths": relative_paths, "id_paths": id_paths});
         fs::write(
             log_dir
                 .join(format!("manifest_{}", transaction_id))
                 .with_extension("json"),
-            serde_json::to_string(&manifest_object)?,
+            serde_json::to_string(&value)?,
         )
         .await?;
         Ok(())
