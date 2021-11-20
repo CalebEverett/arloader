@@ -98,8 +98,8 @@ and that will print the number of pending transctions every second for one minut
   128 | ▥▥▥
   ```
 
-Given that Arloader bundles by default, your transaction is hopefully relatively attractive and you don't need to increase the reward to get it written in a timely fashion. However, if you see that there are a lot of transaction pending and you want to be sure your transaction goes through quickly, you can adjust the reward with `--reward-multipler` followed by something tha can be parsed as a float between `1.0` and `10.0`. The reward included in your transaction will then be multiplied by this factor when it gets submitted. Similar to the `--with-sol` flag, you can add `--reward-multipler` to both `estimate` and `upload` commands.
+Given that Arloader bundles by default, your transaction is hopefully relatively attractive and you don't need to increase the reward to get it written in a timely fashion. However, if you see that there are a lot of transactions pending and you want to be sure your transaction goes through quickly, you can adjust the reward with `--reward-multipler` followed by something tha can be parsed as a float between `1.0` and `10.0`. The reward included in your transaction will then be multiplied by this factor when it gets submitted. Similar to the `--with-sol` flag, you can add `--reward-multiplier` to both `estimate` and `upload` commands.
 
 ## Usage without Bundles
 
-You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `LOG_DIR` and you can run `update` status to update them from the network and `status-report` for a count of transactions by status.
+You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `LOG_DIR` and you can run `update-status` to update them from the network and `status-report` for a count of transactions by status.

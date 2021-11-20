@@ -4,7 +4,7 @@ use arloader::{
     status::{OutputFormat, OutputHeader, Status, StatusCode},
     transaction::{Base64, Tag},
     upload_files_stream,
-    utils::{TempDir, TempFrom},
+    utils::TempDir,
     Arweave,
 };
 use futures::{future::try_join_all, StreamExt};

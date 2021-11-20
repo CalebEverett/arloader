@@ -828,7 +828,6 @@ impl Arweave {
         &self,
         paths_iter: IP,
         tags: Vec<Tag<String>>,
-        log_dir: Option<PathBuf>,
         price_terms: (u64, u64),
     ) -> Result<(Transaction, Value), Error>
     where
@@ -884,13 +883,14 @@ mod tests {
     use crate::{
         error::Error,
         transaction::{Base64, FromUtf8Strs, Tag},
-        utils::{TempDir, TempFrom},
+        utils::TempDir,
         Arweave, Status,
     };
+    use futures::future::try_join_all;
     use glob::glob;
     use matches::assert_matches;
-    use serde_json;
     use std::{path::PathBuf, str::FromStr};
+    use tokio::fs;
 
     #[tokio::test]
     async fn test_cannot_post_unsigned_transaction() -> Result<(), Error> {
@@ -964,7 +964,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_deserialize_bundle() -> Result<(), Error> {
+    async fn test_create_and_deserialize_large_bundle() -> Result<(), Error> {
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
@@ -973,20 +973,28 @@ mod tests {
         )
         .await?;
 
-        let paths_iter = glob("tests/fixtures/[0-1]*.png")?.filter_map(Result::ok);
+        let file_path = PathBuf::from("tests/fixtures/1mb.bin");
+        let temp_dir = TempDir::from_str("./tests/").await?;
+
+        let _ = try_join_all((0..100).map(|i| {
+            fs::copy(
+                file_path.clone(),
+                temp_dir.0.join(format!("{}", i)).with_extension("bin"),
+            )
+        }))
+        .await?;
+
+        let glob_str = format!("{}/*.bin", temp_dir.0.display().to_string());
+
+        let paths_iter = glob(&glob_str)?.filter_map(Result::ok);
         let pre_data_items = arweave
             .create_data_items_from_file_paths(paths_iter, Vec::new())
             .await?;
 
-        let (bundle, manifest_object) =
-            arweave.create_bundle_from_data_items(pre_data_items.clone())?;
+        let (bundle, _) = arweave.create_bundle_from_data_items(pre_data_items.clone())?;
 
-        println!(
-            "manifest_obj: {}",
-            serde_json::to_string_pretty(&manifest_object).unwrap()
-        );
         let post_data_items = arweave.deserialize_bundle(bundle)?;
-        assert_eq!(post_data_items.len(), 3);
+        assert_eq!(post_data_items.len(), 101);
 
         Ok(())
     }
