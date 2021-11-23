@@ -1,10 +1,12 @@
 use arloader::{
     error::Error,
+    file_stem_is_valid_txid,
     solana::{FLOOR, RATE, SOL_AR_BASE_URL},
-    status::{OutputFormat, OutputHeader, Status, StatusCode},
+    status::{OutputFormat, StatusCode},
     transaction::{Base64, FromUtf8Strs, Tag},
-    update_statuses_stream, upload_files_stream, upload_files_with_sol_stream, Arweave, BLOCK_SIZE,
-    WINSTONS_PER_AR,
+    update_bundle_statuses_stream, update_statuses_stream, upload_bundles_stream,
+    upload_bundles_stream_with_sol, upload_files_stream, upload_files_with_sol_stream, Arweave,
+    BLOCK_SIZE, WINSTONS_PER_AR,
 };
 use clap::{
     self, crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
@@ -15,7 +17,10 @@ use glob::glob;
 use num_traits::cast::ToPrimitive;
 use solana_sdk::signer::keypair;
 use std::{fmt::Display, path::PathBuf, str::FromStr};
-use tokio::time::{sleep, Duration};
+use tokio::{
+    fs,
+    time::{sleep, Duration},
+};
 use url::Url;
 
 pub type CommandResult = Result<(), Error>;
@@ -72,6 +77,32 @@ fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
             }
         }
         Err(_) => Err(format!("Not a valid multiplier.")),
+    }
+}
+
+fn is_valid_bundle_size(bundle_size: String) -> Result<(), String> {
+    match bundle_size.parse::<u64>() {
+        Ok(n) => {
+            if n < 225000000 {
+                Ok(())
+            } else {
+                Err(format!("Bundle data size must be less than 225MB."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid multiplier.")),
+    }
+}
+
+fn is_valid_log_dir(log_dir: String) -> Result<(), String> {
+    match log_dir.parse::<PathBuf>() {
+        Ok(p) => {
+            if p.exists() {
+                Ok(())
+            } else {
+                Err(format!("Directory does not exist."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid diretory.")),
     }
 }
 
@@ -141,7 +172,7 @@ fn log_dir_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
         .value_name("LOG_DIR")
         .takes_value(true)
         .takes_value(required)
-        .validator(is_parsable::<PathBuf>)
+        .validator(is_valid_log_dir)
         .help(
             "Directory that status updates will be written to. If not \
         provided, status updates will not be written.",
@@ -245,8 +276,18 @@ fn buffer_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("BUFFER")
         .takes_value(true)
         .validator(is_parsable::<usize>)
-        .default_value("1")
-        .help("Sets the maximum number of concurrent network requests. Defaults to 1.")
+        .default_value("10")
+        .help("Sets the maximum number of concurrent network requests")
+}
+
+fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("bundle_size")
+        .long("bundle-size")
+        .value_name("BUNDLE_SIZE")
+        .takes_value(true)
+        .validator(is_valid_bundle_size)
+        .default_value("100000000")
+        .help("Sets the maximum amout of file data to include in a bundle.")
 }
 
 fn get_app() -> App<'static, 'static> {
@@ -335,18 +376,27 @@ fn get_app() -> App<'static, 'static> {
                 .arg(with_sol_arg(true))
                 .arg(sol_keypair_path_arg())
                 .arg(no_bundle_arg())
-                .arg(buffer_arg()),
+                .arg(buffer_arg())
+                .arg(bundle_size_arg()),
         )
         .subcommand(
-            SubCommand::with_name("raw-status")
-                .about("Prints the raw status of a transaction from the network.")
+            SubCommand::with_name("get-status")
+                .about("Prints the status of a transaction from the network.")
                 .arg(id_arg()),
         )
         .subcommand(
             SubCommand::with_name("update-status")
-                .about("Updates statuses stored in `log_dir` from the network.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg(true)),
+                .about("Updates statuses stored in `log_dir`. Glob arg only used for --no-bundle.")
+                .arg(log_dir_arg(true))
+                .arg(glob_arg(false))
+                .arg(no_bundle_arg())
+                .arg(buffer_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("upload-manifest")
+                .about("Uploads a manifest for files uploaded in bundles with statuses stored in `log_dir`.")
+                .arg(log_dir_arg(true))
+                .arg(reward_multiplier_arg())
         )
         .subcommand(
             SubCommand::with_name("status-report")
@@ -414,6 +464,7 @@ async fn main() -> CommandResult {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir");
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
+            let bundle_size = value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap();
             let with_sol = sub_arg_matches.is_present("with_sol");
             let no_bundle = sub_arg_matches.is_present("no_bundle");
             let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
@@ -421,13 +472,15 @@ async fn main() -> CommandResult {
 
             match (with_sol, no_bundle) {
                 (false, false) => {
-                    command_upload_bundle(
+                    command_upload_bundles(
                         &arweave,
                         glob_str,
                         log_dir,
                         get_tags_vec(sub_arg_matches.values_of("tags")),
+                        bundle_size,
                         reward_mult,
                         output_format,
+                        buffer,
                     )
                     .await
                 }
@@ -444,14 +497,16 @@ async fn main() -> CommandResult {
                     .await
                 }
                 (true, false) => {
-                    command_upload_bundle_with_sol(
+                    command_upload_bundles_with_sol(
                         &arweave,
                         glob_str,
                         log_dir,
                         get_tags_vec(sub_arg_matches.values_of("tags")),
+                        bundle_size,
                         reward_mult,
-                        sub_arg_matches.value_of("sol_keypair_path").unwrap(),
                         output_format,
+                        buffer,
+                        sub_arg_matches.value_of("sol_keypair_path").unwrap(),
                     )
                     .await
                 }
@@ -470,9 +525,10 @@ async fn main() -> CommandResult {
                 }
             }
         }
-        ("raw-status", Some(sub_arg_matches)) => {
+        ("get-status", Some(sub_arg_matches)) => {
             let id = sub_arg_matches.value_of("id").unwrap();
-            command_get_raw_status(&arweave, id).await
+            let output_format = app_matches.value_of("output_format").unwrap_or("");
+            command_get_status(&arweave, id, output_format).await
         }
         ("list-status", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
@@ -497,16 +553,37 @@ async fn main() -> CommandResult {
             .await
         }
         ("update-status", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let glob_str = sub_arg_matches.value_of("glob");
+            let no_bundle = sub_arg_matches.is_present("no_bundle");
             let output_format = app_matches.value_of("output_format");
-            let buffer = app_matches.value_of("buffer");
-            command_update_statuses(&arweave, glob_str, log_dir, output_format, buffer).await
+            let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
+
+            match no_bundle {
+                true => {
+                    command_update_statuses(
+                        &arweave,
+                        glob_str.unwrap(),
+                        log_dir,
+                        output_format,
+                        buffer,
+                    )
+                    .await
+                }
+                false => {
+                    command_update_bundle_statuses(&arweave, log_dir, output_format, buffer).await
+                }
+            }
         }
         ("status-report", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
             command_status_report(&arweave, glob_str, log_dir).await
+        }
+        ("upload-manifest", Some(sub_arg_matches)) => {
+            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
+            command_upload_manifest(&arweave, log_dir, reward_mult).await
         }
         ("upload-filter", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
@@ -611,10 +688,20 @@ async fn command_get_transaction(arweave: &Arweave, id: &str) -> CommandResult {
     Ok(())
 }
 
-async fn command_get_raw_status(arweave: &Arweave, id: &str) -> CommandResult {
+async fn command_get_status(arweave: &Arweave, id: &str, output_format: &str) -> CommandResult {
     let id = Base64::from_str(id)?;
-    let resp = arweave.get_raw_status(&id).await?;
-    println!("{}", resp.text().await?);
+    let output_format = get_output_format(output_format);
+    let status = arweave.get_status(&id).await?;
+    println!(
+        "{}",
+        status
+            .header_string(&output_format)
+            .split_at(32)
+            .1
+            .split_at(132)
+            .0
+    );
+    print!("{}", output_format.formatted_string(&status).split_at(32).1);
     Ok(())
 }
 
@@ -637,7 +724,7 @@ async fn command_wallet_balance(
     let usd_per_kb = (&winstons_per_kb * &usd_per_ar).to_f32().unwrap() / 1e14_f32;
 
     println!(
-            "Wallet balance is {} {units} (${balance_usd:.2} at ${ar_price:.2} USD per AR). At the current price of {price} {units} (${usd_price:.4}) per MB, you can upload {max} MB of data.",
+            "Wallet balance is {} {units} (${balance_usd:.2} at ${ar_price:.2} USD per AR). At the current price of {price} {units} per MB (${usd_price:.4}), you can upload {max} MB of data.",
             &balance,
             units = arweave.units,
             max = &balance / &winstons_per_kb,
@@ -651,7 +738,7 @@ async fn command_wallet_balance(
 }
 
 async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
-    println!(" {}\n{:-<97}", "pending tx", "");
+    println!(" {}\n{:-<84}", "pending tx", "");
 
     let mut counter = 0;
     while counter < 60 {
@@ -701,7 +788,7 @@ async fn command_upload(
                     if let Some(log_dir) = &log_dir {
                         println!("Logging statuses to {}", &log_dir.display());
                     }
-                    println!("{}", Status::header_string(&output_format));
+                    println!("{}", status.header_string(&output_format));
                 }
                 print!("{}", output_format.formatted_string(&status));
                 counter += 1;
@@ -724,59 +811,59 @@ async fn command_upload(
     Ok(())
 }
 
-async fn command_upload_bundle(
+async fn command_upload_bundles(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: Option<&str>,
     tags: Option<Vec<Tag<String>>>,
+    bundle_size: u64,
     reward_mult: f32,
     output_format: Option<&str>,
+    buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = log_dir.map(|s| PathBuf::from(s));
+    let log_dir = log_dir.map(|s| PathBuf::from(s)).unwrap();
     let output_format = get_output_format(output_format.unwrap_or(""));
     let tags = tags.unwrap_or(Vec::new());
     let price_terms = arweave.get_price_terms(reward_mult).await?;
+    let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
 
-    let num: usize = paths_iter.collect::<Vec<PathBuf>>().len();
-
-    if num == 0 {
+    if path_chunks.len() == 0 {
         println!("The pattern \"{}\" didn't match any files.", glob_str);
+        return Ok(());
     } else {
-        let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-        let (transaction, manifest_object) = arweave
-            .create_bundle_transaction_from_file_paths(paths_iter, tags, price_terms)
-            .await?;
+        let mut stream = upload_bundles_stream(arweave, path_chunks, tags, price_terms, buffer);
 
-        let signed_transaction = arweave.sign_transaction(transaction)?;
-
-        let mut status = arweave.post_transaction(&signed_transaction, None).await?;
-        status.file_path = Some(PathBuf::from(manifest_object["id"].as_str().unwrap()));
-        let id = status.id.clone();
-
-        println!("{}", Status::bundle_header_string(&output_format));
-        print!("{}", output_format.formatted_string(&status));
-
-        if let Some(log_dir) = log_dir.clone() {
-            arweave
-                .write_status(status, log_dir.clone(), Some(format!("txid_{}", id)))
-                .await?;
-            arweave
-                .write_manifest(manifest_object.clone(), id.to_string(), log_dir)
-                .await?;
+        let mut counter = 0;
+        let mut number_of_files = 0;
+        let mut data_size = 0;
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(status) => {
+                    number_of_files += status.number_of_files;
+                    data_size += status.data_size;
+                    if counter == 0 {
+                        println!("{}", status.header_string(&output_format));
+                    }
+                    print!("{}", output_format.formatted_string(&status));
+                    fs::write(
+                        log_dir.join(status.id.to_string()).with_extension("json"),
+                        serde_json::to_string(&status)?,
+                    )
+                    .await?;
+                    counter += 1;
+                }
+                Err(e) => println!("{:#?}", e),
+            }
         }
 
         println!(
-            "\nUploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
-            num,
-            id
+            "\nUploaded {} KB in {} files in {} bundle transaction. Run `arloader update-status --log-dir \"{}\"` to update statuses.",
+            data_size / 1000,
+            number_of_files,
+            counter,
+            log_dir.display().to_string()
         );
-        println!(
-            "\nFiles will be available at https://arweave.net/<BUNDLE_ITEM_ID> once the bundle transaction has been confirmed.
-            \nThey will also be available at https://arweave.net/{manifest_id}/<FILE_PATH>.
-            \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
-            logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
-        )
     }
     Ok(())
 }
@@ -820,7 +907,7 @@ async fn command_upload_with_sol(
                     if let Some(log_dir) = &log_dir {
                         println!("Logging statuses to {}", &log_dir.display());
                     }
-                    println!("{}", Status::header_string(&output_format));
+                    println!("{}", status.header_string(&output_format));
                 }
                 print!("{}", output_format.formatted_string(&status));
                 counter += 1;
@@ -843,67 +930,73 @@ async fn command_upload_with_sol(
     Ok(())
 }
 
-async fn command_upload_bundle_with_sol(
+async fn command_upload_bundles_with_sol(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: Option<&str>,
     tags: Option<Vec<Tag<String>>>,
+    bundle_size: u64,
     reward_mult: f32,
-    sol_keypair_path: &str,
     output_format: Option<&str>,
+    buffer: usize,
+    sol_keypair_path: &str,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = log_dir.map(|s| PathBuf::from(s));
+    let log_dir = log_dir.map(|s| PathBuf::from(s)).unwrap();
     let output_format = get_output_format(output_format.unwrap_or(""));
     let tags = tags.unwrap_or(Vec::new());
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
+    let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
     let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
-    let price_terms = arweave.get_price_terms(reward_mult).await?;
 
-    let num: usize = paths_iter.collect::<Vec<PathBuf>>().len();
-
-    if num == 0 {
+    if path_chunks.len() == 0 {
         println!("The pattern \"{}\" didn't match any files.", glob_str);
+        return Ok(());
     } else {
-        let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-        let (transaction, manifest_object) = arweave
-            .create_bundle_transaction_from_file_paths(paths_iter, tags, price_terms)
-            .await?;
-
-        let (signed_transaction, sig_response) = arweave
-            .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, &from_keypair)
-            .await?;
-
-        let mut status = arweave.post_transaction(&signed_transaction, None).await?;
-        status.file_path = Some(PathBuf::from(manifest_object["id"].as_str().unwrap()));
-        let id = status.id.clone();
-
-        println!("{}", Status::bundle_header_string(&output_format));
-        print!("{}", output_format.formatted_string(&status));
-
-        if let Some(log_dir) = log_dir.clone() {
-            status.sol_sig = Some(sig_response);
-            arweave
-                .write_status(status, log_dir.clone(), Some(format!("txid_{}", id)))
-                .await?;
-            arweave
-                .write_manifest(manifest_object.clone(), id.to_string(), log_dir)
-                .await?;
-        }
-        println!(
-            "\nUploaded {} files in 1 bundle transaction. Run `arloader raw-status {}` to confirm status.",
-            num,
-            id
+        let mut stream = upload_bundles_stream_with_sol(
+            arweave,
+            path_chunks,
+            tags,
+            price_terms,
+            buffer,
+            solana_url,
+            sol_ar_url,
+            &from_keypair,
         );
-        println!(
-            "\nFiles will be available at https://arweave.net/<BUNDLE_ITEM_ID> once the bundle transaction has been confirmed.
-            \nThey will also be available at https://arweave.net/{manifest_id}/<FILE_PATH>.
-            \nReview {logdir}manifest_{manifest_id}.json for bundle item ids and file paths.",
-            logdir=log_dir.unwrap().display().to_string(), manifest_id = manifest_object["id"].as_str().unwrap()
-        )
-    }
 
+        let mut counter = 0;
+        let mut number_of_files = 0;
+        let mut data_size = 0;
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(status) => {
+                    number_of_files += status.number_of_files;
+                    data_size += status.data_size;
+                    if counter == 0 {
+                        println!("{}", status.header_string(&output_format));
+                    }
+                    print!("{}", output_format.formatted_string(&status));
+                    fs::write(
+                        log_dir.join(status.id.to_string()).with_extension("json"),
+                        serde_json::to_string(&status)?,
+                    )
+                    .await?;
+                    counter += 1;
+                }
+                Err(e) => println!("{:#?}", e),
+            }
+        }
+
+        println!(
+            "\nUploaded {} KB in {} files in {} bundle transaction(s). Run `arloader update-status --log-dir \"{}\"` to update statuses.",
+            data_size / 1000,
+            number_of_files,
+            counter,
+            log_dir.display().to_string()
+        );
+    }
     Ok(())
 }
 
@@ -927,7 +1020,7 @@ async fn command_list_statuses(
         .iter()
     {
         if counter == 0 {
-            println!("{}", Status::header_string(&output_format));
+            println!("{}", status.header_string(&output_format));
         }
         print!("{}", output_format.formatted_string(status));
         counter += 1;
@@ -945,25 +1038,54 @@ async fn command_update_statuses(
     glob_str: &str,
     log_dir: &str,
     output_format: Option<&str>,
-    buffer: Option<&str>,
+    buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let log_dir = PathBuf::from(log_dir);
     let output_format = get_output_format(output_format.unwrap_or(""));
-    let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
 
     let mut stream = update_statuses_stream(arweave, paths_iter, log_dir.clone(), buffer);
 
     let mut counter = 0;
     while let Some(Ok(status)) = stream.next().await {
         if counter == 0 {
-            println!("{}", Status::header_string(&output_format));
+            println!("{}", status.header_string(&output_format));
         }
         print!("{}", output_format.formatted_string(&status));
         counter += 1;
     }
     if counter == 0 {
         println!("The `glob` and `log_dir` combination you provided didn't return any statuses.");
+    } else {
+        println!("Updated {} statuses.", counter);
+    }
+
+    Ok(())
+}
+
+async fn command_update_bundle_statuses(
+    arweave: &Arweave,
+    log_dir: &str,
+    output_format: Option<&str>,
+    buffer: usize,
+) -> CommandResult {
+    let paths_iter = glob(&format!("{}/*.json", log_dir))?
+        .filter_map(Result::ok)
+        .filter(|p| file_stem_is_valid_txid(p));
+    let output_format = get_output_format(output_format.unwrap_or(""));
+
+    let mut stream = update_bundle_statuses_stream(arweave, paths_iter, buffer);
+
+    let mut counter = 0;
+    while let Some(Ok(status)) = stream.next().await {
+        if counter == 0 {
+            println!("{}", status.header_string(&output_format));
+        }
+        print!("{}", output_format.formatted_string(&status));
+        counter += 1;
+    }
+    if counter == 0 {
+        println!("The `log_dir`you provided didn't have any statuses in it.");
     } else {
         println!("Updated {} statuses.", counter);
     }
@@ -1018,7 +1140,7 @@ async fn command_upload_filter(
     let mut counter = 0;
     while let Some(Ok(status)) = stream.next().await {
         if counter == 0 {
-            println!("{}", Status::header_string(&output_format));
+            println!("{}", status.header_string(&output_format));
         }
         print!("{}", output_format.formatted_string(&status));
         counter += 1;
@@ -1033,6 +1155,20 @@ async fn command_upload_filter(
             &log_dir.display()
         );
     }
+    Ok(())
+}
+
+async fn command_upload_manifest(
+    arweave: &Arweave,
+    log_dir: &str,
+    reward_mult: f32,
+) -> CommandResult {
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
+    let output = arweave
+        .upload_manifest_from_log_dir(log_dir, price_terms)
+        .await?;
+
+    println!("{}", output);
     Ok(())
 }
 

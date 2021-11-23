@@ -330,23 +330,20 @@ mod tests {
         //  data_item_1: 96
         //      number_of_bytes: 96
         //      id: 128
-        //  manifest: 160
-        //      number_of_bytes: 160
-        //      id: 192
-        // binaries: 224
-        //  data_item_0: 224
-        //      signature_type: 224
-        //      signature: 226
-        //      owner: 738
-        //      target_present: 1250
-        //      anchor_present: 1251
-        //      anchor: 1252
-        //      tags: 1284
-        //          number_of_tags: 1284
-        //          number_of_tags_bytes: 1292
-        //          tag_bytes: 1300
-        //      data: 1482
-        //  data_item_1: 1487
+        // binaries: 160
+        //  data_item_0: 160
+        //      signature_type: 160
+        //      signature: 162
+        //      owner: 674
+        //      target_present: 1186
+        //      anchor_present: 1187
+        //      anchor: 1188
+        //      tags: 1220
+        //          number_of_tags: 1220
+        //          number_of_tags_bytes: 1228
+        //          tag_bytes: 1236
+        //      data: 1418
+        //  data_item_1: 1423
         //      signature_type: 1487
         //      signature: 1307
         //      owner: 1819
@@ -359,7 +356,7 @@ mod tests {
         //      data: 2381
 
         // number of items in bundle is the same
-        assert_eq!(u32::from_le_bytes(bundle[0..4].try_into().unwrap()), 3);
+        assert_eq!(u32::from_le_bytes(bundle[0..4].try_into().unwrap()), 2);
 
         // 1263 bytes in the first item
         assert_eq!(
@@ -373,39 +370,33 @@ mod tests {
             data_item_ser.len() as u32
         );
 
-        // 1243 bytes in the manifest data item
-        assert_eq!(
-            u32::from_le_bytes(bundle[160..164].try_into().unwrap()),
-            1243u32
-        );
-
         // signature type is 1
         assert_eq!(
-            u16::from_le_bytes(bundle[224..226].try_into().unwrap()),
+            u16::from_le_bytes(bundle[160..162].try_into().unwrap()),
             1u16
         );
 
         // no target is present
-        assert_eq!(bundle[1250], 0);
+        assert_eq!(bundle[1186], 0);
 
         // anchor is present
-        assert_eq!(bundle[1251], 1);
+        assert_eq!(bundle[1187], 1);
 
         // number of tags is 2
         assert_eq!(
-            u64::from_le_bytes(bundle[1284..1292].try_into().unwrap()),
+            u64::from_le_bytes(bundle[1220..1228].try_into().unwrap()),
             2u64
         );
 
         // number of tag bytes is 182
         assert_eq!(
-            u64::from_le_bytes(bundle[1292..1300].try_into().unwrap()),
+            u64::from_le_bytes(bundle[1228..1236].try_into().unwrap()),
             182u64
         );
 
         // sig type of second item is 1
         assert_eq!(
-            u16::from_le_bytes(bundle[1487..1489].try_into().unwrap()),
+            u16::from_le_bytes(bundle[1423..1425].try_into().unwrap()),
             1u16
         );
     }
