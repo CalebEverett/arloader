@@ -43,6 +43,8 @@ pub enum Error {
     MissingFilePath,
     #[error("missing trailing slash")]
     MissingTrailingSlash,
+    #[error("no bundle statuses found")]
+    NoBundleStatusesFound,
     #[error("reqwest: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("ring unspecified: {0}")]
@@ -53,6 +55,8 @@ pub enum Error {
     StatusNotFound,
     #[error("solana hash parse {0}")]
     SolanaHashParse(#[from] solana_sdk::hash::ParseHashError),
+    #[error("solana hash parse {0}")]
+    TokioJoinError(#[from] tokio::task::JoinError),
     #[error("transaction is not signed")]
     UnsignedTransaction,
     #[error("url parse error: {0}")]

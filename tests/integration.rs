@@ -1,7 +1,7 @@
 use arloader::{
     error::Error,
     solana::SOL_AR_BASE_URL,
-    status::{OutputFormat, OutputHeader, Status, StatusCode},
+    status::{OutputFormat, Status, StatusCode},
     transaction::{Base64, Tag},
     upload_files_stream,
     utils::TempDir,
@@ -47,13 +47,13 @@ async fn test_post_transaction() -> Result<(), Error> {
 
     let signed_transaction = arweave.sign_transaction(transaction)?;
     println!("signed_transaction: {:?}", &signed_transaction);
-    arweave.post_transaction(&signed_transaction, None).await?;
+    arweave.post_transaction(&signed_transaction).await?;
 
     let url = arweave.base_url.join("mine")?;
     let resp = reqwest::get(url).await?.text().await?;
     println!("mine: {}", resp);
 
-    let status = arweave.get_raw_status(&signed_transaction.id).await?;
+    let status = arweave.get_status(&signed_transaction.id).await?;
     println!("{:?}", status);
     Ok(())
 }
@@ -340,9 +340,14 @@ async fn test_upload_files_stream() -> Result<(), Error> {
     let mut stream = upload_files_stream(&arweave, paths_iter, None, None, (0, 0), 3);
 
     let output_format = OutputFormat::JsonCompact;
-    println!("{}", Status::header_string(&output_format));
+
+    let mut counter = 0;
     while let Some(Ok(status)) = stream.next().await {
+        if counter == 0 {
+            println!("{}", status.header_string(&output_format));
+        }
         print!("{}", output_format.formatted_string(&status));
+        counter += 1;
     }
     Ok(())
 }
@@ -382,6 +387,8 @@ async fn test_upload_file_from_path_with_sol() -> Result<(), Error> {
             &from_keypair,
         )
         .await?;
+
+    println!("{:?}", status);
 
     let read_status = arweave.read_status(file_path, log_dir.clone()).await?;
     println!("{:?}", &read_status);
