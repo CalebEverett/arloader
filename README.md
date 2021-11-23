@@ -45,7 +45,7 @@ Make sure to include quotes around your glob patterns, otherwise your shell will
 arloader upload "<GLOB>" --log-dir "<LOG_DIR>"
 ```
 
-This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 100 MB, but you can specify a different size with the `--bundle-size` flag up to 250 MB. The exammple output below had a bundle size of 5000 bytes.
+This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 100 MB, but you can specify a different size with the `--bundle-size` flag up to 250 MB. The example output below had a bundle size of 5000 bytes.
 
 ```
 bundle txid                                   items      KB  status       confirms
@@ -136,6 +136,7 @@ where `<LOG_DIR>` is the directory containing your bundle status json files. Thi
         "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/9.png"
     ]
 }
+```
 
 You can run the following command to get an update on the status of your manifest transaction.
 ```
