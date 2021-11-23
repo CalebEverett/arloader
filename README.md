@@ -7,7 +7,7 @@
 
 Command line application and library for effortlessly uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
 
-Upload gigabytes of files with one command specifying a glob pattern to match files against. Files and read and posted to [arweave.net](https://arweave.net) asynchronously and computationally intensive bundle preparation is performed in parallel across multiple threads.
+Upload gigabytes of files with one command specifying a glob pattern to match files against. Files are read and posted to [arweave.net](https://arweave.net) asynchronously and computationally intensive bundle preparation is performed in parallel across multiple threads.
 
 ## Installation
 
@@ -137,7 +137,7 @@ where `<LOG_DIR>` is the directory containing your bundle status json files. Thi
     ]
 }
 
-You can the following command to get an update on the status of your manifest transaction.
+You can run the following command to get an update on the status of your manifest transaction.
 ```
 arloader get-status `<MANIFEST_ID>`
 ```
