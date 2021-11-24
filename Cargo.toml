@@ -2,7 +2,7 @@
 name = "arloader"
 authors = ["calebeverett <caleb@calebeverett.io>"]
 description = "Command line application and library for uploading files to Arweave."
-version = "0.1.22"
+version = "0.1.23"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/CalebEverett/arloader"
