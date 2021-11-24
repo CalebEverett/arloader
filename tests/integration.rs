@@ -406,7 +406,7 @@ async fn test_upload_bundle_from_file_paths() -> Result<(), Error> {
         return Ok(());
     }
 
-    let paths_iter = glob("tests/fixtures/1mb.bin")?.filter_map(Result::ok);
+    let paths_iter = glob("tests/fixtures/*.png")?.filter_map(Result::ok);
     let paths_chunks = arweave.chunk_file_paths(paths_iter, 2000000)?;
     println!("{:?}", paths_chunks);
     let status = arweave
