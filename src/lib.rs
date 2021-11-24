@@ -1171,24 +1171,25 @@ impl Arweave {
         transaction_id: String,
         log_dir: PathBuf,
     ) -> Result<(), Error> {
-        let mut relative_paths = Vec::<String>::new();
-        let mut id_paths = Vec::<String>::new();
+        let mut consolidated_paths = serde_json::Map::new();
         for (file_path, id_obj) in manifest["paths"].as_object().unwrap() {
-            relative_paths.push(format!(
-                "https://arweave.net/{}/{}",
-                transaction_id, file_path
-            ));
-            id_paths.push(format!(
-                "https://arweave.net/{}",
-                id_obj["id"].as_str().unwrap()
-            ));
+            let id = id_obj["id"].as_str().unwrap();
+            consolidated_paths.insert(
+                file_path.to_owned(),
+                json!({"id": id, "relative_url": format!(
+                    "https://arweave.net/{}/{}",
+                    transaction_id, file_path
+                ), "id_url": format!(
+                    "https://arweave.net/{}",
+                    id
+                )}),
+            );
         }
-        let value = json!({"relative_paths": relative_paths, "id_paths": id_paths});
         fs::write(
             log_dir
                 .join(format!("manifest_{}", transaction_id))
                 .with_extension("json"),
-            serde_json::to_string(&value)?,
+            serde_json::to_string(&json!(consolidated_paths))?,
         )
         .await?;
         Ok(())

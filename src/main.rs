@@ -858,7 +858,7 @@ async fn command_upload_bundles(
         }
 
         println!(
-            "\nUploaded {} KB in {} files in {} bundle transaction. Run `arloader update-status --log-dir \"{}\"` to update statuses.",
+            "\nUploaded {} KB in {} files in {} bundle transactions. Run `arloader update-status --log-dir \"{}\"` to update statuses.",
             data_size / 1000,
             number_of_files,
             counter,
