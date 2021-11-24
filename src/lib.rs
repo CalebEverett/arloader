@@ -1108,8 +1108,8 @@ impl Arweave {
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        // let (id, reward) = self.post_transaction(&signed_transaction).await?;
-        let (id, reward) = self.post_transaction_chunks(signed_transaction).await?;
+        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        // let (id, reward) = self.post_transaction_chunks(signed_transaction).await?;
 
         let status = BundleStatus {
             id,
