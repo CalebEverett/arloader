@@ -94,9 +94,7 @@ fn get_chunk_size(data_len: usize) -> usize {
 
 /// Generates data chunks from which the calculation of root id starts.
 pub fn generate_leaves(data: Vec<u8>, crypto: &Provider) -> Result<Vec<Node>, Error> {
-    println!("data_len: {}", data.len());
     let chunk_size = get_chunk_size(data.len());
-    println!("chunk_size: {}", chunk_size);
     let data_chunks: Vec<&[u8]> = data.chunks(chunk_size).collect();
 
     let mut leaves = Vec::<Node>::new();
@@ -267,11 +265,11 @@ mod tests {
 
     #[test]
     fn test_get_chunk_size() -> () {
-        // assert_eq!(get_chunk_size(MIN_CHUNK_SIZE), MIN_CHUNK_SIZE);
-        // assert_eq!(get_chunk_size(MAX_CHUNK_SIZE), MAX_CHUNK_SIZE);
-        // assert_eq!(get_chunk_size(MAX_CHUNK_SIZE * 4), MAX_CHUNK_SIZE);
-        // assert_eq!(get_chunk_size(MAX_CHUNK_SIZE + 1), (MAX_CHUNK_SIZE + 1) / 2);
-        assert_eq!(get_chunk_size(1049784), 2);
+        assert_eq!(get_chunk_size(MIN_CHUNK_SIZE), MIN_CHUNK_SIZE);
+        assert_eq!(get_chunk_size(MAX_CHUNK_SIZE), MAX_CHUNK_SIZE);
+        assert_eq!(get_chunk_size(MAX_CHUNK_SIZE * 4), MAX_CHUNK_SIZE);
+        assert_eq!(get_chunk_size(MAX_CHUNK_SIZE + 1), 131073);
+        assert_eq!(get_chunk_size(1049784), 131223);
     }
 
     #[tokio::test]
@@ -386,8 +384,8 @@ mod tests {
         assert_eq!(
             root.id,
             [
-                216, 248, 50, 181, 40, 249, 132, 35, 200, 106, 229, 132, 126, 90, 154, 0, 40, 87,
-                155, 74, 122, 236, 32, 170, 181, 74, 80, 15, 126, 87, 83, 253,
+                80, 80, 69, 118, 15, 123, 97, 51, 235, 63, 130, 216, 210, 76, 201, 220, 236, 7, 49,
+                169, 83, 37, 80, 107, 186, 166, 114, 203, 209, 56, 127, 13,
             ]
         );
         Ok(())

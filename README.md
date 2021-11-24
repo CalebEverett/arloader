@@ -29,7 +29,7 @@ If you're uploading more than one file, you should pretty much always be using b
 
 Arloader accepts file glob patterns and defaults to creating a bundle for your files.
 
-Arweave gateways only index bundles up to 250MB. Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net) asynchronously.
+Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Currently Arloader support bundle sizes up to 10 MB in order to be able to post to the `/tx` endpoint with full bundles size payloads (avoiding posting in 256 KB chunks to the `/chunks` endpoint. This should work fine for file sizes less than 10 MB. Future versions will support larger file sizes. 
 
 1. To get an estimate of the cost of uploading your files run
 
@@ -45,7 +45,7 @@ Make sure to include quotes around your glob patterns, otherwise your shell will
 arloader upload "<GLOB>" --log-dir "<LOG_DIR>"
 ```
 
-This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 100 MB, but you can specify a different size with the `--bundle-size` flag up to 250 MB. The example output below had a bundle size of 5000 bytes.
+This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 10 MB. The example output below had a bundle size of 5000 bytes.
 
 ```
 bundle txid                                   items      KB  status       confirms
