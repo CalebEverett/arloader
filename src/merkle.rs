@@ -94,9 +94,7 @@ fn get_chunk_size(data_len: usize) -> usize {
 
 /// Generates data chunks from which the calculation of root id starts.
 pub fn generate_leaves(data: Vec<u8>, crypto: &Provider) -> Result<Vec<Node>, Error> {
-    println!("data_len: {}", data.len());
     let chunk_size = get_chunk_size(data.len());
-    println!("chunk_size: {}", chunk_size);
     let data_chunks: Vec<&[u8]> = data.chunks(chunk_size).collect();
 
     let mut leaves = Vec::<Node>::new();

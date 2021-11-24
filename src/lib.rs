@@ -280,7 +280,6 @@ impl Arweave {
         let data_root = Base64(root.id.clone().into_iter().collect());
         let proofs = resolve_proofs(root, None)?;
         let owner = self.crypto.keypair_modulus()?;
-        println!("chunks_len: {}", chunks.len());
 
         let mut tags = vec![Tag::<Base64>::from_utf8_strs(
             "User-Agent",
