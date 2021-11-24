@@ -376,7 +376,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(with_sol_arg(true))
                 .arg(sol_keypair_path_arg())
                 .arg(no_bundle_arg())
-                .arg(buffer_arg("1"))
+                .arg(buffer_arg("5"))
                 .arg(bundle_size_arg()),
         )
         .subcommand(

@@ -111,30 +111,56 @@ where `<LOG_DIR>` is the directory containing your bundle status json files. Thi
 
 ```json
 {
-    "id_paths": [
-        "https://arweave.net/aCdWUSXMoDWGzjc55dtGV1H-cVVwWsCWQK02JNkIPVE",
-        "https://arweave.net/j8CkOBNAXDhYW2Tsw5r3JhQXUaFcxWqiemQVlBRB3Xc",
-        "https://arweave.net/hG4UvTIN_xxcg1gv_k2HwEO5RHv67iUp70LqVjJe6QQ",
-        "https://arweave.net/297e1JxgnSv6MABn8XEeZOgXW_zDKv-C5mhHAS6NaAY",
-        "https://arweave.net/DLI1O46CSAu-iVClAuRt7bTw0Kp71hMMnQowBT2i_gI",
-        "https://arweave.net/T-03eMzyk_ribRHHsoNEmhoWWpMj7xCICh0A-p5yUOc",
-        "https://arweave.net/xBolTrDkS-2-zDP0efRaq81Mc9rQg1LjgPsp1V3GJks",
-        "https://arweave.net/doXvNsNq3bEX-aVzl-068xa3sPvmOmMAxLrDKvRnYcM",
-        "https://arweave.net/oGa3YtiFUObfxAEM8SNp0Pij9oKuX_N6zJ7R9cjQ6h8",
-        "https://arweave.net/qK8OOc6r9K4mFqnnSEfqSEct97V7Bgsvobes4gaad14"
-    ],
-    "relative_paths": [
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/0.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/1.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/2.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/3.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/4.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/5.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/6.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/7.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/8.png",
-        "https://arweave.net/n3WrgRsplTDvCe_TIMPXWfhXIT-OsGQ9y78Gz11-jKI/tests/fixtures/9.png"
-    ]
+    "tests/fixtures/0.png": {
+        "id": "NNdSluho1hHrlrVdoFLlx6K37XxArSaafDRchaRk-4k",
+        "id_url": "https://arweave.net/NNdSluho1hHrlrVdoFLlx6K37XxArSaafDRchaRk-4k",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/0.png"
+    },
+    "tests/fixtures/1.png": {
+        "id": "eGZUfB2HmzOO8kOf1VKD9VC6eJBQHWYezfuJ1u2QwgA",
+        "id_url": "https://arweave.net/eGZUfB2HmzOO8kOf1VKD9VC6eJBQHWYezfuJ1u2QwgA",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/1.png"
+    },
+    "tests/fixtures/2.png": {
+        "id": "yKpDmxwZq2Hd0RPU7x9FYguu7uAH2yFFKYdafr2oQDQ",
+        "id_url": "https://arweave.net/yKpDmxwZq2Hd0RPU7x9FYguu7uAH2yFFKYdafr2oQDQ",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/2.png"
+    },
+    "tests/fixtures/3.png": {
+        "id": "LA6Lbi8Smy1NlY1ZEQg6oHuz7tHS3aqipjTQ6IYYvx4",
+        "id_url": "https://arweave.net/LA6Lbi8Smy1NlY1ZEQg6oHuz7tHS3aqipjTQ6IYYvx4",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/3.png"
+    },
+    "tests/fixtures/4.png": {
+        "id": "Q_8X5bYAHWwAKiVxc68gyLOalmVy2M1WuzmN_VIsa9k",
+        "id_url": "https://arweave.net/Q_8X5bYAHWwAKiVxc68gyLOalmVy2M1WuzmN_VIsa9k",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/4.png"
+    },
+    "tests/fixtures/5.png": {
+        "id": "DukqezWt4nO5TXhIkI8_C2S-IgvCRlMqoCaoQJqDvsc",
+        "id_url": "https://arweave.net/DukqezWt4nO5TXhIkI8_C2S-IgvCRlMqoCaoQJqDvsc",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/5.png"
+    },
+    "tests/fixtures/6.png": {
+        "id": "s0SrsnAIrXIq320gi5zXlFv2mRvsOlY6KTFxexQ0uiY",
+        "id_url": "https://arweave.net/s0SrsnAIrXIq320gi5zXlFv2mRvsOlY6KTFxexQ0uiY",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/6.png"
+    },
+    "tests/fixtures/7.png": {
+        "id": "wcnez7bz7xZzlr18Wqhh0YsdQ7uLpx2HCqClvRVKBV0",
+        "id_url": "https://arweave.net/wcnez7bz7xZzlr18Wqhh0YsdQ7uLpx2HCqClvRVKBV0",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/7.png"
+    },
+    "tests/fixtures/8.png": {
+        "id": "dRuhwEu7XtY3GGAVurr9-4W-ol-pKZ3J3Ctsv9XwAYM",
+        "id_url": "https://arweave.net/dRuhwEu7XtY3GGAVurr9-4W-ol-pKZ3J3Ctsv9XwAYM",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/8.png"
+    },
+    "tests/fixtures/9.png": {
+        "id": "dBrDK_pPcU06vkmWJfQ-4tYAE7eS1undBjLW9jS-CTE",
+        "id_url": "https://arweave.net/dBrDK_pPcU06vkmWJfQ-4tYAE7eS1undBjLW9jS-CTE",
+        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/9.png"
+    }
 }
 ```
 
