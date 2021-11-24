@@ -83,10 +83,10 @@ fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
 fn is_valid_bundle_size(bundle_size: String) -> Result<(), String> {
     match bundle_size.parse::<u64>() {
         Ok(n) => {
-            if n < 225000000 {
+            if n < 12000000 {
                 Ok(())
             } else {
-                Err(format!("Bundle data size must be less than 225MB."))
+                Err(format!("Bundle data size must be less than 12MB."))
             }
         }
         Err(_) => Err(format!("Not a valid multiplier.")),
@@ -270,13 +270,13 @@ fn no_bundle_arg<'a, 'b>() -> Arg<'a, 'b> {
         )
 }
 
-fn buffer_arg<'a, 'b>() -> Arg<'a, 'b> {
+fn buffer_arg<'a, 'b>(default: &'a str) -> Arg<'a, 'b> {
     Arg::with_name("buffer")
         .long("buffer")
         .value_name("BUFFER")
         .takes_value(true)
         .validator(is_parsable::<usize>)
-        .default_value("10")
+        .default_value(default)
         .help("Sets the maximum number of concurrent network requests")
 }
 
@@ -286,8 +286,8 @@ fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("BUNDLE_SIZE")
         .takes_value(true)
         .validator(is_valid_bundle_size)
-        .default_value("100000000")
-        .help("Sets the maximum amout of file data to include in a bundle.")
+        .default_value("10000000")
+        .help("Sets the maximum file data bytes to include in a bundle.")
 }
 
 fn get_app() -> App<'static, 'static> {
@@ -376,7 +376,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(with_sol_arg(true))
                 .arg(sol_keypair_path_arg())
                 .arg(no_bundle_arg())
-                .arg(buffer_arg())
+                .arg(buffer_arg("1"))
                 .arg(bundle_size_arg()),
         )
         .subcommand(
@@ -390,7 +390,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(log_dir_arg(true))
                 .arg(glob_arg(false))
                 .arg(no_bundle_arg())
-                .arg(buffer_arg()),
+                .arg(buffer_arg("10")),
         )
         .subcommand(
             SubCommand::with_name("upload-manifest")
