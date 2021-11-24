@@ -45,7 +45,7 @@ use bundle::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use status::{BundleStatus, Status, StatusCode};
-use transaction::{Base64, FromUtf8Strs, Tag, ToItems, Transaction};
+use transaction::{Base64, Chunk, FromUtf8Strs, Tag, ToItems, Transaction};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -63,7 +63,7 @@ struct OraclePrice {
 struct OraclePricePair {
     pub usd: f32,
 }
-
+#[derive(Clone, Debug)]
 pub struct PathsChunk(Vec<PathBuf>, u64);
 
 pub fn upload_bundles_stream<'a>(
@@ -280,6 +280,7 @@ impl Arweave {
         let data_root = Base64(root.id.clone().into_iter().collect());
         let proofs = resolve_proofs(root, None)?;
         let owner = self.crypto.keypair_modulus()?;
+        println!("chunks_len: {}", chunks.len());
 
         let mut tags = vec![Tag::<Base64>::from_utf8_strs(
             "User-Agent",
@@ -376,6 +377,40 @@ impl Arweave {
         assert_eq!(resp.status().as_u16(), 200);
 
         Ok((signed_transaction.id.clone(), signed_transaction.reward))
+    }
+
+    pub async fn post_transaction_chunks(
+        &self,
+        signed_transaction: Transaction,
+    ) -> Result<(Base64, u64), Error> {
+        if signed_transaction.id.0.is_empty() {
+            return Err(error::Error::UnsignedTransaction.into());
+        }
+
+        let transaction_with_no_data = signed_transaction.clone_with_no_data()?;
+        let (id, reward) = self.post_transaction(&transaction_with_no_data).await?;
+
+        let _ = try_join_all((0..signed_transaction.chunks.len()).map(|i| {
+            let chunk = signed_transaction.get_chunk(i).unwrap();
+            self.post_chunk(chunk)
+        }))
+        .await?;
+
+        Ok((id, reward))
+    }
+
+    pub async fn post_chunk(&self, chunk: Chunk) -> Result<(), Error> {
+        let url = self.base_url.join("chunk/")?;
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(url)
+            .json(&chunk)
+            .header(&ACCEPT, "application/json")
+            .header(&CONTENT_TYPE, "application/json")
+            .send()
+            .await?;
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+        Ok(())
     }
 
     pub async fn get_pending_count(&self) -> Result<usize, Error> {
@@ -1073,7 +1108,8 @@ impl Arweave {
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        // let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        let (id, reward) = self.post_transaction_chunks(signed_transaction).await?;
 
         let status = BundleStatus {
             id,

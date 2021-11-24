@@ -30,6 +30,15 @@ pub struct Transaction {
     #[serde(skip)]
     pub proofs: Vec<Proof>,
 }
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+pub struct Chunk {
+    data_root: Base64,
+    data_size: u64,
+    data_path: Base64,
+    #[serde(with = "stringify")]
+    offset: usize,
+    chunk: Base64,
+}
 
 /// Serializes and deserializes numbers represented as Strings. Used for `quantity`, `data_size`
 /// and `reward` [`Transaction`] fields so that they can be represented as numbers but be serialized
@@ -54,6 +63,39 @@ pub mod stringify {
         T: std::fmt::Display,
     {
         format!("{}", value).serialize(serializer)
+    }
+}
+
+impl Transaction {
+    pub fn clone_with_no_data(&self) -> Result<Self, Error> {
+        Ok(Self {
+            format: self.format,
+            id: self.id.clone(),
+            last_tx: self.last_tx.clone(),
+            owner: self.owner.clone(),
+            tags: self.tags.clone(),
+            target: self.target.clone(),
+            quantity: self.quantity,
+            data_root: self.data_root.clone(),
+            data: Base64::default(),
+            data_size: self.data_size,
+            reward: self.reward,
+            signature: self.signature.clone(),
+            chunks: Vec::new(),
+            proofs: Vec::new(),
+        })
+    }
+    pub fn get_chunk(&self, idx: usize) -> Result<Chunk, Error> {
+        Ok(Chunk {
+            data_root: self.data_root.clone(),
+            data_size: self.data_size,
+            data_path: Base64(self.proofs[idx].proof.clone()),
+            offset: self.proofs[idx].offset,
+            chunk: Base64(
+                self.data.0[self.chunks[idx].min_byte_range..self.chunks[idx].max_byte_range]
+                    .to_vec(),
+            ),
+        })
     }
 }
 
@@ -238,6 +280,23 @@ impl DeepHashItem {
     }
     pub fn from_children(children: Vec<DeepHashItem>) -> DeepHashItem {
         Self::List(children)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+pub struct Uploader {
+    pub chunk_index: usize,
+    pub tx_posted: bool,
+    pub transaction: Transaction,
+    pub last_request_time_end: u64,
+    pub total_errors: u64,
+    pub last_response_status: u64,
+    pub last_response_error: String,
+}
+
+impl Uploader {
+    pub fn is_complete(&self) -> bool {
+        self.tx_posted && self.chunk_index == self.transaction.chunks.len()
     }
 }
 

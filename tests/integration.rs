@@ -395,3 +395,24 @@ async fn test_upload_file_from_path_with_sol() -> Result<(), Error> {
     assert_eq!(status, read_status);
     Ok(())
 }
+
+#[tokio::test]
+async fn test_upload_bundle_from_file_paths() -> Result<(), Error> {
+    let arweave = get_arweave().await?;
+
+    // Don't run if test server is not running.
+    if let Err(_) = reqwest::get(arweave.base_url.join("info")?).await {
+        println!("Test server not running.");
+        return Ok(());
+    }
+
+    let paths_iter = glob("tests/fixtures/1mb.bin")?.filter_map(Result::ok);
+    let paths_chunks = arweave.chunk_file_paths(paths_iter, 2000000)?;
+    println!("{:?}", paths_chunks);
+    let status = arweave
+        .post_bundle_transaction_from_file_paths(paths_chunks[0].clone(), Vec::new(), (0, 0))
+        .await?;
+
+    println!("{:?}", status);
+    Ok(())
+}
