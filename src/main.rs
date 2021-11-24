@@ -83,13 +83,13 @@ fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
 fn is_valid_bundle_size(bundle_size: String) -> Result<(), String> {
     match bundle_size.parse::<u64>() {
         Ok(n) => {
-            if n < 12000000 {
+            if n <= 10000000 {
                 Ok(())
             } else {
-                Err(format!("Bundle data size must be less than 12MB."))
+                Err(format!("Bundle data size must be less than 10MB."))
             }
         }
-        Err(_) => Err(format!("Not a valid multiplier.")),
+        Err(_) => Err(format!("Not a valid bundle size.")),
     }
 }
 
