@@ -1,4 +1,5 @@
 use arloader::{
+    crypto::Provider,
     error::Error,
     solana::SOL_AR_BASE_URL,
     status::{OutputFormat, Status, StatusCode},
@@ -31,6 +32,17 @@ async fn mine(arweave: &Arweave) -> Result<(), Error> {
     Ok(())
 }
 
+async fn airdrop(arweave: &Arweave) -> Result<(), Error> {
+    let url = arweave.base_url.join(&format!(
+        "mint/{}/100000000000000",
+        arweave.crypto.wallet_address().unwrap().to_string()
+    ))?;
+    let resp = reqwest::get(url).await?.text().await?;
+    // Give the node server a chance
+    println!("mine resp: {}", resp);
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_post_transaction() -> Result<(), Error> {
     let arweave = get_arweave().await?;
@@ -38,8 +50,10 @@ async fn test_post_transaction() -> Result<(), Error> {
     if let Err(_) = reqwest::get(arweave.base_url.join("info")?).await {
         println!("Test server not running.");
         return Ok(());
+    } else {
     }
 
+    airdrop(&arweave).await?;
     let file_path = PathBuf::from("tests/fixtures/0.png");
     let transaction = arweave
         .create_transaction_from_file_path(file_path, None, None, (0, 0))
@@ -67,6 +81,7 @@ async fn test_upload_file_from_path() -> Result<(), Error> {
         return Ok(());
     }
 
+    airdrop(&arweave).await?;
     let file_path = PathBuf::from("tests/fixtures/0.png");
     let temp_log_dir = TempDir::from_str("./tests/").await?;
     let log_dir = temp_log_dir.0.clone();
@@ -90,6 +105,7 @@ async fn test_update_status() -> Result<(), Error> {
         return Ok(());
     }
 
+    airdrop(&arweave).await?;
     let file_path = PathBuf::from("tests/fixtures/0.png");
     let temp_log_dir = TempDir::from_str("./tests/").await?;
     let log_dir = temp_log_dir.0.clone();
@@ -123,6 +139,7 @@ async fn test_upload_files_from_paths_without_tags() -> Result<(), Error> {
         return Ok(());
     }
 
+    airdrop(&arweave).await?;
     let paths_iter = glob("tests/fixtures/*.png")?.filter_map(Result::ok);
     let temp_log_dir = TempDir::from_str("./tests/").await?;
     let log_dir = temp_log_dir.0.clone();
@@ -150,6 +167,7 @@ async fn test_update_statuses() -> Result<(), Error> {
         return Ok(());
     }
 
+    airdrop(&arweave).await?;
     let paths_iter = glob("tests/fixtures/*.png")?.filter_map(Result::ok);
     let temp_log_dir = TempDir::from_str("./tests/").await?;
     let log_dir = temp_log_dir.0.clone();
@@ -189,6 +207,7 @@ async fn test_filter_statuses() -> Result<(), Error> {
         return Ok(());
     }
 
+    airdrop(&arweave).await?;
     let _ = mine(&arweave).await?;
     let paths_iter = glob("tests/fixtures/[0-4]*.png")?.filter_map(Result::ok);
 
@@ -328,7 +347,8 @@ async fn test_upload_files_stream() -> Result<(), Error> {
         return Ok(());
     }
 
-    let _ = mine(&arweave).await?;
+    airdrop(&arweave).await?;
+    mine(&arweave).await?;
     let paths_iter = glob("tests/fixtures/[0-9]*.png")?.filter_map(Result::ok);
 
     let temp_log_dir = TempDir::from_str("./tests/").await?;
@@ -358,12 +378,25 @@ async fn test_upload_file_from_path_with_sol() -> Result<(), Error> {
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("dev")?;
     let from_keypair = keypair::read_keypair_file("tests/fixtures/solana_test.json")?;
     let arweave = get_arweave().await?;
+    let ar_sol_dev_wallet_address =
+        Provider::from_keypair_path(PathBuf::from("tests/fixtures/arweave_dev.json"))
+            .await?
+            .wallet_address()
+            .unwrap()
+            .to_string();
 
     // Don't run if test server is not running.
     if let Err(_) = reqwest::get(arweave.base_url.join("info")?).await {
         println!("Test server not running.");
         return Ok(());
     }
+
+    airdrop(&arweave).await?;
+    let url = arweave.base_url.join(&format!(
+        "mint/{}/100000000000000",
+        ar_sol_dev_wallet_address
+    ))?;
+    let _ = reqwest::get(url).await?.text().await?;
 
     // Don't run if sol-ar server is not running.
     if let Err(_) = reqwest::get(SOL_AR_BASE_URL).await {
@@ -406,6 +439,7 @@ async fn test_upload_bundle_from_file_paths() -> Result<(), Error> {
         return Ok(());
     }
 
+    airdrop(&arweave).await?;
     let paths_iter = glob("tests/fixtures/*.png")?.filter_map(Result::ok);
     let paths_chunks = arweave.chunk_file_paths(paths_iter, 2000000)?;
     println!("{:?}", paths_chunks);
