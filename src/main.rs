@@ -83,10 +83,10 @@ fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
 fn is_valid_bundle_size(bundle_size: String) -> Result<(), String> {
     match bundle_size.parse::<u64>() {
         Ok(n) => {
-            if n <= 10000000 {
+            if n <= 200000000 {
                 Ok(())
             } else {
-                Err(format!("Bundle data size must be less than 10MB."))
+                Err(format!("Bundle data size must not be greater than 200MB."))
             }
         }
         Err(_) => Err(format!("Not a valid bundle size.")),
@@ -102,7 +102,7 @@ fn is_valid_log_dir(log_dir: String) -> Result<(), String> {
                 Err(format!("Directory does not exist."))
             }
         }
-        Err(_) => Err(format!("Not a valid diretory.")),
+        Err(_) => Err(format!("Not a valid directory.")),
     }
 }
 
