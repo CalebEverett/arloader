@@ -33,6 +33,7 @@ pub struct Transaction {
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Chunk {
     data_root: Base64,
+    #[serde(with = "stringify")]
     data_size: u64,
     data_path: Base64,
     #[serde(with = "stringify")]

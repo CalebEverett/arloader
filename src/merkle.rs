@@ -83,12 +83,12 @@ impl Helpers<usize> for usize {
     }
 }
 
-/// Ensures there are always an even number of chunks.
 fn get_chunk_size(data_len: usize) -> usize {
     if data_len <= MAX_CHUNK_SIZE {
         data_len
     } else {
-        get_chunk_size(data_len / 2 + (data_len % 2 != 0) as usize)
+        let num_chunks = data_len / MAX_CHUNK_SIZE + (data_len % MAX_CHUNK_SIZE != 0) as usize;
+        data_len / num_chunks + (data_len % num_chunks != 0) as usize
     }
 }
 
@@ -99,7 +99,7 @@ pub fn generate_leaves(data: Vec<u8>, crypto: &Provider) -> Result<Vec<Node>, Er
 
     let mut leaves = Vec::<Node>::new();
     let mut min_byte_range = 0;
-    for chunk in data_chunks.iter() {
+    for chunk in data_chunks.into_iter() {
         let data_hash = crypto.hash_sha256(chunk)?;
         let max_byte_range = min_byte_range + &chunk.len();
         let offset = max_byte_range.to_note_vec();
@@ -142,10 +142,24 @@ pub fn build_layer<'a>(nodes: Vec<Node>, crypto: &Provider) -> Result<Vec<Node>,
     Ok(layer)
 }
 
+/// Builds one layer of branch nodes from a layer of child nodes.
+pub fn build_layer_2<'a>(nodes: Vec<Node>, crypto: &Provider) -> Result<Vec<Node>, Error> {
+    let mut layer = Vec::<Node>::with_capacity(nodes.len() / 2 + (nodes.len() % 2 != 0) as usize);
+    let mut nodes_iter = nodes.into_iter();
+    while let Some(left) = nodes_iter.next() {
+        if let Some(right) = nodes_iter.next() {
+            layer.push(hash_branch(left, right, &crypto).unwrap());
+        } else {
+            layer.push(left);
+        }
+    }
+    Ok(layer)
+}
+
 /// Builds all layers from leaves up to single root node.
 pub fn generate_data_root(mut nodes: Vec<Node>, crypto: &Provider) -> Result<Node, Error> {
     while nodes.len() > 1 {
-        nodes = build_layer(nodes, &crypto)?;
+        nodes = build_layer_2(nodes, &crypto)?;
     }
     let root = nodes.pop().unwrap();
     Ok(root)
@@ -215,7 +229,7 @@ pub fn validate_chunk(
                 .proof
                 .split_at(proof.proof.len() - HASH_SIZE - NOTE_SIZE);
 
-            // Deserailze proof.
+            // Deserialize proof.
             let branch_proofs: Vec<BranchProof> = branches
                 .chunks(HASH_SIZE * 2 + NOTE_SIZE)
                 .map(|b| BranchProof::try_from_proof_slice(b).unwrap())
@@ -269,7 +283,7 @@ mod tests {
         assert_eq!(get_chunk_size(MAX_CHUNK_SIZE), MAX_CHUNK_SIZE);
         assert_eq!(get_chunk_size(MAX_CHUNK_SIZE * 4), MAX_CHUNK_SIZE);
         assert_eq!(get_chunk_size(MAX_CHUNK_SIZE + 1), 131073);
-        assert_eq!(get_chunk_size(1049784), 131223);
+        assert_eq!(get_chunk_size(1049784), 209957);
     }
 
     #[tokio::test]

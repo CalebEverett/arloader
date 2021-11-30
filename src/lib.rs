@@ -23,7 +23,7 @@ use rayon::prelude::*;
 use reqwest::{
     self,
     header::{ACCEPT, CONTENT_TYPE},
-    StatusCode as ResponseStatusCode,
+    Body, StatusCode as ResponseStatusCode,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -990,21 +990,13 @@ impl Arweave {
                 .unzip();
 
         let manifest = self.create_manifest(statuses)?;
-        // let manifest_data_item = self.create_data_item_from_manifest(manifest.clone())?;
-        // let signed_manifest_data_item = self.sign_data_item(manifest_data_item)?;
-        // let manifest_object =
-        //     json!({"id": signed_manifest_data_item.clone().id.to_string(), "manifest": manifest });
-
-        // let (manifest_header, manifest_binary) = signed_manifest_data_item.to_bundle_item()?;
 
         let binary: Vec<_> = data_items_len
             .to_le_bytes()
             .into_par_iter()
             .chain([0u8; 24].into_par_iter())
             .chain(headers.into_par_iter().flatten())
-            // .chain(manifest_header.into_par_iter())
             .chain(binaries.into_par_iter().flatten())
-            // .chain(manifest_binary.into_par_iter())
             .collect();
 
         Ok((binary, manifest))
@@ -1107,8 +1099,11 @@ impl Arweave {
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
-        // let (id, reward) = self.post_transaction_chunks(signed_transaction).await?;
+        let (id, reward) = if paths_chunk.1 > 10000000 {
+            self.post_transaction_chunks(signed_transaction).await?
+        } else {
+            self.post_transaction(&signed_transaction).await?
+        };
 
         let status = BundleStatus {
             id,
@@ -1150,7 +1145,11 @@ impl Arweave {
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        let (id, reward) = if paths_chunk.1 > 10000000 {
+            self.post_transaction_chunks(signed_transaction).await?
+        } else {
+            self.post_transaction(&signed_transaction).await?
+        };
 
         let status = BundleStatus {
             id,
