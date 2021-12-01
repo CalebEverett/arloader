@@ -23,7 +23,7 @@ use rayon::prelude::*;
 use reqwest::{
     self,
     header::{ACCEPT, CONTENT_TYPE},
-    Body, StatusCode as ResponseStatusCode,
+    StatusCode as ResponseStatusCode,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -332,15 +332,50 @@ impl Arweave {
         })
     }
 
+    pub fn create_content_type_tag_from_extension<T>(&self, extension: &str) -> Result<T, Error>
+    where
+        T: FromUtf8Strs<T>,
+    {
+        let template = match extension {
+            "json" => "application/json",
+            "html" => "text/html",
+            "csv" => "text/csv",
+            "css" => "text/css",
+            "md" => "text/markdown",
+            "js" => "application/javascript",
+            _ => "application/octet-stream",
+        };
+        let tag = T::from_utf8_strs("Content-Type", template)?;
+        Ok(tag)
+    }
+
     pub async fn create_transaction_from_file_path(
         &self,
         file_path: PathBuf,
-        other_tags: Option<Vec<Tag<Base64>>>,
+        mut other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
     ) -> Result<Transaction, Error> {
+        let mut auto_content_tag = true;
+
+        if let Some(extension) = file_path.extension() {
+            let ext_str = extension.to_str().unwrap();
+            if matches!(ext_str, "json" | "html" | "csv" | "css" | "md" | "js") {
+                auto_content_tag = false;
+                let content_tag: Tag<Base64> =
+                    self.create_content_type_tag_from_extension(ext_str)?;
+                if let Some(mut tags) = other_tags {
+                    tags.push(content_tag);
+                    other_tags = Some(tags);
+                } else {
+                    other_tags = Some(vec![content_tag]);
+                }
+            }
+        }
+
         let data = fs::read(file_path).await?;
-        self.create_transaction(data, other_tags, last_tx, price_terms, true)
+
+        self.create_transaction(data, other_tags, last_tx, price_terms, auto_content_tag)
             .await
     }
 
@@ -846,16 +881,24 @@ impl Arweave {
         &self,
         data: Vec<u8>,
         mut tags: Vec<Tag<String>>,
+        auto_content_tag: bool,
     ) -> Result<DataItem, Error> {
-        let content_type = if let Some(kind) = infer::get(&data) {
-            kind.mime_type()
-        } else {
-            "application/octet-stream"
-        };
-        tags.extend(vec![
-            Tag::<String>::from_utf8_strs("Content-Type", content_type)?,
-            Tag::<String>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?,
-        ]);
+        tags.push(Tag::<String>::from_utf8_strs(
+            "User-Agent",
+            &format!("arloader/{}", VERSION),
+        )?);
+
+        // Get content type from [magic numbers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
+        // and include additional tags if any.
+        if auto_content_tag {
+            let content_type = if let Some(kind) = infer::get(&data) {
+                kind.mime_type()
+            } else {
+                "application/octet-stream"
+            };
+
+            tags.push(Tag::<String>::from_utf8_strs("Content-Type", content_type)?)
+        }
 
         // let mut anchor = Base64(Vec::with_capacity(32));
         // self.crypto.fill_rand(&mut anchor.0)?;
@@ -883,10 +926,22 @@ impl Arweave {
     pub async fn create_data_item_from_file_path(
         &self,
         file_path: PathBuf,
-        tags: Vec<Tag<String>>,
+        mut tags: Vec<Tag<String>>,
     ) -> Result<(DataItem, Status), Error> {
+        let mut auto_content_tag = true;
+
+        if let Some(extension) = file_path.extension() {
+            let ext_str = extension.to_str().unwrap();
+            if matches!(ext_str, "json" | "html" | "csv" | "css" | "md" | "js") {
+                auto_content_tag = false;
+                let content_tag: Tag<String> =
+                    self.create_content_type_tag_from_extension(ext_str)?;
+                tags.push(content_tag);
+            }
+        }
+
         let data = fs::read(&file_path).await?;
-        let data_item = self.create_data_item(data, tags)?;
+        let data_item = self.create_data_item(data, tags, auto_content_tag)?;
         let data_item = self.sign_data_item(data_item)?;
 
         let status = Status {
