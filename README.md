@@ -23,13 +23,136 @@ cargo install arloader
 
 4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
 
-## Usage
+## NFT Usage
+
+NFTs consist of an on-chain token, an asset (image, animation, video, or other digital media) and metadata describing the asset. Since on-chain storage is expensive, the token itself typically only includes a link to a metadata file stored off chain that includes a link to the asset stored off chain as well. Arweave is an excellent choice for storing assets and metadata since you only pay once and your files are stored forever. Neither you nor anyone else who might end up with your NFTs ever has to worry about funding storage in the future. Once uploaded to Arweave, your assets and metadata are stored forever!
+
+So, in order to create your NFTs, you need your assets uploaded to Arweave, your metadata files to include links to the assets and finally, the updated metadata files to be uploaded to Arweave. Once these steps are completed and your upload transactions have been confirmed, you can use the links returned from uploading your metadata files to create your NFTs.
+
+1. Upload your assets
+2. Update your metadata files to include the links to your assets
+3. Upload your metadata files and get back links for your NFTs
+
+To start with, include both your assets and your metadata files in the same directory and make sure that the stems of your asset files match the stems of your metadata files.
+```
+├── 0.json
+├── 0.png
+├── 1.json
+├── 1.png
+├── 2.json
+├── 2.png
+├── 3.json
+├── 3.png
+├── 4.json
+├── 4.png
+├── 5.json
+├── 5.png
+```
+
+Also create directories where you can log the statuses of your asset and metadata uploads. arloader will use these to provide updates on confirmation statuses and to write files with links to your uploaded files. The example below assumes that `status/assets/` and `status/metadata/` have been created in advance.
+
+See [Token Metadata Standard](https://docs.metaplex.com/nft-standard) for details on the standard metadata format.
+
+### Upload Assets
+
+```
+arloader upload "*.png" --log-dir "status/asset/"
+```
+
+At this point, you can also go ahead and create and upload a manifest file. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>` if you want, but creating and uploading a manifest gives you the option of using either link. You'll also be able to use this file later to automatically update your metadata files to include links to your uploaded asset files. 
+
+```
+arloader upload-manifest --log-dir "status/assets/" --reward-multiplier 2
+```
+
+Since this is a small transaction and you want to make sure it goes through, it's a good idea to increase the reward.
+
+A version of the manifest named `manifest_<TXID>.json` will be written in the `status/assets/` directory.
+
+```json
+{
+    "0.png": {
+        "files": [
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/BSvIAiwthQu_xwQBHn9FcgACaZ8ko4py5mqMNP4r-jM/0.png"
+            },
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/JQbz5py065lqaS_8R7NCtLcK2b-pSkkG6Je0OT8379c"
+            }
+        ],
+        "id": "JQbz5py065lqaS_8R7NCtLcK2b-pSkkG6Je0OT8379c"
+    },
+    "1.png": {
+        "files": [
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/BSvIAiwthQu_xwQBHn9FcgACaZ8ko4py5mqMNP4r-jM/1.png"
+            },
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
+            }
+        ],
+        "id": "Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
+    },
+    ...
+```
+
+### Update Metadata
+
+Before updating your metadata files, you want to ensure that your uploaded asset files have at least 25 confirmations. You can check the number of confirmations by running:
+
+```
+arloader update-status --log-dir "status/asset/"
+```
+
+Also check your manifest confirmations by running:
+
+```
+arloader get-status <MANIFEST_ID>
+```
+
+Once you see that each of the upload transactions has at least 25 confirmations you can proceed with updating your metadata files, assured that your assets have been permanently uploaded.
+
+If your metadata files have the same stem as your asset files and an extension of `json`, you can update the `image` and `files` keys from the newly created manifest file with the command below.
+
+```
+arloader update-metadata "*.png" --manifest-id <MANIFEST_ID>
+```
+
+arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--image-link-file` flag to the `update-metadata` command.
+
+### Upload Metadata
+
+Now that your metadata files include links to your uploaded assets, you're ready to upload your metadata files.
+
+```
+arloader upload "*.json" --log-dir "status/metadata/"
+```
+
+Go ahead and create and upload a separate manifest for your metadata files. You can then use the links in the `manifest_<TXID>.json` in the `status/metadata/` to create your NFTs, using either of the id or file based links to your metadata.
+
+```
+arloader upload-manifest --log-dir "status/metadata/"
+```
+
+Same thing as with your asset files, before creating your NFTs, you should make sure that each of your metadata upload transactions has been confirmed at least 25 times.
+
+```
+arloader update-status --log-dir "status/metadata/"
+```
+
+Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in `status/metadata/` and use the included links to create your NFTs!
+
+## General Usage
 
 If you're uploading more than one file, you should pretty much always be using bundles. Bundles take multiple files and packages them together in a single transaction. This is better than uploading multiple individual files because you only have to wait for one transaction to be confirmed. Once the bundle transaction is confirmed, all of your files will be available. Larger transactions with larger rewards are more attractive to miners, which means a larger bundled transaction is more likely to get written quickly than a bunch of smaller individual ones.
 
 Arloader accepts file glob patterns and defaults to creating a bundle for your files.
 
-Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader support bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunks` endpoint. This should work fine for file sizes less than 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100000000` to specify a size of 100 MB, for example.
+Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100000000` to specify a size of 100 MB, for example.
 
 1. To get an estimate of the cost of uploading your files run
 
@@ -112,56 +235,32 @@ where `<LOG_DIR>` is the directory containing your bundle status json files. Thi
 ```json
 {
     "tests/fixtures/0.png": {
-        "id": "NNdSluho1hHrlrVdoFLlx6K37XxArSaafDRchaRk-4k",
-        "id_url": "https://arweave.net/NNdSluho1hHrlrVdoFLlx6K37XxArSaafDRchaRk-4k",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/0.png"
+        "files": [
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/BSvIAiwthQu_xwQBHn9FcgACaZ8ko4py5mqMNP4r-jM/tests/fixtures/0.png"
+            },
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/JQbz5py065lqaS_8R7NCtLcK2b-pSkkG6Je0OT8379c"
+            }
+        ],
+        "id": "JQbz5py065lqaS_8R7NCtLcK2b-pSkkG6Je0OT8379c"
     },
     "tests/fixtures/1.png": {
-        "id": "eGZUfB2HmzOO8kOf1VKD9VC6eJBQHWYezfuJ1u2QwgA",
-        "id_url": "https://arweave.net/eGZUfB2HmzOO8kOf1VKD9VC6eJBQHWYezfuJ1u2QwgA",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/1.png"
+        "files": [
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/BSvIAiwthQu_xwQBHn9FcgACaZ8ko4py5mqMNP4r-jM/tests/fixtures/1.png"
+            },
+            {
+                "type": "image/png",
+                "uri": "https://arweave.net/Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
+            }
+        ],
+        "id": "Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
     },
-    "tests/fixtures/2.png": {
-        "id": "yKpDmxwZq2Hd0RPU7x9FYguu7uAH2yFFKYdafr2oQDQ",
-        "id_url": "https://arweave.net/yKpDmxwZq2Hd0RPU7x9FYguu7uAH2yFFKYdafr2oQDQ",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/2.png"
-    },
-    "tests/fixtures/3.png": {
-        "id": "LA6Lbi8Smy1NlY1ZEQg6oHuz7tHS3aqipjTQ6IYYvx4",
-        "id_url": "https://arweave.net/LA6Lbi8Smy1NlY1ZEQg6oHuz7tHS3aqipjTQ6IYYvx4",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/3.png"
-    },
-    "tests/fixtures/4.png": {
-        "id": "Q_8X5bYAHWwAKiVxc68gyLOalmVy2M1WuzmN_VIsa9k",
-        "id_url": "https://arweave.net/Q_8X5bYAHWwAKiVxc68gyLOalmVy2M1WuzmN_VIsa9k",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/4.png"
-    },
-    "tests/fixtures/5.png": {
-        "id": "DukqezWt4nO5TXhIkI8_C2S-IgvCRlMqoCaoQJqDvsc",
-        "id_url": "https://arweave.net/DukqezWt4nO5TXhIkI8_C2S-IgvCRlMqoCaoQJqDvsc",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/5.png"
-    },
-    "tests/fixtures/6.png": {
-        "id": "s0SrsnAIrXIq320gi5zXlFv2mRvsOlY6KTFxexQ0uiY",
-        "id_url": "https://arweave.net/s0SrsnAIrXIq320gi5zXlFv2mRvsOlY6KTFxexQ0uiY",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/6.png"
-    },
-    "tests/fixtures/7.png": {
-        "id": "wcnez7bz7xZzlr18Wqhh0YsdQ7uLpx2HCqClvRVKBV0",
-        "id_url": "https://arweave.net/wcnez7bz7xZzlr18Wqhh0YsdQ7uLpx2HCqClvRVKBV0",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/7.png"
-    },
-    "tests/fixtures/8.png": {
-        "id": "dRuhwEu7XtY3GGAVurr9-4W-ol-pKZ3J3Ctsv9XwAYM",
-        "id_url": "https://arweave.net/dRuhwEu7XtY3GGAVurr9-4W-ol-pKZ3J3Ctsv9XwAYM",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/8.png"
-    },
-    "tests/fixtures/9.png": {
-        "id": "dBrDK_pPcU06vkmWJfQ-4tYAE7eS1undBjLW9jS-CTE",
-        "id_url": "https://arweave.net/dBrDK_pPcU06vkmWJfQ-4tYAE7eS1undBjLW9jS-CTE",
-        "relative_url": "https://arweave.net/qR1DG8KphkbpiQqy2VCfy6cBfHuXahXV9UR9--zDc3w/tests/fixtures/9.png"
-    }
-}
+    ...
 ```
 
 You can run the following command to get an update on the status of your manifest transaction.

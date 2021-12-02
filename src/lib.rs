@@ -73,7 +73,6 @@ pub fn upload_bundles_stream<'a>(
     price_terms: (u64, u64),
     buffer: usize,
 ) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a {
-    // let path_chunks = arweave.chunk_file_paths(paths_iter, data_size).unwrap();
     stream::iter(paths_chunks)
         .map(move |p| arweave.post_bundle_transaction_from_file_paths(p, tags.clone(), price_terms))
         .buffer_unordered(buffer)
@@ -89,7 +88,6 @@ pub fn upload_bundles_stream_with_sol<'a>(
     sol_ar_url: Url,
     from_keypair: &'a Keypair,
 ) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a {
-    // let path_chunks = arweave.chunk_file_paths(paths_iter, data_size).unwrap();
     stream::iter(paths_chunks)
         .map(move |p| {
             arweave.post_bundle_transaction_from_file_paths_with_sol(
@@ -332,49 +330,15 @@ impl Arweave {
         })
     }
 
-    pub fn create_content_type_tag_from_extension<T>(&self, extension: &str) -> Result<T, Error>
-    where
-        T: FromUtf8Strs<T>,
-    {
-        let template = match extension {
-            "json" => "application/json",
-            "html" => "text/html",
-            "csv" => "text/csv",
-            "css" => "text/css",
-            "md" => "text/markdown",
-            "js" => "application/javascript",
-            _ => "application/octet-stream",
-        };
-        let tag = T::from_utf8_strs("Content-Type", template)?;
-        Ok(tag)
-    }
-
     pub async fn create_transaction_from_file_path(
         &self,
         file_path: PathBuf,
-        mut other_tags: Option<Vec<Tag<Base64>>>,
+        other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
+        auto_content_tag: bool,
     ) -> Result<Transaction, Error> {
-        let mut auto_content_tag = true;
-
-        if let Some(extension) = file_path.extension() {
-            let ext_str = extension.to_str().unwrap();
-            if matches!(ext_str, "json" | "html" | "csv" | "css" | "md" | "js") {
-                auto_content_tag = false;
-                let content_tag: Tag<Base64> =
-                    self.create_content_type_tag_from_extension(ext_str)?;
-                if let Some(mut tags) = other_tags {
-                    tags.push(content_tag);
-                    other_tags = Some(tags);
-                } else {
-                    other_tags = Some(vec![content_tag]);
-                }
-            }
-        }
-
         let data = fs::read(file_path).await?;
-
         self.create_transaction(data, other_tags, last_tx, price_terms, auto_content_tag)
             .await
     }
@@ -597,7 +561,7 @@ impl Arweave {
             .fold(serde_json::Map::new(), |mut m, s| {
                 m.insert(
                     s.file_path.unwrap().display().to_string(),
-                    json!({"id": s.id.to_string()}),
+                    json!({"id": s.id.to_string(), "content_type": s.content_type}),
                 );
                 m
             });
@@ -700,16 +664,33 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         log_dir: Option<PathBuf>,
-        additional_tags: Option<Vec<Tag<Base64>>>,
+        mut additional_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
     ) -> Result<Status, Error> {
+        let mut auto_content_tag = true;
+        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
+
+        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
+            status_content_type = content_type.to_string();
+            auto_content_tag = false;
+            let content_tag: Tag<Base64> =
+                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
+            if let Some(mut tags) = additional_tags {
+                tags.push(content_tag);
+                additional_tags = Some(tags);
+            } else {
+                additional_tags = Some(vec![content_tag]);
+            }
+        }
+
         let transaction = self
             .create_transaction_from_file_path(
                 file_path.clone(),
                 additional_tags,
                 last_tx,
                 price_terms,
+                auto_content_tag,
             )
             .await?;
         let signed_transaction = self.sign_transaction(transaction)?;
@@ -719,6 +700,7 @@ impl Arweave {
             id,
             reward,
             file_path: Some(file_path),
+            content_type: status_content_type,
             ..Default::default()
         };
 
@@ -752,19 +734,36 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         log_dir: Option<PathBuf>,
-        additional_tags: Option<Vec<Tag<Base64>>>,
+        mut additional_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
         solana_url: Url,
         sol_ar_url: Url,
         from_keypair: &Keypair,
     ) -> Result<Status, Error> {
+        let mut auto_content_tag = true;
+        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
+
+        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
+            status_content_type = content_type.to_string();
+            auto_content_tag = false;
+            let content_tag: Tag<Base64> =
+                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
+            if let Some(mut tags) = additional_tags {
+                tags.push(content_tag);
+                additional_tags = Some(tags);
+            } else {
+                additional_tags = Some(vec![content_tag]);
+            }
+        }
+
         let transaction = self
             .create_transaction_from_file_path(
                 file_path.clone(),
                 additional_tags,
                 last_tx,
                 price_terms,
+                auto_content_tag,
             )
             .await?;
 
@@ -776,6 +775,7 @@ impl Arweave {
 
         let mut status = Status {
             file_path: Some(file_path),
+            content_type: status_content_type,
             id,
             reward,
             ..Default::default()
@@ -929,15 +929,14 @@ impl Arweave {
         mut tags: Vec<Tag<String>>,
     ) -> Result<(DataItem, Status), Error> {
         let mut auto_content_tag = true;
+        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
 
-        if let Some(extension) = file_path.extension() {
-            let ext_str = extension.to_str().unwrap();
-            if matches!(ext_str, "json" | "html" | "csv" | "css" | "md" | "js") {
-                auto_content_tag = false;
-                let content_tag: Tag<String> =
-                    self.create_content_type_tag_from_extension(ext_str)?;
-                tags.push(content_tag);
-            }
+        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
+            status_content_type = content_type.to_string();
+            auto_content_tag = false;
+            let content_tag: Tag<String> =
+                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
+            tags.push(content_tag);
         }
 
         let data = fs::read(&file_path).await?;
@@ -947,6 +946,7 @@ impl Arweave {
         let status = Status {
             id: data_item.id.clone(),
             file_path: Some(file_path),
+            content_type: status_content_type,
             ..Status::default()
         };
 
@@ -1228,15 +1228,16 @@ impl Arweave {
         let mut consolidated_paths = serde_json::Map::new();
         for (file_path, id_obj) in manifest["paths"].as_object().unwrap() {
             let id = id_obj["id"].as_str().unwrap();
+            let content_type = id_obj["content_type"].as_str().unwrap();
             consolidated_paths.insert(
                 file_path.to_owned(),
-                json!({"id": id, "relative_url": format!(
-                    "https://arweave.net/{}/{}",
-                    transaction_id, file_path
-                ), "id_url": format!(
-                    "https://arweave.net/{}",
-                    id
-                )}),
+                json!({
+                    "id": id,
+                    "files": [
+                        {"uri": format!("https://arweave.net/{}", id), "type": content_type},
+                        {"uri": format!("https://arweave.net/{}/{}", transaction_id, file_path), "type": content_type}
+                    ]
+                }),
             );
         }
         fs::write(
@@ -1247,6 +1248,75 @@ impl Arweave {
         )
         .await?;
         Ok(())
+    }
+
+    pub async fn update_metadata_file(
+        &self,
+        file_path: PathBuf,
+        files_array: Vec<Value>,
+        image_link: String,
+    ) -> Result<(), Error> {
+        let data = fs::read_to_string(file_path.clone()).await?;
+        let mut metadata: Value = serde_json::from_str(&data)?;
+        let metadata = metadata.as_object_mut().unwrap();
+        let _ = metadata.insert("image".to_string(), Value::String(image_link));
+
+        let properties = metadata["properties"].as_object_mut().unwrap();
+        let _ = properties.insert("files".to_string(), Value::Array(files_array));
+        // let _ = metadata.insert("properties".to_string(), Value::Object(properties.clone()));
+
+        fs::write(file_path, serde_json::to_string(&json!(metadata))?).await?;
+        Ok(())
+    }
+
+    pub async fn update_metadata<IP>(
+        &self,
+        paths_iter: IP,
+        manifest_path: PathBuf,
+        image_link_file: bool,
+    ) -> Result<(), Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        if manifest_path.exists() {
+            let manifest_id = manifest_path
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .split("_")
+                .collect::<Vec<&str>>()
+                .pop()
+                .unwrap();
+            let data = fs::read_to_string(manifest_path.clone()).await?;
+            let mut manifest: Value = serde_json::from_str(&data)?;
+            let manifest = manifest.as_object_mut().unwrap();
+
+            try_join_all(paths_iter.map(|p| {
+                let path_object = manifest.get(p.to_str().unwrap()).unwrap();
+                let image_link = if image_link_file {
+                    format!(
+                        "https://arweave.net/{}/{}",
+                        manifest_id,
+                        p.to_str().unwrap()
+                    )
+                } else {
+                    format!(
+                        "https://arweave.net/{}",
+                        path_object["id"].as_str().unwrap()
+                    )
+                };
+                self.update_metadata_file(
+                    p.with_extension("json"),
+                    path_object["files"].as_array().unwrap().clone(),
+                    image_link,
+                )
+            }))
+            .await?;
+            Ok(())
+        } else {
+            Err(Error::ManifestNotFound)
+        }
     }
 }
 
@@ -1278,7 +1348,13 @@ mod tests {
         let last_tx = Base64::from_str("LCwsLCwsLA")?;
         let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
         let transaction = arweave
-            .create_transaction_from_file_path(file_path, Some(other_tags), Some(last_tx), (0, 0))
+            .create_transaction_from_file_path(
+                file_path,
+                Some(other_tags),
+                Some(last_tx),
+                (0, 0),
+                true,
+            )
             .await?;
 
         let error = arweave.post_transaction(&transaction).await.unwrap_err();
@@ -1306,6 +1382,7 @@ mod tests {
                 Some(other_tags),
                 Some(last_tx),
                 (0, 0),
+                true,
             )
             .await?;
 
@@ -1425,6 +1502,26 @@ mod tests {
             .fold((0usize, 0u64), |(n, d), p| (n + p.0.len(), d + p.1));
 
         assert_eq!((10, 18265), (number_of_files, data_size));
+        Ok(())
+    }
+
+    #[test]
+    fn test_mime_types() -> Result<(), Error> {
+        let file_paths = vec![
+            "some.png",
+            "some.jpg",
+            "some.json",
+            "some.txt",
+            "some.css",
+            "some.js",
+        ];
+
+        let paths_iter = file_paths.iter().map(|p| PathBuf::from(p));
+
+        for p in paths_iter {
+            println!("{}", mime_guess::from_path(p).first().unwrap());
+        }
+
         Ok(())
     }
 }

@@ -266,7 +266,7 @@ fn no_bundle_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(false)
         .help(
             "Specify whether to upload with individual \
-            transactions intead of in a bundle.",
+            transactions instead of in a bundle.",
         )
 }
 
@@ -288,6 +288,27 @@ fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
         .validator(is_valid_bundle_size)
         .default_value("10000000")
         .help("Sets the maximum file data bytes to include in a bundle.")
+}
+
+fn image_link_file_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("image_link_file")
+        .long("image-link-file")
+        .value_name("IMAGE_LINK_FILE")
+        .required(false)
+        .takes_value(false)
+        .help(
+            "Specify whether to update `image` key in NFT metadata file with \
+            file based link instead of id based link.",
+        )
+}
+
+fn manifest_path_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("manifest_path")
+        .long("manifest-path")
+        .value_name("MANIFEST_PATH")
+        .required(true)
+        .validator(is_parsable::<PathBuf>)
+        .help("Path of manifest file to use to update NFT metadata files.")
 }
 
 fn get_app() -> App<'static, 'static> {
@@ -415,12 +436,18 @@ fn get_app() -> App<'static, 'static> {
         )
         .subcommand(
             SubCommand::with_name("list-status")
-                .about("Lists statuses as currently store in `log_dir`.")
-                .help("")
+                .about("Lists statuses as currently stored in `log_dir`.")
                 .arg(glob_arg(true))
                 .arg(log_dir_arg(true))
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("update-metadata")
+                .about("Update `image` and `files` keys in NFT metadata json files with links from provided manifest file.")
+                .arg(glob_arg(true))
+                .arg(manifest_path_arg())
+                .arg(image_link_file_arg())
         );
     app_matches
 }
@@ -610,6 +637,12 @@ async fn main() -> CommandResult {
                 buffer,
             )
             .await
+        }
+        ("update-metadata", Some(sub_arg_matches)) => {
+            let glob_str = sub_arg_matches.value_of("glob").unwrap();
+            let manifest_str = sub_arg_matches.value_of("manifest_path").unwrap();
+            let image_link_file = sub_arg_matches.is_present("image_link_file");
+            command_update_metadata(&arweave, glob_str, manifest_str, image_link_file).await
         }
         _ => unreachable!(),
     }
@@ -1169,6 +1202,28 @@ async fn command_upload_manifest(
         .await?;
 
     println!("{}", output);
+    Ok(())
+}
+
+async fn command_update_metadata(
+    arweave: &Arweave,
+    glob_str: &str,
+    manifest_str: &str,
+    image_link_file: bool,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
+    let manifest_path = PathBuf::from(manifest_str);
+
+    arweave
+        .update_metadata(
+            glob(glob_str)?.filter_map(Result::ok),
+            manifest_path,
+            image_link_file,
+        )
+        .await?;
+
+    println!("Successfully updated {} metadata files.", num_paths);
     Ok(())
 }
 

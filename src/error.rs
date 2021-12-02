@@ -39,6 +39,8 @@ pub enum Error {
     IOError(#[from] std::io::Error),
     #[error("key rejected: {0}")]
     KeyRejected(#[from] KeyRejected),
+    #[error("manifest not found")]
+    ManifestNotFound,
     #[error("file path not provided")]
     MissingFilePath,
     #[error("missing trailing slash")]
