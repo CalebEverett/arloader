@@ -1,11 +1,60 @@
 //! SDK for uploading files in bulk to [Arweave](https://www.arweave.org/).
 //!
-//! Files can't just be uploaded in a post it and forget manner to Arweave since their data needs to be
-//! written to the blockchain by node operators and that doesn't happen instantaneously. This SDK aims to
-//! make the process of uploading large numbers of files as seamless as possible. In addition to providing
-//! highly performant, streaming uploads, it also includes status logging and reporting features through which
-//! complete upload processes can be developed, including uploading files, updating statuses and re-uploading
-//! files from filtered sets of statuses.
+//! ## CLI
+//! See [README.md](https://crates.io/crates/arloader) for usage instructions.
+//!
+//! The main cli application is all in `main.rs` following a pattern of specifying arguments,
+//! matching them, and then in turn passing them to commands, which are all broken out
+//! separately in the [`commands`] module to facilitate re-use in other command
+//! line applications or as library functions. There shouldn't be anything called by the cli
+//! application directly from the library. Everything gets composed into a command in the [`commands`]
+//! module.
+//!
+//! ## Library
+//!
+//! #### Overview
+//! The library is mostly focused on uploading files as efficiently as possible. Arweave has
+//! two different transaction formats and two different upload formats. Transactions can either
+//! be normal, single data item transactions (see [transaction format](https://docs.arweave.org/developers/server/http-api#transaction-format)
+//!  for details), or bundle transactions (see [bundle format](https://github.com/joshbenaron/arweave-standards/blob/ans104/ans/ANS-104.md)
+//! for details). The bundle format, introduced mid-2021, bundles together individual data items
+//! into larger transactions, making uploading much more efficient and reducing network congestion.
+//! The library supports both formats, with the recommended approach being to use the bundle format.
+//!
+//! #### Transactions and DataItems
+//! Both formats start with chunking file data and creating merkle trees from the chunks. The merkle
+//! tree logic can be found in the [`merkle`] module. All of the hashing functions and other crypto
+//! operations are in the [`crypto`] module. Once the data is chunked, hashed, and a merkle root
+//! calculated for it, it gets incorporated into either a [`Transaction`], which can be found in the
+//! [`transaction`] module, or a [`DataItem`] (if it is going to be included in a bundle format transaction),
+//! which can be found in the [`bundle`] module.
+//!
+//! #### Bytes and Base64Url Data
+//! The library takes advantage of Rust's strong typing and trait model to store all data, signatures and
+//! addresses as a [`Base64`] struct with implementations for serialization and deserialization that automatically
+//! convert the underlying bytes to and from the Base64Url format required for submission to Arweave.
+//!
+//! #### Signing
+//! A key part of constructing transactions is signing them. Arweave has a specific algorithm for generating the
+//! digest that gets signed and then hashed to serve as a transaction id, called deep hash. It takes various elements
+//! of either the [`Transaction`] or [`DataItem`], including nested arrays of tags, and successively concatenates and
+//! hashes them. The required elements are assembled using the [`ToItems`] trait, implemented separately for [`Transaction`]
+//! and [`DataItem`]. Arloader's implementation of the deep hash algorithm can be found in [`crypto::Provider::deep_hash`].
+//!
+//! #### Higher Level Functions
+//! The functions for creating transactions, data items and bundles are all consolidated on the [`Arweave`] struct.
+//! In general there are lower level functions for creating the items from data, that are then used in successively
+//! higher level functions to create the items from a single file path and ultimately uploading streams of items in
+//! parallel from collections of file paths.
+//!
+//! #### Status Tracking
+//! A key added functionality is the tracking and reporting on transaction statuses. There are two status structs,
+//! [`Status`] and [`BundleStatus`] used for these purposes. They are essentially the same format, except that
+//! [`BundleStatus`] is modified to include references to all of the included [`DataItem`] instead of just a
+//! single [`Transaction`] for [`Status`].
+//!
+//! #### Solana
+//! The functions for allowing payment to be made in SOL can be found in the [`solana`] module.
 
 #![feature(derive_default_enum)]
 use crate::solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR, RATE};
@@ -33,6 +82,7 @@ use tokio::fs;
 use url::Url;
 
 pub mod bundle;
+pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod merkle;
