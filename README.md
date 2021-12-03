@@ -11,7 +11,7 @@ Upload gigabytes of files with one command specifying a glob pattern to match fi
 
 ## Installation
 
-1. If you're on Linux, you can install the binary from the [releases on github](https://github.com/CalebEverett/arloader/releases). Otherwise, of if you prefer, you can install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install).
+1. The easiest way to use arloader is to download the binary for your system (Linux, Mac or Windows) from the [releases on github](https://github.com/CalebEverett/arloader/releases). You can also install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install).
 
 ```
 cargo install arloader
@@ -97,7 +97,7 @@ A version of the manifest named `manifest_<TXID>.json` will be written in the `s
         ],
         "id": "Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
     },
-    ...
+    
 ```
 
 ### Update Metadata
@@ -230,7 +230,7 @@ bundle txid                                   items      KB  status       confir
 ```
 arloader upload-manifest --log-dir "<LOG_DIR>"
 ```
-where `<LOG_DIR>` is the directory containing your bundle status json files. This will go through and consolidate the paths from each of the bundles, create a consolidated manifest, upload it to Arweave and then write a file named `manifest_<TXID>.json`to `<LOG_DIR>`. Once the transaction uploading the manifest has been confirmed, you will be able to access your files and both `https://arweave.net/<BUNDLE_ITEM_ID>` and `https://arweave.net<MANIFEST_ID>/<FILE_PATH>`  where `MANIFEST_ID` is the id of the manifest transaction and `FILE_PATH` is the relative path of the file included in the `GLOB` pattern you specified with the `upload` command.
+where `<LOG_DIR>` is the directory containing your bundle status json files. This will go through and consolidate the paths from each of the bundles, create a consolidated manifest, upload it to Arweave and then write a file named `manifest_<TXID>.json`to `<LOG_DIR>`. Once the transaction uploading the manifest has been confirmed, you will be able to access your files and both `https://arweave.net/<BUNDLE_ITEM_ID>` and `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`  where `MANIFEST_ID` is the id of the manifest transaction and `FILE_PATH` is the relative path of the file included in the `GLOB` pattern you specified with the `upload` command.
 
 ```json
 {

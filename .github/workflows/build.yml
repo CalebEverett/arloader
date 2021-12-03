@@ -11,42 +11,155 @@ on:
       - master
       - dev
 jobs:
-  Build:
-    runs-on: ubuntu-20.04
+  LinuxBuild:
+    runs-on: ${{ matrix.host_os }}
     services:
       arlocal:
           image: calebeverett/arlocal
           ports:
             - 1984:1984
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+        include:
+          - target: x86_64-unknown-linux-gnu
+            host_os: ubuntu-18.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Build
+      - if: contains(matrix.host_os, 'ubuntu')
+        run: sudo apt-get update -y
+
+      - uses: actions/checkout@v2
+
+      - if: ${{ !contains(matrix.host_os, 'windows') }}
+        run: mk/install-build-tools.sh --target=${{ matrix.target }}
+
+      - if: contains(matrix.host_os, 'windows')
+        run: ./mk/install-build-tools.ps1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target ${{ matrix.target }} --release
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: test
+          args: --target ${{ matrix.target }} --release -- --nocapture
+      - name: Paths
+        id: paths
+        shell: bash
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          sudo apt-get update
-          rustup install nightly
-          rustup default nightly
-          cargo --version
-          docker --version          
-          sudo apt-get install -y openssl --allow-unauthenticated
-          sudo apt-get install -y libssl-dev --allow-unauthenticated
-          sudo apt-get install -y libssl1.1 --allow-unauthenticated
-          sudo apt-get install -y libudev-dev --allow-unauthenticated
-          sudo apt-get install -y zip --allow-unauthenticated
-          cargo build --target x86_64-unknown-linux-gnu --release
-          zip arloader-x86_64-unknown-linux-gnu.zip target/x86_64-unknown-linux-gnu/release/arloader README.md -j
-      - name: Test
+          extension=""
+          if ${{ contains(matrix.host_os, 'windows') }}; then
+            extension=".exe"
+          fi
+          build_path="target/${{ matrix.target }}/release/arloader${extension}"
+          artifact_path="arloader-${GITHUB_REF#refs/tags/}-${{ matrix.target }}.zip"
+          echo "::set-output name=build_path::${build_path}"
+          echo "::set-output name=artifact_path::${artifact_path}"
+      - name: Zip
+        shell: bash
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          cargo test --release --target x86_64-unknown-linux-gnu -- --nocapture
+          if ${{ contains(matrix.host_os, 'windows') }}
+          then
+            7z a -tzip ${{ steps.paths.outputs.artifact_path }} ./${{ steps.paths.outputs.build_path }} README.md
+          else
+            zip ${{ steps.paths.outputs.artifact_path }} ${{ steps.paths.outputs.build_path }} README.md -j
+          fi
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            arloader-x86_64-unknown-linux-gnu.zip
-            LICENSE.md
+            ${{ steps.paths.outputs.artifact_path }}
+            LICENSE
       - name: Publish
+        uses: actions-rs/cargo@v1
         if: startsWith(github.ref, 'refs/tags/')
-        run: cargo publish --token ${{ secrets.CARGO_TOKEN }} 
+        with:
+          use-cross: false
+          command: publish
+          args: --token ${{ secrets.CARGO_TOKEN }} 
+  
+  # Same job as above except:
+  # - No service for arlocal integration tests - only supported on linux runners.
+  # - LICENSE not added to release artifacts since added above.
+  MacWinBuild:
+    runs-on: ${{ matrix.host_os }}
+    strategy:
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - x86_64-pc-windows-msvc
+        include:
+          - target: x86_64-apple-darwin
+            host_os: macos-latest
 
-    
+          - target: x86_64-pc-windows-msvc
+            host_os: windows-latest
+
+    steps:
+      - if: contains(matrix.host_os, 'ubuntu')
+        run: sudo apt-get update -y
+
+      - uses: actions/checkout@v2
+
+      - if: ${{ !contains(matrix.host_os, 'windows') }}
+        run: mk/install-build-tools.sh --target=${{ matrix.target }}
+
+      - if: contains(matrix.host_os, 'windows')
+        run: ./mk/install-build-tools.ps1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --target ${{ matrix.target }} --release
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: test
+          args: --target ${{ matrix.target }} --release
+      - name: Paths
+        id: paths
+        shell: bash
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          extension=""
+          if ${{ contains(matrix.host_os, 'windows') }}; then
+            extension=".exe"
+          fi
+          build_path="target/${{ matrix.target }}/release/arloader${extension}"
+          artifact_path="arloader-${GITHUB_REF#refs/tags/}-${{ matrix.target }}.zip"
+          echo "::set-output name=build_path::${build_path}"
+          echo "::set-output name=artifact_path::${artifact_path}"
+      - name: Zip
+        shell: bash
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          if ${{ contains(matrix.host_os, 'windows') }}
+          then
+            7z a -tzip ${{ steps.paths.outputs.artifact_path }} ./${{ steps.paths.outputs.build_path }} README.md
+          else
+            zip ${{ steps.paths.outputs.artifact_path }} ${{ steps.paths.outputs.build_path }} README.md -j
+          fi
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ steps.paths.outputs.artifact_path }}
