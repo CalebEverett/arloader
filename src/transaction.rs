@@ -101,7 +101,7 @@ impl Transaction {
 }
 
 /// Implemented on [`Transaction`] to create root [`DeepHashItem`]s used by
-/// [`crate::crypto::Methods::deep_hash`] in the creation of a transaction
+/// [`crate::crypto::Provider::deep_hash`] in the creation of a transaction
 /// signatures.
 pub trait ToItems<'a, T> {
     fn to_deep_hash_item(&'a self) -> Result<DeepHashItem, Error>;
