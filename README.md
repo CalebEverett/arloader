@@ -31,7 +31,8 @@ So, in order to create your NFTs, you need your assets uploaded to Arweave, your
 
 1. Upload your assets
 2. Update your metadata files to include the links to your assets
-3. Upload your metadata files and get back links for your NFTs
+3. Upload your metadata files
+4. Get links to your uploaded metadata files to use in your NFTs
 
 To start with, include both your assets and your metadata files in the same directory and make sure that the stems of your asset files match the stems of your metadata files.
 ```
@@ -102,7 +103,7 @@ A version of the manifest named `manifest_<TXID>.json` will be written in the `s
 
 ### Update Metadata
 
-Before updating your metadata files, you want to ensure that your uploaded asset files have at least 25 confirmations. You can check the number of confirmations by running:
+You can proceed with updating your metadata files, but just make sure that you've gotten 25 confirmations on everything - your assets, metadata and manifest files before you create your NFTs. You can check the number of confirmations by running:
 
 ```
 arloader update-status --log-dir "status/asset/"
@@ -114,15 +115,13 @@ Also check your manifest confirmations by running:
 arloader get-status <MANIFEST_ID>
 ```
 
-Once you see that each of the upload transactions has at least 25 confirmations you can proceed with updating your metadata files, assured that your assets have been permanently uploaded.
-
 If your metadata files have the same stem as your asset files and an extension of `json`, you can update the `image` and `files` keys from the newly created manifest file with the command below.
 
 ```
 arloader update-metadata "*.png" --manifest-id <MANIFEST_ID>
 ```
 
-arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--image-link-file` flag to the `update-metadata` command.
+arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `update-metadata` command.
 
 ### Upload Metadata
 
@@ -138,13 +137,47 @@ Go ahead and create and upload a separate manifest for your metadata files. You 
 arloader upload-manifest --log-dir "status/metadata/"
 ```
 
-Same thing as with your asset files, before creating your NFTs, you should make sure that each of your metadata upload transactions has been confirmed at least 25 times.
+Same thing as with your asset files, before creating your NFTs, you make sure that each of your metadata upload transactions has been confirmed at least 25 times.
 
 ```
 arloader update-status --log-dir "status/metadata/"
 ```
 
+And for your metadata manifest:
+
+```
+arloader get-status <MANIFEST_ID>
+```
+
+### Get Links to Uploaded Metadata
+
 Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in `status/metadata/` and use the included links to create your NFTs!
+
+If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links you can copy
+and paste into your candy machine config by running:
+
+```
+arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <MANIFEST_PATH>
+```
+
+This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to <LOG_DIR> with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
+you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`), by passing the `--link-file` flag.
+
+```json
+{
+        "0": {
+            "link": "uri link",
+            "name": "name",
+            "onChain": false
+        },
+        "1": {
+            "link": "uri link",
+            "name": "name",
+            "onChain": false
+        },
+```
+
+
 
 ## General Usage
 
