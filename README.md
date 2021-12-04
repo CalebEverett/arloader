@@ -9,9 +9,19 @@ Command line application and library for effortlessly uploading files to [Arweav
 
 Upload gigabytes of files with one command specifying a glob pattern to match files against. Files are read and posted to [arweave.net](https://arweave.net) asynchronously and computationally intensive bundle preparation is performed in parallel across multiple threads.
 
+## Contents
+* [Installation](#installation)
+* [NFT Usage](#nft-usage)
+* [General Usage](#general-usage)
+* [Usage with SOL](#usage-with-sol)
+* [Reward Multiplier](#reward-multiplier)
+* [Usage without Bundles](#usage-without-bundles)
+
 ## Installation
 
-1. The easiest way to use arloader is to download the binary for your system (Linux, Mac or Windows) from the [releases on github](https://github.com/CalebEverett/arloader/releases). You can also install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install).
+1. The easiest way to use arloader is to download the binary for your system (Linux, Mac or Windows) from the [releases on github](https://github.com/CalebEverett/arloader/releases).
+
+You can also install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install).
 
 ```
 cargo install arloader
@@ -154,13 +164,13 @@ arloader get-status <MANIFEST_ID>
 Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in `status/metadata/` and use the included links to create your NFTs!
 
 If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links you can copy
-and paste into your candy machine config by running:
+and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metdata files (something `*.json`).
 
 ```
 arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <MANIFEST_PATH>
 ```
 
-This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to <LOG_DIR> with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
+This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to `<LOG_DIR>` with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
 you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`), by passing the `--link-file` flag.
 
 ```json

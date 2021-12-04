@@ -7,7 +7,7 @@ use crate::{
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
-/// Transaction data structure per [Arweave spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
+/// Transaction data structure per [Arweave transaction spec](https://docs.arweave.org/developers/server/http-api#transaction-format).
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Transaction {
     pub format: u8,
@@ -30,6 +30,8 @@ pub struct Transaction {
     #[serde(skip)]
     pub proofs: Vec<Proof>,
 }
+
+/// Chunk data structure per [Arweave chunk spec](https://docs.arweave.org/developers/server/http-api#upload-chunks).
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Chunk {
     data_root: Base64,
@@ -158,6 +160,7 @@ pub struct Tag<T> {
     pub value: T,
 }
 
+/// Implemented to create [`Tag`]s from utf-8 strings.
 pub trait FromUtf8Strs<T> {
     fn from_utf8_strs(name: &str, value: &str) -> Result<T, Error>;
 }
@@ -284,6 +287,7 @@ impl DeepHashItem {
     }
 }
 
+/// Not currently in use.
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Uploader {
     pub chunk_index: usize,

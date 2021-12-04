@@ -1,6 +1,5 @@
 use arloader::{
     commands::*,
-    error::Error,
     status::StatusCode,
     transaction::{Base64, FromUtf8Strs, Tag},
     Arweave,
@@ -12,8 +11,6 @@ use clap::{
 
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 use url::Url;
-
-pub type CommandResult = Result<(), Error>;
 
 fn is_parsable_generic<U, T>(string: T) -> Result<(), String>
 where

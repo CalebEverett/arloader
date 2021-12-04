@@ -24,18 +24,7 @@ use url::Url;
 
 pub type CommandResult = Result<(), Error>;
 
-/// Maps cli string argument to [`OutputFormat`].
-pub fn get_output_format(output: &str) -> OutputFormat {
-    match output {
-        "quiet" => OutputFormat::DisplayQuiet,
-        "verbose" => OutputFormat::DisplayVerbose,
-        "json" => OutputFormat::Json,
-        "json_compact" => OutputFormat::JsonCompact,
-        _ => OutputFormat::Display,
-    }
-}
-
-/// Used by `estimate` command to return estimated cost of uploading a `glob` of files.
+/// Gets cost of uploading a list of files.
 pub async fn command_get_cost(
     arweave: &Arweave,
     glob_str: &str,
@@ -102,65 +91,6 @@ pub async fn command_get_cost(
     Ok(())
 }
 
-/// Retrieves transaction from the network.
-pub async fn command_get_transaction(arweave: &Arweave, id: &str) -> CommandResult {
-    let id = Base64::from_str(id)?;
-    let transaction = arweave.get_transaction(&id).await?;
-    println!("Fetched transaction {}", transaction.id);
-    Ok(())
-}
-
-/// Gets status from the network for the provided [`crate::transaction::Transaction`] id.
-pub async fn command_get_status(arweave: &Arweave, id: &str, output_format: &str) -> CommandResult {
-    let id = Base64::from_str(id)?;
-    let output_format = get_output_format(output_format);
-    let status = arweave.get_status(&id).await?;
-    println!(
-        "{}",
-        status
-            .header_string(&output_format)
-            .split_at(32)
-            .1
-            .split_at(132)
-            .0
-    );
-    print!("{}", output_format.formatted_string(&status).split_at(32).1);
-    Ok(())
-}
-
-/// Gets balance for provided wallet address.
-pub async fn command_wallet_balance(
-    arweave: &Arweave,
-    wallet_address: Option<String>,
-) -> CommandResult {
-    let mb = u64::pow(1024, 2);
-    let result = tokio::join!(
-        arweave.get_wallet_balance(wallet_address),
-        arweave.get_price(&mb)
-    );
-    let balance = result.0?;
-    let (winstons_per_kb, usd_per_ar, _) = result.1?;
-
-    let balance_usd = &balance.to_f32().unwrap() / &WINSTONS_PER_AR.to_f32().unwrap()
-        * &usd_per_ar.to_f32().unwrap()
-        / 100_f32;
-
-    let usd_per_kb = (&winstons_per_kb * &usd_per_ar).to_f32().unwrap() / 1e14_f32;
-
-    println!(
-            "Wallet balance is {} {units} (${balance_usd:.2} at ${ar_price:.2} USD per AR). At the current price of {price} {units} per MB (${usd_price:.4}), you can upload {max} MB of data.",
-            &balance,
-            units = arweave.units,
-            max = &balance / &winstons_per_kb,
-            price = &winstons_per_kb,
-            balance_usd = balance_usd,
-            ar_price = &usd_per_ar.to_f32().unwrap()
-            / 100_f32,
-            usd_price = usd_per_kb
-    );
-    Ok(())
-}
-
 /// Displays pending transaction count every second for one minute.
 pub async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
     println!(" {}\n{:-<84}", "pending tx", "");
@@ -179,6 +109,167 @@ pub async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
         );
         counter += 1;
     }
+    Ok(())
+}
+
+/// Gets status from the network for the provided transaction id.
+pub async fn command_get_status(arweave: &Arweave, id: &str, output_format: &str) -> CommandResult {
+    let id = Base64::from_str(id)?;
+    let output_format = get_output_format(output_format);
+    let status = arweave.get_status(&id).await?;
+    println!(
+        "{}",
+        status
+            .header_string(&output_format)
+            .split_at(32)
+            .1
+            .split_at(132)
+            .0
+    );
+    print!("{}", output_format.formatted_string(&status).split_at(32).1);
+    Ok(())
+}
+
+/// Retrieves transaction from the network.
+pub async fn command_get_transaction(arweave: &Arweave, id: &str) -> CommandResult {
+    let id = Base64::from_str(id)?;
+    let transaction = arweave.get_transaction(&id).await?;
+    println!("Fetched transaction {}", transaction.id);
+    Ok(())
+}
+
+/// Lists transaction statuses, filtered by statuses and max confirmations if provided.
+pub async fn command_list_statuses(
+    arweave: &Arweave,
+    glob_str: &str,
+    log_dir: &str,
+    statuses: Option<Vec<StatusCode>>,
+    max_confirms: Option<&str>,
+    output_format: Option<&str>,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let log_dir = PathBuf::from(log_dir);
+    let output_format = get_output_format(output_format.unwrap_or(""));
+    let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
+
+    let mut counter = 0;
+    for status in arweave
+        .filter_statuses(paths_iter, log_dir.clone(), statuses, max_confirms)
+        .await?
+        .iter()
+    {
+        if counter == 0 {
+            println!("{}", status.header_string(&output_format));
+        }
+        print!("{}", output_format.formatted_string(status));
+        counter += 1;
+    }
+    if counter == 0 {
+        println!("Didn't find match any statuses.");
+    } else {
+        println!("Found {} files matching filter criteria.", counter);
+    }
+    Ok(())
+}
+
+/// Prints a count of transactions by status.
+pub async fn command_status_report(
+    arweave: &Arweave,
+    glob_str: &str,
+    log_dir: &str,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let log_dir = PathBuf::from(log_dir);
+
+    let summary = arweave.status_summary(paths_iter, log_dir).await?;
+
+    println!("{}", summary);
+
+    Ok(())
+}
+
+/// Updates bundle statuses for provided files in provided directory.
+pub async fn command_update_bundle_statuses(
+    arweave: &Arweave,
+    log_dir: &str,
+    output_format: Option<&str>,
+    buffer: usize,
+) -> CommandResult {
+    let paths_iter = glob(&format!("{}/*.json", log_dir))?
+        .filter_map(Result::ok)
+        .filter(|p| file_stem_is_valid_txid(p));
+    let output_format = get_output_format(output_format.unwrap_or(""));
+
+    let mut stream = update_bundle_statuses_stream(arweave, paths_iter, buffer);
+
+    let mut counter = 0;
+    while let Some(Ok(status)) = stream.next().await {
+        if counter == 0 {
+            println!("{}", status.header_string(&output_format));
+        }
+        print!("{}", output_format.formatted_string(&status));
+        counter += 1;
+    }
+    if counter == 0 {
+        println!("The `log_dir`you provided didn't have any statuses in it.");
+    } else {
+        println!("Updated {} statuses.", counter);
+    }
+
+    Ok(())
+}
+
+/// Updates NFT metadata files from a manifest file.
+pub async fn command_update_metadata(
+    arweave: &Arweave,
+    glob_str: &str,
+    manifest_str: &str,
+    link_file: bool,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
+    let manifest_path = PathBuf::from(manifest_str);
+
+    arweave
+        .update_metadata(
+            glob(glob_str)?.filter_map(Result::ok),
+            manifest_path,
+            link_file,
+        )
+        .await?;
+
+    println!("Successfully updated {} metadata files.", num_paths);
+    Ok(())
+}
+
+/// Updates statuses for provided files in provided directory.
+pub async fn command_update_statuses(
+    arweave: &Arweave,
+    glob_str: &str,
+    log_dir: &str,
+    output_format: Option<&str>,
+    buffer: usize,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let log_dir = PathBuf::from(log_dir);
+    let output_format = get_output_format(output_format.unwrap_or(""));
+
+    let mut stream = update_statuses_stream(arweave, paths_iter, log_dir.clone(), buffer);
+
+    let mut counter = 0;
+    while let Some(Ok(status)) = stream.next().await {
+        if counter == 0 {
+            println!("{}", status.header_string(&output_format));
+        }
+        print!("{}", output_format.formatted_string(&status));
+        counter += 1;
+    }
+    if counter == 0 {
+        println!("The `glob` and `log_dir` combination you provided didn't return any statuses.");
+    } else {
+        println!("Updated {} statuses.", counter);
+    }
+
     Ok(())
 }
 
@@ -295,69 +386,6 @@ pub async fn command_upload_bundles(
     Ok(())
 }
 
-/// Uploads files to Arweave, paying with SOL.
-pub async fn command_upload_with_sol(
-    arweave: &Arweave,
-    glob_str: &str,
-    log_dir: Option<&str>,
-    _tags: Option<Vec<Tag<Base64>>>,
-    reward_mult: f32,
-    sol_keypair_path: &str,
-    output_format: Option<&str>,
-    buffer: usize,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = log_dir.map(|s| PathBuf::from(s));
-    let output_format = get_output_format(output_format.unwrap_or(""));
-    let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
-    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
-    let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
-
-    let price_terms = arweave.get_price_terms(reward_mult).await?;
-
-    let mut stream = upload_files_with_sol_stream(
-        arweave,
-        paths_iter,
-        log_dir.clone(),
-        None,
-        price_terms,
-        solana_url,
-        sol_ar_url,
-        &from_keypair,
-        buffer,
-    );
-
-    let mut counter = 0;
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(status) => {
-                if counter == 0 {
-                    if let Some(log_dir) = &log_dir {
-                        println!("Logging statuses to {}", &log_dir.display());
-                    }
-                    println!("{}", status.header_string(&output_format));
-                }
-                print!("{}", output_format.formatted_string(&status));
-                counter += 1;
-            }
-            Err(e) => println!("{:#?}", e),
-        }
-    }
-
-    if counter == 0 {
-        println!("The pattern \"{}\" didn't match any files.", glob_str);
-    } else {
-        println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir \"{}\"` to confirm transaction(s).",
-            counter,
-            glob_str,
-            &log_dir.unwrap_or(PathBuf::from("")).display()
-        );
-    }
-
-    Ok(())
-}
-
 /// Uploads bundles created from provided glob to Arweave, paying with SOL.
 pub async fn command_upload_bundles_with_sol(
     arweave: &Arweave,
@@ -429,117 +457,7 @@ pub async fn command_upload_bundles_with_sol(
     Ok(())
 }
 
-/// Reads [`crate::status::Status`] for provided files in provided directory, filtered by statuses and max confirmations if provided.
-pub async fn command_list_statuses(
-    arweave: &Arweave,
-    glob_str: &str,
-    log_dir: &str,
-    statuses: Option<Vec<StatusCode>>,
-    max_confirms: Option<&str>,
-    output_format: Option<&str>,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = PathBuf::from(log_dir);
-    let output_format = get_output_format(output_format.unwrap_or(""));
-    let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
-
-    let mut counter = 0;
-    for status in arweave
-        .filter_statuses(paths_iter, log_dir.clone(), statuses, max_confirms)
-        .await?
-        .iter()
-    {
-        if counter == 0 {
-            println!("{}", status.header_string(&output_format));
-        }
-        print!("{}", output_format.formatted_string(status));
-        counter += 1;
-    }
-    if counter == 0 {
-        println!("Didn't find match any statuses.");
-    } else {
-        println!("Found {} files matching filter criteria.", counter);
-    }
-    Ok(())
-}
-
-/// Updates [`crate::status::BundleStatus`]s for provided files in provided directory.
-pub async fn command_update_statuses(
-    arweave: &Arweave,
-    glob_str: &str,
-    log_dir: &str,
-    output_format: Option<&str>,
-    buffer: usize,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = PathBuf::from(log_dir);
-    let output_format = get_output_format(output_format.unwrap_or(""));
-
-    let mut stream = update_statuses_stream(arweave, paths_iter, log_dir.clone(), buffer);
-
-    let mut counter = 0;
-    while let Some(Ok(status)) = stream.next().await {
-        if counter == 0 {
-            println!("{}", status.header_string(&output_format));
-        }
-        print!("{}", output_format.formatted_string(&status));
-        counter += 1;
-    }
-    if counter == 0 {
-        println!("The `glob` and `log_dir` combination you provided didn't return any statuses.");
-    } else {
-        println!("Updated {} statuses.", counter);
-    }
-
-    Ok(())
-}
-
-/// Updates [`crate::status::BundleStatus`]s for provided files in provided directory.
-pub async fn command_update_bundle_statuses(
-    arweave: &Arweave,
-    log_dir: &str,
-    output_format: Option<&str>,
-    buffer: usize,
-) -> CommandResult {
-    let paths_iter = glob(&format!("{}/*.json", log_dir))?
-        .filter_map(Result::ok)
-        .filter(|p| file_stem_is_valid_txid(p));
-    let output_format = get_output_format(output_format.unwrap_or(""));
-
-    let mut stream = update_bundle_statuses_stream(arweave, paths_iter, buffer);
-
-    let mut counter = 0;
-    while let Some(Ok(status)) = stream.next().await {
-        if counter == 0 {
-            println!("{}", status.header_string(&output_format));
-        }
-        print!("{}", output_format.formatted_string(&status));
-        counter += 1;
-    }
-    if counter == 0 {
-        println!("The `log_dir`you provided didn't have any statuses in it.");
-    } else {
-        println!("Updated {} statuses.", counter);
-    }
-
-    Ok(())
-}
-
-pub async fn command_status_report(
-    arweave: &Arweave,
-    glob_str: &str,
-    log_dir: &str,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = PathBuf::from(log_dir);
-
-    let summary = arweave.status_summary(paths_iter, log_dir).await?;
-
-    println!("{}", summary);
-
-    Ok(())
-}
-
+/// Re-uploads files from status and max confirmations criteria.
 pub async fn command_upload_filter(
     arweave: &Arweave,
     glob_str: &str,
@@ -594,6 +512,7 @@ pub async fn command_upload_filter(
     Ok(())
 }
 
+/// Creates and uploads manifest from directory of bundle statuses.
 pub async fn command_upload_manifest(
     arweave: &Arweave,
     log_dir: &str,
@@ -601,35 +520,110 @@ pub async fn command_upload_manifest(
 ) -> CommandResult {
     let price_terms = arweave.get_price_terms(reward_mult).await?;
     let output = arweave
-        .upload_manifest_from_log_dir(log_dir, price_terms)
+        .upload_manifest_from_bundle_log_dir(log_dir, price_terms)
         .await?;
 
     println!("{}", output);
     Ok(())
 }
 
-pub async fn command_update_metadata(
+/// Uploads files to Arweave, paying with SOL.
+pub async fn command_upload_with_sol(
     arweave: &Arweave,
     glob_str: &str,
-    manifest_str: &str,
-    link_file: bool,
+    log_dir: Option<&str>,
+    _tags: Option<Vec<Tag<Base64>>>,
+    reward_mult: f32,
+    sol_keypair_path: &str,
+    output_format: Option<&str>,
+    buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
-    let manifest_path = PathBuf::from(manifest_str);
+    let log_dir = log_dir.map(|s| PathBuf::from(s));
+    let output_format = get_output_format(output_format.unwrap_or(""));
+    let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
+    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
+    let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
 
-    arweave
-        .update_metadata(
-            glob(glob_str)?.filter_map(Result::ok),
-            manifest_path,
-            link_file,
-        )
-        .await?;
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
 
-    println!("Successfully updated {} metadata files.", num_paths);
+    let mut stream = upload_files_with_sol_stream(
+        arweave,
+        paths_iter,
+        log_dir.clone(),
+        None,
+        price_terms,
+        solana_url,
+        sol_ar_url,
+        &from_keypair,
+        buffer,
+    );
+
+    let mut counter = 0;
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(status) => {
+                if counter == 0 {
+                    if let Some(log_dir) = &log_dir {
+                        println!("Logging statuses to {}", &log_dir.display());
+                    }
+                    println!("{}", status.header_string(&output_format));
+                }
+                print!("{}", output_format.formatted_string(&status));
+                counter += 1;
+            }
+            Err(e) => println!("{:#?}", e),
+        }
+    }
+
+    if counter == 0 {
+        println!("The pattern \"{}\" didn't match any files.", glob_str);
+    } else {
+        println!(
+            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir \"{}\"` to confirm transaction(s).",
+            counter,
+            glob_str,
+            &log_dir.unwrap_or(PathBuf::from("")).display()
+        );
+    }
+
     Ok(())
 }
 
+/// Gets balance for provided wallet address.
+pub async fn command_wallet_balance(
+    arweave: &Arweave,
+    wallet_address: Option<String>,
+) -> CommandResult {
+    let mb = u64::pow(1024, 2);
+    let result = tokio::join!(
+        arweave.get_wallet_balance(wallet_address),
+        arweave.get_price(&mb)
+    );
+    let balance = result.0?;
+    let (winstons_per_kb, usd_per_ar, _) = result.1?;
+
+    let balance_usd = &balance.to_f32().unwrap() / &WINSTONS_PER_AR.to_f32().unwrap()
+        * &usd_per_ar.to_f32().unwrap()
+        / 100_f32;
+
+    let usd_per_kb = (&winstons_per_kb * &usd_per_ar).to_f32().unwrap() / 1e14_f32;
+
+    println!(
+            "Wallet balance is {} {units} (${balance_usd:.2} at ${ar_price:.2} USD per AR). At the current price of {price} {units} per MB (${usd_price:.4}), you can upload {max} MB of data.",
+            &balance,
+            units = arweave.units,
+            max = &balance / &winstons_per_kb,
+            price = &winstons_per_kb,
+            balance_usd = balance_usd,
+            ar_price = &usd_per_ar.to_f32().unwrap()
+            / 100_f32,
+            usd_price = usd_per_kb
+    );
+    Ok(())
+}
+
+/// Writes metaplex link items used to create NFTs with candy machine program.
 pub async fn command_write_metaplex_items(
     arweave: &Arweave,
     glob_str: &str,
@@ -655,4 +649,15 @@ pub async fn command_write_metaplex_items(
         num_paths, log_dir
     );
     Ok(())
+}
+
+/// Maps cli string argument to output format.
+pub fn get_output_format(output: &str) -> OutputFormat {
+    match output {
+        "quiet" => OutputFormat::DisplayQuiet,
+        "verbose" => OutputFormat::DisplayVerbose,
+        "json" => OutputFormat::Json,
+        "json_compact" => OutputFormat::JsonCompact,
+        _ => OutputFormat::Display,
+    }
 }

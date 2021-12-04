@@ -3,12 +3,10 @@
 //! ## CLI
 //! See [README.md](https://crates.io/crates/arloader) for usage instructions.
 //!
-//! The main cli application is all in `main.rs` following a pattern of specifying arguments,
+//! The main cli application is all in `main` a follows a pattern of specifying arguments,
 //! matching them, and then in turn passing them to commands, which are all broken out
 //! separately in the [`commands`] module to facilitate re-use in other command
-//! line applications or as library functions. There shouldn't be anything called by the cli
-//! application directly from the library. Everything gets composed into a command in the [`commands`]
-//! module.
+//! line applications or as library functions.
 //!
 //! ## Library
 //!
@@ -21,51 +19,51 @@
 //! into larger transactions, making uploading much more efficient and reducing network congestion.
 //! The library supports both formats, with the recommended approach being to use the bundle format.
 //!
-//! There are also two upload formats, whole transactions and in chunks. Whole transaction can up uploaded
-//! to the `tx/` endpoint if they are less than 12 MB in total. Otherwise, you have to use the `chunk/`endpoint
-//! and upload chunk sizes that are less than 256 KB. Arloader includes functions for both.
+//! There are also two upload formats, whole transactions, which if they are less than 12 MB get uploaded
+//! to the `tx/` endpoint, and chunks, which get uploaded in 256 KB chunks to the  `chunk/`endpoint.
+//! Arloader includes functions for both.
 //!
 //! #### Transactions and DataItems
-//! Both formats start with chunking file data and creating merkle trees from the chunks. The merkle
-//! tree logic can be found in the [`merkle`] module. All of the hashing functions and other crypto
+//! Both transaction formats start with chunking file data and creating merkle trees from the chunks.
+//! The merkle tree logic can be found in the [`merkle`] module. All of the hashing functions and other crypto
 //! operations are in the [`crypto`] module. Once the data is chunked, hashed, and a merkle root
 //! calculated for it, it gets incorporated into either a [`Transaction`], which can be found in the
 //! [`transaction`] module, or a [`DataItem`] (if it is going to be included in a bundle format transaction),
 //! which can be found in the [`bundle`] module.
 //!
 //! #### Tags
-//! Tags are structs with `name` and `value` properties that can be included with either [`Transaction`]s or
-//! [`DataItem`]s. One subtlety is that for [`Transaction`]s, Arweave expects the content at each key to be Base64 Url
-//! encoded string, whereas for DataItems, Arweave expects utf8-encoded strings. Arloader includes two types of
-//! tags to account for this, [`Tag<Base64>`] and [`Tag<String>`], used for [`Transaction`] and [`DataItem`],
-//! respectively.
+//! [`Tag`]s are structs with `name` and `value` properties that can be included with either [`Transaction`]s or
+//! [`DataItem`]s. One subtlety is that for [`Transaction`]s, Arweave expects the content at each key to be a base64 url
+//! encoded string, whereas for [`DataItem`]s, Arweave expects utf8-encoded strings. [`Tag`]s have been implemented for
+//! Arloader includes implementations for both as, [`Tag<Base64>`] and [`Tag<String>`].
 //!
-//! The `Content-Type` tag is especially important as it is used by the Arweave gateways to communicate the content
-//! type to browsers. Arloader includes a mime-type database that includes the appropriate content type
-//! tag based on file extension for both [`Transaction`]s and [`DataItem`]s.
+//! A [`Tag`] with a name property of `Content-Type` is used by the Arweave gateways to communicate the mime type of
+//! the related content to browsers. Arloader creates the appropriate content type type from a a mime-type database
+//! based on file extension if one is provided, otherwise from magic numbers based on the content bytes.
 //!
 //! #### Bytes and Base64Url Data
-//! The library takes advantage of Rust's strong typing and trait model to store all data, signatures and
-//! addresses as a [`Base64`] struct with implementations for serialization and deserialization that automatically
-//! convert the underlying bytes to and from the Base64Url format required for submission to Arweave.
+//! The library stores all data, signatures and addresses as a [`Base64`] struct with implementations for serialization
+//! and deserialization that automatically convert the underlying bytes to and from the Base64Url format required for
+//! submission to Arweave.
 //!
 //! #### Signing
 //! A key part of constructing transactions is signing them. Arweave has a specific algorithm for generating the
 //! digest that gets signed and then hashed to serve as a transaction id, called deep hash. It takes various elements
-//! of either the [`Transaction`] or [`DataItem`], including nested arrays of tags, and successively concatenates and
-//! hashes them. The required elements are assembled using the [`ToItems`] trait, implemented separately for [`Transaction`]
-//! and [`DataItem`]. Arloader's implementation of the deep hash algorithm can be found in [`crypto::Provider::deep_hash`].
+//! of either the [`Transaction`] or [`DataItem`], including nested arrays of [`Tag`]s, and successively hashes and
+//! concatenates and them together. The required elements are assembled using the [`ToItems`] trait, implemented
+//! separately for [`Transaction::to_deep_hash_item`] and [`DataItem::to_deep_hash_item`]. Arloader's implementation
+//! of the deep hash algorithm can be found in [`crypto::Provider::deep_hash`].
 //!
 //! #### Higher Level Functions
-//! The functions for creating transactions, data items and bundles are all consolidated on the [`Arweave`] struct.
-//! In general there are lower level functions for creating the items from data, that are then used in successively
-//! higher level functions to create the items from a single file path and ultimately uploading streams of items in
-//! parallel from collections of file paths.
+//! The functions for creating [`Transaction`]s, [`DataItem`]s and bundles are all consolidated on the [`Arweave`] struct.
+//! In general, there are lower level functions for creating single items from data, that are then used in successively
+//! higher level functions to create multiple items from collections of file paths, ultimately uploading streams of items
+//! to Arweave.
 //!
 //! #### Status Tracking
-//! A key added functionality is the tracking and reporting on transaction statuses. There are two status structs,
+//! The library includes additional functionality to track and report on transaction statuses. There are two status structs,
 //! [`Status`] and [`BundleStatus`] used for these purposes. They are essentially the same format, except that
-//! [`BundleStatus`] is modified to include references to all of the included [`DataItem`] instead of just a
+//! [`BundleStatus`] is modified to include references to all of the included [`DataItem`]s instead of just a
 //! single [`Transaction`] for [`Status`].
 //!
 //! #### Solana
@@ -667,7 +665,7 @@ impl Arweave {
         Ok(manifest)
     }
 
-    pub async fn upload_manifest_from_log_dir(
+    pub async fn upload_manifest_from_bundle_log_dir(
         &self,
         log_dir: &str,
         price_terms: (u64, u64),
