@@ -1,3 +1,5 @@
+//! Data structure and functionality to create, serialize and deserialize [`DataItem`]s.
+
 use crate::error::Error;
 use crate::transaction::{Base64, DeepHashItem, Tag, ToItems};
 use avro_rs::Schema;
@@ -5,6 +7,7 @@ use bytes::BufMut;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
+/// Returns [`avro_rs::Schema`] for [`DataItem`] [`Tag`]s.
 pub fn get_tags_schema() -> Schema {
     let schema = r#"
         {
@@ -23,6 +26,7 @@ pub fn get_tags_schema() -> Schema {
     Schema::parse_str(schema).unwrap()
 }
 
+/// Primary structure for [`DataItem`]s included in bundles.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct DataItem {
     pub id: Base64,

@@ -270,14 +270,14 @@ fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Sets the maximum file data bytes to include in a bundle.")
 }
 
-fn image_link_file_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("image_link_file")
-        .long("image-link-file")
-        .value_name("IMAGE_LINK_FILE")
+fn link_file_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("link_file")
+        .long("link-file")
+        .value_name("LINK_FILE")
         .required(false)
         .takes_value(false)
         .help(
-            "Specify whether to update `image` key in NFT metadata file with \
+            "Specify whether to update key with \
             file based link instead of id based link.",
         )
 }
@@ -427,7 +427,15 @@ fn get_app() -> App<'static, 'static> {
                 .about("Update `image` and `files` keys in NFT metadata json files with links from provided manifest file.")
                 .arg(glob_arg(true))
                 .arg(manifest_path_arg())
-                .arg(image_link_file_arg())
+                .arg(link_file_arg())
+        )
+        .subcommand(
+            SubCommand::with_name("write-metaplex-items")
+                .about("Write name and link for uploaded metadata files to `<LOG_DIR>/metaplex_items_<MANIFEST_ID>.json")
+                .arg(glob_arg(true))
+                .arg(manifest_path_arg())
+                .arg(log_dir_arg(true))
+                .arg(link_file_arg())
         );
     app_matches
 }
@@ -621,8 +629,15 @@ async fn main() -> CommandResult {
         ("update-metadata", Some(sub_arg_matches)) => {
             let glob_str = sub_arg_matches.value_of("glob").unwrap();
             let manifest_str = sub_arg_matches.value_of("manifest_path").unwrap();
-            let image_link_file = sub_arg_matches.is_present("image_link_file");
-            command_update_metadata(&arweave, glob_str, manifest_str, image_link_file).await
+            let link_file = sub_arg_matches.is_present("link_file");
+            command_update_metadata(&arweave, glob_str, manifest_str, link_file).await
+        }
+        ("write-metaplex-items", Some(sub_arg_matches)) => {
+            let glob_str = sub_arg_matches.value_of("glob").unwrap();
+            let manifest_str = sub_arg_matches.value_of("manifest_path").unwrap();
+            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let link_file = sub_arg_matches.is_present("link_file");
+            command_write_metaplex_items(&arweave, glob_str, manifest_str, log_dir, link_file).await
         }
         _ => unreachable!(),
     }

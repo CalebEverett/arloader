@@ -1,3 +1,5 @@
+//! Includes functionality for paying for transaction in SOL.
+
 use crate::error::Error;
 use crate::transaction::{Base64, DeepHashItem};
 use futures::future::try_join;
@@ -8,11 +10,19 @@ use solana_sdk::{
 };
 use std::str::FromStr;
 
+/// Solana address to which SOL payments are made.
 pub const SOL_AR_PUBKEY: &str = "6AaM5L2SeA7ciwDNaYLhKqQzsDVaQM9CRqXVDdWPeAQ9";
+
+/// Uri of Solana payment api.
 pub const SOL_AR_BASE_URL: &str = "https://arloader.io/";
+
+/// Winstons per lamports exchange rate for calculating SOL payment amounts.
 pub const RATE: u64 = 2500;
+
+/// Minimum SOL transaction amount.
 pub const FLOOR: u64 = 10000;
 
+/// Returns recent blockhash neeed to create transaction.
 pub async fn get_recent_blockhash(base_url: url::Url) -> Result<Hash, Error> {
     let client = reqwest::Client::new();
 
@@ -40,6 +50,7 @@ pub async fn get_recent_blockhash(base_url: url::Url) -> Result<Hash, Error> {
     Ok(hash)
 }
 
+/// Returns wallet balance.
 pub async fn get_sol_wallet_balance(
     base_url: url::Url,
     keypair: &keypair::Keypair,
@@ -67,6 +78,7 @@ pub async fn get_sol_wallet_balance(
     Ok(balance)
 }
 
+/// Airdrops tokens from devnet for testing purposes.
 pub async fn request_airdrop(base_url: url::Url, keypair: &keypair::Keypair) -> Result<(), Error> {
     let client = reqwest::Client::new();
 
@@ -86,6 +98,7 @@ pub async fn request_airdrop(base_url: url::Url, keypair: &keypair::Keypair) -> 
     Ok(())
 }
 
+/// Creates Solana transaction.
 pub async fn create_sol_transaction(
     base_url: url::Url,
     from_keypair: &keypair::Keypair,
@@ -112,6 +125,7 @@ pub async fn create_sol_transaction(
     Ok(bs58::encode(serialized).into_string())
 }
 
+/// Submits Solana transaction and required transaction elements and gets back signed AR transaction.
 pub async fn get_sol_ar_signature(
     base_url: url::Url,
     deep_hash_item: DeepHashItem,
@@ -135,6 +149,7 @@ pub async fn get_sol_ar_signature(
     Ok(sig_response)
 }
 
+/// Generic data structure for making json rpc requests.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PostObject {
     pub jsonrpc: String,
@@ -152,6 +167,23 @@ impl Default for PostObject {
             params: Vec::<Value>::new(),
         }
     }
+}
+
+/// Struct for submitting required data to signature api.
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+pub struct TxData {
+    pub deep_hash_item: DeepHashItem,
+    pub sol_tx: String,
+}
+
+/// Struct for receiving signature back from api.
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
+pub struct SigResponse {
+    pub ar_tx_sig: Base64,
+    pub ar_tx_id: Base64,
+    pub ar_tx_owner: Base64,
+    pub sol_tx_sig: String,
+    pub lamports: u64,
 }
 
 #[cfg(test)]
@@ -191,19 +223,4 @@ mod tests {
         println!("{}", balance);
         Ok(())
     }
-}
-
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub struct TxData {
-    pub deep_hash_item: DeepHashItem,
-    pub sol_tx: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
-pub struct SigResponse {
-    pub ar_tx_sig: Base64,
-    pub ar_tx_id: Base64,
-    pub ar_tx_owner: Base64,
-    pub sol_tx_sig: String,
-    pub lamports: u64,
 }
