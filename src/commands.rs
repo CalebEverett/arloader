@@ -1,3 +1,5 @@
+//! Functions for Cli commands composed from library functions.
+
 use crate::{
     error::Error,
     file_stem_is_valid_txid,
@@ -22,6 +24,7 @@ use url::Url;
 
 pub type CommandResult = Result<(), Error>;
 
+/// Maps cli string argument to [`OutputFormat`].
 pub fn get_output_format(output: &str) -> OutputFormat {
     match output {
         "quiet" => OutputFormat::DisplayQuiet,
@@ -32,6 +35,7 @@ pub fn get_output_format(output: &str) -> OutputFormat {
     }
 }
 
+/// Used by `estimate` command to return estimated cost of uploading a `glob` of files.
 pub async fn command_get_cost(
     arweave: &Arweave,
     glob_str: &str,
@@ -98,6 +102,7 @@ pub async fn command_get_cost(
     Ok(())
 }
 
+/// Retrieves transaction from the network.
 pub async fn command_get_transaction(arweave: &Arweave, id: &str) -> CommandResult {
     let id = Base64::from_str(id)?;
     let transaction = arweave.get_transaction(&id).await?;
@@ -105,6 +110,7 @@ pub async fn command_get_transaction(arweave: &Arweave, id: &str) -> CommandResu
     Ok(())
 }
 
+/// Gets status from the network for the provided [`crate::transaction::Transaction`] id.
 pub async fn command_get_status(arweave: &Arweave, id: &str, output_format: &str) -> CommandResult {
     let id = Base64::from_str(id)?;
     let output_format = get_output_format(output_format);
@@ -122,6 +128,7 @@ pub async fn command_get_status(arweave: &Arweave, id: &str, output_format: &str
     Ok(())
 }
 
+/// Gets balance for provided wallet address.
 pub async fn command_wallet_balance(
     arweave: &Arweave,
     wallet_address: Option<String>,
@@ -154,6 +161,7 @@ pub async fn command_wallet_balance(
     Ok(())
 }
 
+/// Displays pending transaction count every second for one minute.
 pub async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
     println!(" {}\n{:-<84}", "pending tx", "");
 
@@ -174,6 +182,7 @@ pub async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
     Ok(())
 }
 
+/// Uploads files to Arweave.
 pub async fn command_upload(
     arweave: &Arweave,
     glob_str: &str,
@@ -228,6 +237,7 @@ pub async fn command_upload(
     Ok(())
 }
 
+/// Uploads bundles created from provided glob to Arweave.
 pub async fn command_upload_bundles(
     arweave: &Arweave,
     glob_str: &str,
@@ -285,6 +295,7 @@ pub async fn command_upload_bundles(
     Ok(())
 }
 
+/// Uploads files to Arweave, paying with SOL.
 pub async fn command_upload_with_sol(
     arweave: &Arweave,
     glob_str: &str,
@@ -347,6 +358,7 @@ pub async fn command_upload_with_sol(
     Ok(())
 }
 
+/// Uploads bundles created from provided glob to Arweave, paying with SOL.
 pub async fn command_upload_bundles_with_sol(
     arweave: &Arweave,
     glob_str: &str,
@@ -417,6 +429,7 @@ pub async fn command_upload_bundles_with_sol(
     Ok(())
 }
 
+/// Reads [`crate::status::Status`] for provided files in provided directory, filtered by statuses and max confirmations if provided.
 pub async fn command_list_statuses(
     arweave: &Arweave,
     glob_str: &str,
@@ -450,6 +463,7 @@ pub async fn command_list_statuses(
     Ok(())
 }
 
+/// Updates [`crate::status::BundleStatus`]s for provided files in provided directory.
 pub async fn command_update_statuses(
     arweave: &Arweave,
     glob_str: &str,
@@ -480,6 +494,7 @@ pub async fn command_update_statuses(
     Ok(())
 }
 
+/// Updates [`crate::status::BundleStatus`]s for provided files in provided directory.
 pub async fn command_update_bundle_statuses(
     arweave: &Arweave,
     log_dir: &str,
@@ -597,7 +612,7 @@ pub async fn command_update_metadata(
     arweave: &Arweave,
     glob_str: &str,
     manifest_str: &str,
-    image_link_file: bool,
+    link_file: bool,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
@@ -607,10 +622,37 @@ pub async fn command_update_metadata(
         .update_metadata(
             glob(glob_str)?.filter_map(Result::ok),
             manifest_path,
-            image_link_file,
+            link_file,
         )
         .await?;
 
     println!("Successfully updated {} metadata files.", num_paths);
+    Ok(())
+}
+
+pub async fn command_write_metaplex_items(
+    arweave: &Arweave,
+    glob_str: &str,
+    manifest_str: &str,
+    log_dir: &str,
+    link_file: bool,
+) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
+    let manifest_path = PathBuf::from(manifest_str);
+
+    arweave
+        .write_metaplex_items(
+            glob(glob_str)?.filter_map(Result::ok),
+            manifest_path,
+            PathBuf::from(log_dir),
+            link_file,
+        )
+        .await?;
+
+    println!(
+        "Successfully wrote metaplex items for {} metadata files to {}",
+        num_paths, log_dir
+    );
     Ok(())
 }

@@ -21,6 +21,10 @@
 //! into larger transactions, making uploading much more efficient and reducing network congestion.
 //! The library supports both formats, with the recommended approach being to use the bundle format.
 //!
+//! There are also two upload formats, whole transactions and in chunks. Whole transaction can up uploaded
+//! to the `tx/` endpoint if they are less than 12 MB in total. Otherwise, you have to use the `chunk/`endpoint
+//! and upload chunk sizes that are less than 256 KB. Arloader includes functions for both.
+//!
 //! #### Transactions and DataItems
 //! Both formats start with chunking file data and creating merkle trees from the chunks. The merkle
 //! tree logic can be found in the [`merkle`] module. All of the hashing functions and other crypto
@@ -28,6 +32,17 @@
 //! calculated for it, it gets incorporated into either a [`Transaction`], which can be found in the
 //! [`transaction`] module, or a [`DataItem`] (if it is going to be included in a bundle format transaction),
 //! which can be found in the [`bundle`] module.
+//!
+//! #### Tags
+//! Tags are structs with `name` and `value` properties that can be included with either [`Transaction`]s or
+//! [`DataItem`]s. One subtlety is that for [`Transaction`]s, Arweave expects the content at each key to be Base64 Url
+//! encoded string, whereas for DataItems, Arweave expects utf8-encoded strings. Arloader includes two types of
+//! tags to account for this, [`Tag<Base64>`] and [`Tag<String>`], used for [`Transaction`] and [`DataItem`],
+//! respectively.
+//!
+//! The `Content-Type` tag is especially important as it is used by the Arweave gateways to communicate the content
+//! type to browsers. Arloader includes a mime-type database that includes the appropriate content type
+//! tag based on file extension for both [`Transaction`]s and [`DataItem`]s.
 //!
 //! #### Bytes and Base64Url Data
 //! The library takes advantage of Rust's strong typing and trait model to store all data, signatures and
@@ -101,6 +116,8 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 /// Winstons are a sub unit of the native Arweave network token, AR. There are 10<sup>12</sup> Winstons per AR.
 pub const WINSTONS_PER_AR: u64 = 1000000000000;
+
+/// Block size used for pricing calculations = 256 KB
 pub const BLOCK_SIZE: u64 = 1024 * 256;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -113,9 +130,12 @@ struct OraclePrice {
 struct OraclePricePair {
     pub usd: f32,
 }
+
+/// Tuple struct includes two elements: chunk of paths and aggregatge data size of paths.
 #[derive(Clone, Debug)]
 pub struct PathsChunk(Vec<PathBuf>, u64);
 
+/// Uploads a stream of bundles from [`Vec<PathsChunk>`]s.
 pub fn upload_bundles_stream<'a>(
     arweave: &'a Arweave,
     paths_chunks: Vec<PathsChunk>,
@@ -128,6 +148,7 @@ pub fn upload_bundles_stream<'a>(
         .buffer_unordered(buffer)
 }
 
+/// Uploads a stream of bundles from [`Vec<PathsChunk>`]s, paying with SOL.
 pub fn upload_bundles_stream_with_sol<'a>(
     arweave: &'a Arweave,
     paths_chunks: Vec<PathsChunk>,
@@ -217,7 +238,7 @@ where
         .buffer_unordered(buffer)
 }
 
-/// Queries network and updates locally stored [`Status`] structs.
+/// Queries network and updates locally stored [`BundleStatus`] structs.
 pub fn update_bundle_statuses_stream<'a, IP>(
     arweave: &'a Arweave,
     paths_iter: IP,
@@ -231,6 +252,7 @@ where
         .buffer_unordered(buffer)
 }
 
+/// Used when updating to determine wether files in a directory are [`BundleStatus`]s.
 pub fn file_stem_is_valid_txid(file_path: &PathBuf) -> bool {
     match Base64::from_str(file_path.file_stem().unwrap().to_str().unwrap()) {
         Ok(txid) => match txid.0.len() {
@@ -1334,10 +1356,7 @@ impl Arweave {
                 .unwrap()
                 .to_str()
                 .unwrap()
-                .split("_")
-                .collect::<Vec<&str>>()
-                .pop()
-                .unwrap();
+                .replace("manifest_", "");
             let data = fs::read_to_string(manifest_path.clone()).await?;
             let mut manifest: Value = serde_json::from_str(&data)?;
             let manifest = manifest.as_object_mut().unwrap();
@@ -1362,6 +1381,74 @@ impl Arweave {
                     image_link,
                 )
             }))
+            .await?;
+            Ok(())
+        } else {
+            Err(Error::ManifestNotFound)
+        }
+    }
+
+    pub async fn read_metadata_file(&self, file_path: PathBuf) -> Result<Value, Error> {
+        let data = fs::read_to_string(file_path.clone()).await?;
+        let metadata: Value = serde_json::from_str(&data)?;
+        Ok(json!({"file_path": file_path.display().to_string(), "metadata": metadata}))
+    }
+
+    pub async fn write_metaplex_items<IP>(
+        &self,
+        paths_iter: IP,
+        manifest_path: PathBuf,
+        log_dir: PathBuf,
+        link_file: bool,
+    ) -> Result<(), Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        if manifest_path.exists() {
+            let manifest_id = manifest_path
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .replace("manifest_", "");
+            let data = fs::read_to_string(manifest_path.clone()).await?;
+            let mut manifest: Value = serde_json::from_str(&data)?;
+            let manifest = manifest.as_object_mut().unwrap();
+
+            let metadata = try_join_all(paths_iter.map(|p| self.read_metadata_file(p))).await?;
+
+            let items =
+                metadata
+                    .iter()
+                    .enumerate()
+                    .fold(serde_json::Map::new(), |mut m, (i, meta)| {
+                        let name = meta["metadata"]["name"].as_str().unwrap();
+                        let file_path = meta["file_path"].as_str().unwrap();
+                        let id = manifest
+                            .get(file_path)
+                            .unwrap()
+                            .get("id")
+                            .unwrap()
+                            .as_str()
+                            .unwrap();
+                        let link = if link_file {
+                            format!("https://arweave.net/{}/{}", manifest_id, file_path)
+                        } else {
+                            format!("https://arweave.net/{}", id)
+                        };
+                        m.insert(
+                            i.to_string(),
+                            json!({"name": name, "link": link, "onChain": false}),
+                        );
+                        m
+                    });
+
+            fs::write(
+                log_dir
+                    .join(format!("metaplex_items_{}", manifest_id))
+                    .with_extension("json"),
+                serde_json::to_string(&json!(items))?,
+            )
             .await?;
             Ok(())
         } else {
