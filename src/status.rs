@@ -40,8 +40,7 @@ impl std::fmt::Display for StatusCode {
     }
 }
 
-/// Expanded status record that can be logged to a local directory to facilitate future updating,
-/// reporting and upload filtering.
+/// Data structure for tracking transaction statuses.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Status {
     pub id: Base64,
@@ -150,6 +149,7 @@ impl VerboseDisplay for Status {
     }
 }
 
+/// Data structure for tracking bundle statuses.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct BundleStatus {
     pub id: Base64,
