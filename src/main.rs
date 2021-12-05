@@ -565,7 +565,12 @@ async fn main() -> CommandResult {
             .await
         }
         ("update-status", Some(sub_arg_matches)) => {
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let log_dir = if let Some(log_dir) = sub_arg_matches.value_of("log_dir") {
+                log_dir
+            } else {
+                println!("{:?}", std::env::args());
+                "no log_dir value found"
+            };
             let glob_str = sub_arg_matches.value_of("glob");
             let no_bundle = sub_arg_matches.is_present("no_bundle");
             let output_format = app_matches.value_of("output_format");
