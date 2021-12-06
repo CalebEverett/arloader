@@ -7,7 +7,7 @@
 
 Command line application and library for effortlessly uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
 
-Upload gigabytes of files with one command specifying a glob pattern to match files against. Files are read and posted to [arweave.net](https://arweave.net) asynchronously and computationally intensive bundle preparation is performed in parallel across multiple threads.
+Upload gigabytes of files with one command specifying a glob pattern to match files against. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel across multiple threads.
 
 ## Contents
 * [Installation](#installation)
@@ -21,9 +21,10 @@ Upload gigabytes of files with one command specifying a glob pattern to match fi
 
 1. The easiest way to use arloader is to download the binary for your system (Linux, Mac or Windows) from the [releases on github](https://github.com/CalebEverett/arloader/releases).
 
-You can also install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install).
+You can also install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install) with the nightly toolchain.
 
 ```
+rustup default nightly
 cargo install arloader
 ```
 
@@ -37,7 +38,7 @@ cargo install arloader
 
 NFTs consist of an on-chain token, an asset (image, animation, video, or other digital media) and metadata describing the asset. Since on-chain storage is expensive, the token itself typically only includes a link to a metadata file stored off chain that includes a link to the asset stored off chain as well. Arweave is an excellent choice for storing assets and metadata since you only pay once and your files are stored forever. Neither you nor anyone else who might end up with your NFTs ever has to worry about funding storage in the future. Once uploaded to Arweave, your assets and metadata are stored forever!
 
-So, in order to create your NFTs, you need your assets uploaded to Arweave, your metadata files to include links to the assets and finally, the updated metadata files to be uploaded to Arweave. Once these steps are completed and your upload transactions have been confirmed, you can use the links returned from uploading your metadata files to create your NFTs.
+In order to create your NFTs, you need your assets uploaded to Arweave, your metadata files to include links to the assets and finally, the updated metadata files to be uploaded to Arweave. Once these steps are completed and your upload transactions have been confirmed, you can use the links returned from uploading your metadata files to create your NFTs.
 
 1. Upload your assets
 2. Update your metadata files to include the links to your assets
@@ -70,7 +71,7 @@ See [Token Metadata Standard](https://docs.metaplex.com/nft-standard) for detail
 arloader upload "*.png" --log-dir "status/asset/"
 ```
 
-At this point, you can also go ahead and create and upload a manifest file. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>` if you want, but creating and uploading a manifest gives you the option of using either link. You'll also be able to use this file later to automatically update your metadata files to include links to your uploaded asset files. 
+At this point, you can also go ahead and create and upload a manifest file. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link. You'll also be able to use this file to automatically update your metadata files to include links to your uploaded asset files. 
 
 ```
 arloader upload-manifest --log-dir "status/assets/" --reward-multiplier 2
@@ -141,7 +142,7 @@ Now that your metadata files include links to your uploaded assets, you're ready
 arloader upload "*.json" --log-dir "status/metadata/"
 ```
 
-Go ahead and create and upload a separate manifest for your metadata files. You can then use the links in the `manifest_<TXID>.json` in the `status/metadata/` to create your NFTs, using either of the id or file based links to your metadata.
+Go ahead and create and upload a separate manifest for your metadata files as well.
 
 ```
 arloader upload-manifest --log-dir "status/metadata/"
@@ -164,7 +165,7 @@ arloader get-status <MANIFEST_ID>
 Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in `status/metadata/` and use the included links to create your NFTs!
 
 If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links you can copy
-and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metdata files (something `*.json`).
+and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metadata files (something `*.json`).
 
 ```
 arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <MANIFEST_PATH>
@@ -186,8 +187,6 @@ you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`
             "onChain": false
         },
 ```
-
-
 
 ## General Usage
 
@@ -303,7 +302,6 @@ where `<LOG_DIR>` is the directory containing your bundle status json files. Thi
         ],
         "id": "Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
     },
-    ...
 ```
 
 You can run the following command to get an update on the status of your manifest transaction.

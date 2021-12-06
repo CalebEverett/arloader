@@ -38,7 +38,6 @@ async fn airdrop(arweave: &Arweave) -> Result<(), Error> {
         arweave.crypto.wallet_address().unwrap().to_string()
     ))?;
     let resp = reqwest::get(url).await?.text().await?;
-    // Give the node server a chance
     println!("mine resp: {}", resp);
     Ok(())
 }
