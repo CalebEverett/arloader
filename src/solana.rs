@@ -1,4 +1,4 @@
-//! Includes functionality for paying for transaction in SOL.
+//! Functionality for funding transactions in SOL.
 
 use crate::error::Error;
 use crate::transaction::{Base64, DeepHashItem};
