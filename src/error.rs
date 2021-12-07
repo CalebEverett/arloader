@@ -37,6 +37,8 @@ pub enum Error {
     InsufficientSolFunds,
     #[error("io: {0}")]
     IOError(#[from] std::io::Error),
+    #[error("keypair not provided")]
+    KeyPairNotProvided,
     #[error("key rejected: {0}")]
     KeyRejected(#[from] KeyRejected),
     #[error("manifest not found")]

@@ -8,7 +8,7 @@ use crate::{
     transaction::{Base64, Tag},
     update_bundle_statuses_stream, update_statuses_stream, upload_bundles_stream,
     upload_bundles_stream_with_sol, upload_files_stream, upload_files_with_sol_stream, Arweave,
-    BLOCK_SIZE, WINSTONS_PER_AR,
+    PathsChunk, BLOCK_SIZE, WINSTONS_PER_AR,
 };
 
 use futures::StreamExt;
@@ -30,53 +30,64 @@ pub async fn command_get_cost(
     glob_str: &str,
     reward_mult: f32,
     with_sol: bool,
+    bundle_size: u64,
     no_bundle: bool,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let (base, incremental) = arweave.get_price_terms(reward_mult).await?;
     let (_, usd_per_ar, usd_per_sol) = arweave.get_price(&1).await?;
 
-    // set units
     let units = match with_sol {
         true => "lamports",
         false => "winstons",
     };
 
-    // get total number of file and bytes and cost if not bundled
-    let (num, mut cost, bytes) = paths_iter.fold((0, 0, 0), |(n, c, b), p| {
-        (
-            n + 1,
-            c + {
-                let data_len = p.metadata().unwrap().len();
-                let blocks_len = data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
-                match with_sol {
-                    true => {
-                        std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR) + 5000
+    let (num_trans, num_files, cost, bytes) = if no_bundle {
+        paths_iter.fold((0, 0, 0, 0), |(n_t, n_f, c, b), p| {
+            let data_len = p.metadata().unwrap().len();
+            (
+                n_t + 1,
+                n_f + 1,
+                c + {
+                    let blocks_len = data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
+                    match with_sol {
+                        true => {
+                            std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR)
+                                + 5000
+                        }
+                        false => base + incremental * (blocks_len - 1),
                     }
-                    false => base + incremental * (blocks_len - 1),
-                }
+                },
+                b + data_len,
+            )
+        })
+    } else {
+        let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
+        path_chunks.iter().fold(
+            (0, 0, 0, 0),
+            |(n_t, n_f, c, b), PathsChunk(paths, data_len)| {
+                (
+                    n_t + 1,
+                    n_f + paths.len(),
+                    c + {
+                        let blocks_len =
+                            data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
+                        match with_sol {
+                            true => {
+                                std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR)
+                                    + 5000
+                            }
+                            false => base + incremental * (blocks_len - 1),
+                        }
+                    },
+                    b + data_len,
+                )
             },
-            b + p.metadata().unwrap().len(),
         )
-    });
-
-    if num == 0 {
+    };
+    if num_files == 0 {
         println!("No files matched glob.");
     } else {
-        // adjust cost if bundling
-        if !no_bundle {
-            let blocks_len = bytes / BLOCK_SIZE + (bytes % BLOCK_SIZE != 0) as u64;
-            match with_sol {
-                true => {
-                    cost =
-                        std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR) + 5000;
-                }
-                false => {
-                    cost = base + incremental * (blocks_len - 1);
-                }
-            }
-        }
-
         // get usd cost based on calculated cost
         let usd_cost = match with_sol {
             true => (&cost * &usd_per_sol).to_f32().unwrap() / 1e11_f32,
@@ -84,8 +95,8 @@ pub async fn command_get_cost(
         };
 
         println!(
-            "The price to upload {} files with {} total bytes is {} {} (${:.4}).",
-            num, bytes, cost, units, usd_cost
+            "The price to upload {} files with {} total bytes in {} transaction(s) is {} {} (${:.4}).",
+            num_files, bytes, num_trans, cost, units, usd_cost
         );
     }
     Ok(())
@@ -277,7 +288,7 @@ pub async fn command_update_statuses(
 pub async fn command_upload(
     arweave: &Arweave,
     glob_str: &str,
-    log_dir: Option<&str>,
+    log_dir: Option<String>,
     _tags: Option<Vec<Tag<Base64>>>,
     reward_mult: f32,
     output_format: Option<&str>,
@@ -332,7 +343,7 @@ pub async fn command_upload(
 pub async fn command_upload_bundles(
     arweave: &Arweave,
     glob_str: &str,
-    log_dir: Option<&str>,
+    log_dir: Option<String>,
     tags: Option<Vec<Tag<String>>>,
     bundle_size: u64,
     reward_mult: f32,
@@ -390,7 +401,7 @@ pub async fn command_upload_bundles(
 pub async fn command_upload_bundles_with_sol(
     arweave: &Arweave,
     glob_str: &str,
-    log_dir: Option<&str>,
+    log_dir: Option<String>,
     tags: Option<Vec<Tag<String>>>,
     bundle_size: u64,
     reward_mult: f32,
@@ -517,10 +528,21 @@ pub async fn command_upload_manifest(
     arweave: &Arweave,
     log_dir: &str,
     reward_mult: f32,
+    sol_keypair_path: Option<String>,
 ) -> CommandResult {
+    let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
+    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
+    let from_keypair = sol_keypair_path.map(|s| keypair::read_keypair_file(s).unwrap());
+
     let price_terms = arweave.get_price_terms(reward_mult).await?;
     let output = arweave
-        .upload_manifest_from_bundle_log_dir(log_dir, price_terms)
+        .upload_manifest_from_bundle_log_dir(
+            log_dir,
+            price_terms,
+            solana_url,
+            sol_ar_url,
+            from_keypair,
+        )
         .await?;
 
     println!("{}", output);
@@ -531,7 +553,7 @@ pub async fn command_upload_manifest(
 pub async fn command_upload_with_sol(
     arweave: &Arweave,
     glob_str: &str,
-    log_dir: Option<&str>,
+    log_dir: Option<String>,
     _tags: Option<Vec<Tag<Base64>>>,
     reward_mult: f32,
     sol_keypair_path: &str,

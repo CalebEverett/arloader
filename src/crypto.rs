@@ -67,7 +67,7 @@ impl Provider {
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let arweave = Arweave::from_keypair_path(PathBuf::from("tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json"), None).await?;
-    /// let calc = arweave.crypto.wallet_address()?;
+    /// let calc = arweave.get_crypto().unwrap().wallet_address()?;
     /// let actual = String::from("7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg");
     /// assert_eq!(&calc.to_string(), &actual);
     /// # Ok(())
@@ -212,7 +212,9 @@ mod tests {
             format: 2,
             ..Transaction::default()
         };
-        let deep_hash = arweave.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
+        let deep_hash = arweave
+            .get_crypto()?
+            .deep_hash(transaction.to_deep_hash_item()?)?;
 
         let correct_hash: [u8; 48] = [
             72, 43, 204, 204, 122, 20, 48, 138, 114, 252, 43, 128, 87, 244, 105, 231, 189, 246, 94,
