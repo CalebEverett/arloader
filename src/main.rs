@@ -835,12 +835,8 @@ mod tests {
     #[test]
     fn tilde_expansion() {
         assert_eq!(
-            dirs_next::home_dir()
-                .unwrap()
-                .join("tests/")
-                .display()
-                .to_string(),
-            "~/tests/".expand_tilde()
+            dirs_next::home_dir().unwrap().join("tests/"),
+            std::path::PathBuf::from("~/tests/".expand_tilde())
         );
     }
 }
