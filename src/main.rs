@@ -837,10 +837,10 @@ mod tests {
         assert_eq!(
             dirs_next::home_dir()
                 .unwrap()
-                .join("./tests/")
+                .join("tests/")
                 .display()
                 .to_string(),
-            "~./tests/".expand_tilde()
+            "~/tests/".expand_tilde()
         );
     }
 }
