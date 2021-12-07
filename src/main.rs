@@ -12,6 +12,20 @@ use clap::{
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 use url::Url;
 
+pub trait ExpandTilde {
+    fn expand_tilde(&self) -> String;
+}
+
+impl ExpandTilde for &str {
+    fn expand_tilde(&self) -> String {
+        if self.chars().next().unwrap() == '~' {
+            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
+        } else {
+            self.to_string()
+        }
+    }
+}
+
 fn is_parsable_generic<U, T>(string: T) -> Result<(), String>
 where
     T: AsRef<str> + Display,
@@ -93,6 +107,19 @@ fn is_valid_log_dir(log_dir: String) -> Result<(), String> {
     }
 }
 
+fn is_valid_keypair_path(sol_keypair_path: String) -> Result<(), String> {
+    match sol_keypair_path.parse::<PathBuf>() {
+        Ok(p) => {
+            if p.exists() {
+                Ok(())
+            } else {
+                Err(format!("Keypair path does not exist."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid keypair path.")),
+    }
+}
+
 fn get_tags_vec<T>(tag_values: Option<Values>) -> Option<Vec<T>>
 where
     T: FromUtf8Strs<T>,
@@ -120,6 +147,20 @@ fn get_status_code(output: &str) -> StatusCode {
         "NotFound" => StatusCode::NotFound,
         _ => StatusCode::NotFound,
     }
+}
+
+fn ar_keypair_path_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
+    Arg::with_name("ar_keypair_path")
+        .long("ar-keypair-path")
+        .value_name("AR_KEYPAIR_PATH")
+        .validator(is_valid_keypair_path)
+        .env("AR_KEYPAIR_PATH")
+        .required(required)
+        .help(
+            "Path of keypair file to use to pay for transactions. \
+                Will use value from AR_KEYPAIR_PATH environment variable \
+                if it exists",
+        )
 }
 
 fn glob_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
@@ -224,8 +265,7 @@ fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("sol_keypair_path")
         .long("sol-keypair-path")
         .value_name("SOL_KEYPAIR_PATH")
-        .required(false)
-        .validator(is_parsable::<PathBuf>)
+        .validator(is_valid_keypair_path)
         .env("SOL_KEYPAIR_PATH")
         .help(
             "Path of Solana keypair file to use to pay for transactions. \
@@ -307,19 +347,6 @@ fn get_app() -> App<'static, 'static> {
                 ),
         )
         .arg(
-            Arg::with_name("ar_keypair_path")
-                .long("ar-keypair-path")
-                .value_name("AR_KEYPAIR_PATH")
-                .validator(is_parsable::<PathBuf>)
-                .env("AR_KEYPAIR_PATH")
-                .required(true)
-                .help(
-                    "Path of keypair file to use to pay for transactions. \
-                Will use value from AR_KEYPAIR_PATH environment variable \
-                if it exists",
-                ),
-        )
-        .arg(
             Arg::with_name("output_format")
                 .long("output")
                 .short("o")
@@ -338,6 +365,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(glob_arg(true))
                 .arg(reward_multiplier_arg())
                 .arg(with_sol_arg(false))
+                .arg(bundle_size_arg())
                 .arg(no_bundle_arg()),
         )
         .subcommand(
@@ -348,12 +376,14 @@ fn get_app() -> App<'static, 'static> {
                         .value_name("WALLET_ADDRESS")
                         .takes_value(true)
                         .validator(is_parsable::<Base64>)
+                        .required_unless("ar_keypair_path")
                         .help(
                             "Specify the address of the wallet to print \
                             the balance for. Defaults to the keypair
                             specified in `ar_keypair_path`.",
                         ),
-                ),
+                )
+                .arg(ar_keypair_path_arg(false))
         )
         .subcommand(
             SubCommand::with_name("pending")
@@ -371,6 +401,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(log_dir_arg(true))
                 .arg(tags_arg())
                 .arg(reward_multiplier_arg())
+                .arg(ar_keypair_path_arg(true))
                 .arg(with_sol_arg(true))
                 .arg(sol_keypair_path_arg())
                 .arg(no_bundle_arg())
@@ -395,6 +426,9 @@ fn get_app() -> App<'static, 'static> {
                 .about("Uploads a manifest for files uploaded in bundles with statuses stored in `log_dir`.")
                 .arg(log_dir_arg(true))
                 .arg(reward_multiplier_arg())
+                .arg(ar_keypair_path_arg(true))
+                .arg(with_sol_arg(true))
+                .arg(sol_keypair_path_arg())
         )
         .subcommand(
             SubCommand::with_name("status-report")
@@ -409,7 +443,8 @@ fn get_app() -> App<'static, 'static> {
                 .arg(log_dir_arg(true))
                 .arg(reward_multiplier_arg())
                 .arg(statuses_arg())
-                .arg(max_confirms_arg()),
+                .arg(max_confirms_arg())
+                .arg(ar_keypair_path_arg(true))
         )
         .subcommand(
             SubCommand::with_name("list-status")
@@ -441,40 +476,61 @@ fn get_app() -> App<'static, 'static> {
 async fn main() -> CommandResult {
     env_logger::init();
     let app_matches = get_app().get_matches();
-    let ar_keypair_path = app_matches.value_of("ar_keypair_path").unwrap();
     let base_url = app_matches
         .value_of("base_url")
         .map(Url::from_str)
         .transpose()?;
 
-    let arweave = Arweave::from_keypair_path(PathBuf::from(ar_keypair_path), base_url)
-        .await
-        .unwrap();
-
     let (sub_command, arg_matches) = app_matches.subcommand();
 
     match (sub_command, arg_matches) {
         ("estimate", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
             let with_sol = sub_arg_matches.is_present("with_sol");
+            let bundle_size = value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap();
             let no_bundle = sub_arg_matches.is_present("no_bundle");
-            command_get_cost(&arweave, glob_str, reward_mult, with_sol, no_bundle).await
+            command_get_cost(
+                &Arweave::default(),
+                glob_str,
+                reward_mult,
+                with_sol,
+                bundle_size,
+                no_bundle,
+            )
+            .await
         }
         ("wallet-balance", Some(sub_arg_matches)) => {
+            let arweave = if let Some(ar_keypair_path) = sub_arg_matches.value_of("ar_keypair_path")
+            {
+                Arweave::from_keypair_path(PathBuf::from(ar_keypair_path.expand_tilde()), base_url)
+                    .await
+                    .unwrap()
+            } else {
+                Arweave::default()
+            };
             let wallet_address = sub_arg_matches
                 .value_of("wallet_address")
                 .map(|v| v.to_string());
             command_wallet_balance(&arweave, wallet_address).await
         }
-        ("pending", Some(_)) => command_get_pending_count(&arweave).await,
+        ("pending", Some(_)) => command_get_pending_count(&Arweave::default()).await,
         ("get-transaction", Some(sub_arg_matches)) => {
             let id = sub_arg_matches.value_of("id").unwrap();
-            command_get_transaction(&arweave, id).await
+            command_get_transaction(&Arweave::default(), id).await
         }
         ("upload", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir");
+            let ar_keypair_path = sub_arg_matches
+                .value_of("ar_keypair_path")
+                .unwrap()
+                .expand_tilde();
+            let arweave = Arweave::from_keypair_path(PathBuf::from(ar_keypair_path), base_url)
+                .await
+                .unwrap();
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let log_dir = sub_arg_matches
+                .value_of("log_dir")
+                .map(|s| s.expand_tilde());
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
             let bundle_size = value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap();
             let with_sol = sub_arg_matches.is_present("with_sol");
@@ -540,11 +596,11 @@ async fn main() -> CommandResult {
         ("get-status", Some(sub_arg_matches)) => {
             let id = sub_arg_matches.value_of("id").unwrap();
             let output_format = app_matches.value_of("output_format").unwrap_or("");
-            command_get_status(&arweave, id, output_format).await
+            command_get_status(&&Arweave::default(), id, output_format).await
         }
         ("list-status", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
 
             let statuses = if let Some(values) = sub_arg_matches.values_of("statuses") {
                 Some(values.map(get_status_code).collect())
@@ -555,7 +611,7 @@ async fn main() -> CommandResult {
             let max_confirms = sub_arg_matches.value_of("max_confirms");
             let output_format = app_matches.value_of("output_format");
             command_list_statuses(
-                &arweave,
+                &Arweave::default(),
                 glob_str,
                 log_dir,
                 statuses,
@@ -565,12 +621,8 @@ async fn main() -> CommandResult {
             .await
         }
         ("update-status", Some(sub_arg_matches)) => {
-            let log_dir = if let Some(log_dir) = sub_arg_matches.value_of("log_dir") {
-                log_dir
-            } else {
-                println!("{:?}", std::env::args());
-                "no log_dir value found"
-            };
+            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let arweave = Arweave::default();
             let glob_str = sub_arg_matches.value_of("glob");
             let no_bundle = sub_arg_matches.is_present("no_bundle");
             let output_format = app_matches.value_of("output_format");
@@ -593,18 +645,36 @@ async fn main() -> CommandResult {
             }
         }
         ("status-report", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
-            command_status_report(&arweave, glob_str, log_dir).await
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            command_status_report(&Arweave::default(), glob_str, log_dir).await
         }
         ("upload-manifest", Some(sub_arg_matches)) => {
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let ar_keypair_path = &sub_arg_matches
+                .value_of("ar_keypair_path")
+                .unwrap()
+                .expand_tilde();
+            let arweave = Arweave::from_keypair_path(PathBuf::from(ar_keypair_path), base_url)
+                .await
+                .unwrap();
+            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
-            command_upload_manifest(&arweave, log_dir, reward_mult).await
+            let sol_key_pair_path = sub_arg_matches
+                .value_of("sol_keypair_path")
+                .map(|s| s.expand_tilde());
+
+            command_upload_manifest(&arweave, log_dir, reward_mult, sol_key_pair_path).await
         }
         ("upload-filter", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let ar_keypair_path = sub_arg_matches
+                .value_of("ar_keypair_path")
+                .unwrap()
+                .expand_tilde();
+            let arweave = Arweave::from_keypair_path(PathBuf::from(ar_keypair_path), base_url)
+                .await
+                .unwrap();
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
 
             let statuses = if let Some(values) = sub_arg_matches.values_of("statuses") {
@@ -629,17 +699,30 @@ async fn main() -> CommandResult {
             .await
         }
         ("update-metadata", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let manifest_str = sub_arg_matches.value_of("manifest_path").unwrap();
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let manifest_str = &sub_arg_matches
+                .value_of("manifest_path")
+                .unwrap()
+                .expand_tilde();
             let link_file = sub_arg_matches.is_present("link_file");
-            command_update_metadata(&arweave, glob_str, manifest_str, link_file).await
+            command_update_metadata(&Arweave::default(), glob_str, manifest_str, link_file).await
         }
         ("write-metaplex-items", Some(sub_arg_matches)) => {
-            let glob_str = sub_arg_matches.value_of("glob").unwrap();
-            let manifest_str = sub_arg_matches.value_of("manifest_path").unwrap();
-            let log_dir = sub_arg_matches.value_of("log_dir").unwrap();
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let manifest_str = &sub_arg_matches
+                .value_of("manifest_path")
+                .unwrap()
+                .expand_tilde();
+            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
             let link_file = sub_arg_matches.is_present("link_file");
-            command_write_metaplex_items(&arweave, glob_str, manifest_str, log_dir, link_file).await
+            command_write_metaplex_items(
+                &Arweave::default(),
+                glob_str,
+                manifest_str,
+                log_dir,
+                link_file,
+            )
+            .await
         }
         _ => unreachable!(),
     }
@@ -647,13 +730,18 @@ async fn main() -> CommandResult {
 
 #[cfg(test)]
 mod tests {
+    use crate::ExpandTilde;
+
     use super::get_app;
     use clap::{value_t, ErrorKind};
     use std::env;
 
     #[test]
     fn estimate_command() {
-        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
+        env::set_var(
+            "AR_KEYPAIR_PATH",
+            "tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json",
+        );
         let m = get_app().get_matches_from(vec!["arloader", "estimate", "tests/fixtures/*.png"]);
         let sub_m = m.subcommand_matches("estimate").unwrap();
         assert_eq!(sub_m.value_of("glob").unwrap(), "tests/fixtures/*.png");
@@ -665,7 +753,10 @@ mod tests {
 
     #[test]
     fn estimate_command_with_sol() {
-        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
+        env::set_var(
+            "AR_KEYPAIR_PATH",
+            "tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json",
+        );
         let m = get_app().get_matches_from(vec![
             "arloader",
             "estimate",
@@ -687,7 +778,10 @@ mod tests {
 
     #[test]
     fn upload_command() {
-        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
+        env::set_var(
+            "AR_KEYPAIR_PATH",
+            "tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json",
+        );
         let m = get_app().get_matches_from(vec!["arloader", "upload", "tests/fixtures/*.png"]);
         let sub_m = m.subcommand_matches("upload").unwrap();
         assert_eq!(sub_m.value_of("glob").unwrap(), "tests/fixtures/*.png");
@@ -700,7 +794,10 @@ mod tests {
     #[test]
     fn upload_command_with_sol() {
         env::remove_var("SOL_KEYPAIR_PATH");
-        env::set_var("AR_KEYPAIR_PATH", "some_path/some_keypair.json");
+        env::set_var(
+            "AR_KEYPAIR_PATH",
+            "tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json",
+        );
 
         let resp = get_app().get_matches_from_safe(vec![
             "arloader",
@@ -711,7 +808,7 @@ mod tests {
 
         assert_eq!(resp.unwrap_err().kind, ErrorKind::MissingRequiredArgument);
 
-        env::set_var("SOL_KEYPAIR_PATH", "some_path/some_sol_keypair.json");
+        env::set_var("SOL_KEYPAIR_PATH", "tests/fixtures/solana_test.json");
         let m = get_app().get_matches_from(vec![
             "arloader",
             "upload",
@@ -721,8 +818,29 @@ mod tests {
         let sub_m = m.subcommand_matches("upload").unwrap();
         assert_eq!(
             sub_m.value_of("sol_keypair_path").unwrap(),
-            "some_path/some_sol_keypair.json"
+            "tests/fixtures/solana_test.json"
         );
         assert!(sub_m.is_present("with_sol"));
+    }
+
+    #[test]
+    fn update_status() {
+        let m =
+            get_app().get_matches_from(vec!["arloader", "update-status", "--log-dir", "tests/"]);
+
+        let sub_m = m.subcommand_matches("update-status").unwrap();
+        assert_eq!(sub_m.value_of("log_dir").unwrap(), "tests/");
+    }
+
+    #[test]
+    fn tilde_expansion() {
+        assert_eq!(
+            dirs_next::home_dir()
+                .unwrap()
+                .join("./tests/")
+                .display()
+                .to_string(),
+            "~./tests/".expand_tilde()
+        );
     }
 }

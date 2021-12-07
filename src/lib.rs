@@ -20,7 +20,7 @@
 //! The library supports both formats, with the recommended approach being to use the bundle format.
 //!
 //! There are also two upload formats, whole transactions, which if they are less than 12 MB can be
-//! uploaded to the `tx/` endpoint, and in chunked transactions, which get uploaded in 256 KB chunks
+//! uploaded to the `tx/` endpoint, and chunked transactions, which get uploaded in 256 KB chunks
 //! to the  `chunk/`endpoint. Arloader includes functionality for both formats.
 //!
 //! #### Transactions and DataItems
@@ -44,7 +44,7 @@
 //!
 //! #### Bytes and Base64Url Data
 //! The library stores all data, signatures and addresses as a [`Base64`] struct with methods implemented for
-//! serialize and deserialize the underlying bytes to and from the base64 url format required for uploading
+//! serializing and deserializing the underlying bytes to and from the base64 url format required for uploading
 //! to Arweave.
 //!
 //! #### Signing
@@ -251,7 +251,7 @@ where
         .buffer_unordered(buffer)
 }
 
-/// Used when updating to determine wether files in a directory are [`BundleStatus`]s.
+/// Used in updating [`BundleStatus`]s to determine whether a file stem includes a valid transaction id.
 pub fn file_stem_is_valid_txid(file_path: &PathBuf) -> bool {
     match Base64::from_str(file_path.file_stem().unwrap().to_str().unwrap()) {
         Ok(txid) => match txid.0.len() {
@@ -267,7 +267,18 @@ pub struct Arweave {
     pub name: String,
     pub units: String,
     pub base_url: Url,
-    pub crypto: crypto::Provider,
+    pub crypto: Option<crypto::Provider>,
+}
+
+impl Default for Arweave {
+    fn default() -> Self {
+        Self {
+            name: String::from("arweave"),
+            units: String::from("winstons"),
+            base_url: Url::from_str("https://arweave.net/").unwrap(),
+            crypto: None,
+        }
+    }
 }
 
 impl Arweave {
@@ -275,12 +286,20 @@ impl Arweave {
         keypair_path: PathBuf,
         base_url: Option<Url>,
     ) -> Result<Arweave, Error> {
-        Ok(Arweave {
-            name: String::from("arweave"),
-            units: String::from("winstons"),
-            base_url: base_url.unwrap_or(Url::from_str("https://arweave.net/")?),
-            crypto: crypto::Provider::from_keypair_path(keypair_path).await?,
-        })
+        let crypto = crypto::Provider::from_keypair_path(keypair_path).await?;
+        let mut arweave = Arweave {
+            crypto: Some(crypto),
+            ..Default::default()
+        };
+        if let Some(base_url) = base_url {
+            arweave.base_url = base_url
+        };
+
+        Ok(arweave)
+    }
+
+    pub fn get_crypto(&self) -> Result<&crypto::Provider, Error> {
+        self.crypto.as_ref().ok_or(Error::KeyPairNotProvided)
     }
 
     /// Returns the balance of the wallet.
@@ -291,7 +310,7 @@ impl Arweave {
         let wallet_address = if let Some(wallet_address) = wallet_address {
             wallet_address
         } else {
-            self.crypto.wallet_address()?.to_string()
+            self.get_crypto()?.wallet_address()?.to_string()
         };
         let url = self
             .base_url
@@ -344,11 +363,11 @@ impl Arweave {
         price_terms: (u64, u64),
         auto_content_tag: bool,
     ) -> Result<Transaction, Error> {
-        let chunks = generate_leaves(data.clone(), &self.crypto)?;
-        let root = generate_data_root(chunks.clone(), &self.crypto)?;
+        let chunks = generate_leaves(data.clone(), self.get_crypto()?)?;
+        let root = generate_data_root(chunks.clone(), self.get_crypto()?)?;
         let data_root = Base64(root.id.clone().into_iter().collect());
         let proofs = resolve_proofs(root, None)?;
-        let owner = self.crypto.keypair_modulus()?;
+        let owner = self.get_crypto()?.keypair_modulus()?;
 
         let mut tags = vec![Tag::<Base64>::from_utf8_strs(
             "User-Agent",
@@ -417,9 +436,9 @@ impl Arweave {
     /// Gets deep hash, signs and sets signature and id.
     pub fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
         let deep_hash_item = transaction.to_deep_hash_item()?;
-        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
-        let signature = self.crypto.sign(&deep_hash)?;
-        let id = self.crypto.hash_sha256(&signature)?;
+        let deep_hash = self.get_crypto()?.deep_hash(deep_hash_item)?;
+        let signature = self.get_crypto()?.sign(&deep_hash)?;
+        let id = self.get_crypto()?.hash_sha256(&signature)?;
         transaction.signature = Base64(signature);
         transaction.id = Base64(id.to_vec());
         Ok(transaction)
@@ -670,6 +689,9 @@ impl Arweave {
         &self,
         log_dir: &str,
         price_terms: (u64, u64),
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: Option<Keypair>,
     ) -> Result<String, Error> {
         let paths: Vec<PathBuf> = glob(&format!("{}*.json", log_dir.clone()))?
             .filter_map(Result::ok)
@@ -696,14 +718,23 @@ impl Arweave {
         let transaction = self
             .create_transaction_from_manifest(manifest.clone(), price_terms)
             .await?;
-        let signed_transaction = self.sign_transaction(transaction)?;
+
+        let signed_transaction = if let Some(from_keypair) = from_keypair {
+            let (signed_transaction, _): (Transaction, SigResponse) = self
+                .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, &from_keypair)
+                .await?;
+            signed_transaction
+        } else {
+            self.sign_transaction(transaction)?
+        };
+
         let (id, _) = self.post_transaction(&signed_transaction).await?;
 
         self.write_manifest(manifest, id.to_string(), PathBuf::from(log_dir))
             .await?;
 
-        Ok(format!("Uploaded manifest for {} files and wrote to {}manifest_{id}.json.\n\nRun `arloader get-status {id}` to confirm manifest transaction.", num_files, log_dir, id=id.to_string())
-    )
+        Ok(format!("Uploaded manifest for {} files and wrote to {}manifest_{id}.json.\n\nRun `arloader get-status {id}` to confirm manifest transaction.",
+        num_files, log_dir, id=id.to_string()))
     }
 
     pub async fn update_status(
@@ -983,11 +1014,11 @@ impl Arweave {
     }
 
     pub fn sign_data_item(&self, mut data_item: DataItem) -> Result<DataItem, Error> {
-        data_item.owner = self.crypto.keypair_modulus()?;
+        data_item.owner = self.get_crypto()?.keypair_modulus()?;
         let deep_hash_item = data_item.to_deep_hash_item()?;
-        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
-        let signature = self.crypto.sign(&deep_hash)?;
-        let id = self.crypto.hash_sha256(&signature)?;
+        let deep_hash = self.get_crypto()?.deep_hash(deep_hash_item)?;
+        let signature = self.get_crypto()?.sign(&deep_hash)?;
+        let id = self.get_crypto()?.hash_sha256(&signature)?;
 
         data_item.signature = Base64(signature);
         data_item.id = Base64(id.to_vec());
@@ -1163,10 +1194,10 @@ impl Arweave {
                 let mut data_item = DataItem::deserialize(bytes_vec)?;
 
                 let deep_hash = self
-                    .crypto
+                    .get_crypto()?
                     .deep_hash(data_item.to_deep_hash_item()?)
                     .unwrap();
-                self.crypto
+                self.get_crypto()?
                     .verify(&data_item.signature.0, &deep_hash)
                     .unwrap();
 

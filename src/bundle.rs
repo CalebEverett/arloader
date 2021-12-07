@@ -224,7 +224,7 @@ mod tests {
             )
             .unwrap(),
         ];
-        let owner = arweave.crypto.keypair_modulus().unwrap();
+        let owner = arweave.get_crypto().unwrap().keypair_modulus().unwrap();
         let anchor = Base64::from_utf8_str("TWF0aC5hcHQnI11nbmcoMzYpLnN1YnN0").unwrap();
         let data = Base64::from_utf8_str("tasty").unwrap();
         let signature = Base64(vec![0; 512]);
@@ -285,7 +285,11 @@ mod tests {
 
         let data_item = get_test_data_item().await;
         let deep_hash_item = data_item.to_deep_hash_item().unwrap();
-        let deep_hash = arweave.crypto.deep_hash(deep_hash_item).unwrap();
+        let deep_hash = arweave
+            .get_crypto()
+            .unwrap()
+            .deep_hash(deep_hash_item)
+            .unwrap();
         println!("deep_hash: {:#?}", deep_hash);
         assert_eq!(
             vec![

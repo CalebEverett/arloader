@@ -35,7 +35,12 @@ async fn mine(arweave: &Arweave) -> Result<(), Error> {
 async fn airdrop(arweave: &Arweave) -> Result<(), Error> {
     let url = arweave.base_url.join(&format!(
         "mint/{}/100000000000000",
-        arweave.crypto.wallet_address().unwrap().to_string()
+        arweave
+            .get_crypto()
+            .unwrap()
+            .wallet_address()
+            .unwrap()
+            .to_string()
     ))?;
     let resp = reqwest::get(url).await?.text().await?;
     println!("mine resp: {}", resp);
