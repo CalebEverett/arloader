@@ -298,6 +298,22 @@ impl Arweave {
         Ok(arweave)
     }
 
+    pub async fn from_keypair_path_sync(
+        keypair_path: PathBuf,
+        base_url: Option<Url>,
+    ) -> Result<Arweave, Error> {
+        let crypto = crypto::Provider::from_keypair_path_sync(keypair_path)?;
+        let mut arweave = Arweave {
+            crypto: Some(crypto),
+            ..Default::default()
+        };
+        if let Some(base_url) = base_url {
+            arweave.base_url = base_url
+        };
+
+        Ok(arweave)
+    }
+
     pub fn get_crypto(&self) -> Result<&crypto::Provider, Error> {
         self.crypto.as_ref().ok_or(Error::KeyPairNotProvided)
     }

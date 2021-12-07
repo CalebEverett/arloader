@@ -49,3 +49,10 @@ thiserror = "1.0.30"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "macros"] }
 url = "2.2.2"
 
+[dev-dependencies]
+criterion = "0.3"
+tempdir = "0.3"
+
+[[bench]]
+name = "dataitems"
+harness = false
