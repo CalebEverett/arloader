@@ -4,17 +4,15 @@ on:
     branches:
       - master
       - bench
-    tags:
-      - "v*.*.*"
   pull_request:
     branches:
       - master
       - bench
 jobs:
   Benchmark:
-    runs-on: ubuntu-18.04
+    if: false
+    runs-on: ubuntu-20.04
     steps:
-      - run: sudo apt-get update -y
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -25,10 +23,8 @@ jobs:
         with:
           use-cross: false
           command: bench
-      - name: Redirect
-        run: echo "<meta http-equiv="refresh" content="0; url= https://calebeverett.github.io/arloader/report/index.html" />" >> target/criterion/benchmarks/index.html
-      - name: Deploy benchmark report
-        uses: JamesIves/github-pages-deploy-action@4.1.2
+      - run: echo "<meta http-equiv="refresh" content="0; url= https://calebeverett.github.io/arloader/report/index.html" />" >> target/criterion/benchmarks/index.html
+      - uses: JamesIves/github-pages-deploy-action@4.1.2
         with:
           branch: gh-pages
           folder: target/criterion/benchmarks

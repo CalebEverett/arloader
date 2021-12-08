@@ -359,9 +359,9 @@ You can add the `--no-bundle` flag if for some reason you want to create individ
 
 ## Benchmarks
 
-The table below shows the average duration required to create transactions across a range of file sizes and numbers of files. Detailed statistical analyses and charts can be found at []() (numbers may vary slightly from run to run).
+The table below shows the average duration required to create transactions across a range of file sizes and numbers of files. Detailed statistical analyses and charts can be found [here](https://calebeverett.github.io/arloader/) (numbers may vary slightly).
 
-The table can be used to estimate the time required to process collections of files. For example, for an NFT project with 10,000 tokens it would take 20 seconds to process the images if they were 256 KB. If they were 4 MB, it would take approximately two minutes.
+For an NFT project with 10,000 tokens it would take 20 seconds to process the images if they were 256 KB. If the images were 4 MB, it would take approximately two minutes.
 
 
 | File Size | Num Files | Total Size | Data Item | Data Items | Bundle | Transaction | Total | Per 1,000 |
@@ -373,7 +373,7 @@ The table can be used to estimate the time required to process collections of fi
 |     16 MB |       50  |        819 |        35 |        393 |   1403 |        2058 |   3.9 |      77.1 |
 
 
-Benchmarks include only processing activity and exclude reading files from disk and uploading them to the network. Benchmarks were performed on an Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz processor with 12 cores.
+Benchmarks include only processing activity and exclude reading files from disk and uploading them to the network. Benchmarks were performed on an Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz processor with 6 cores.
 
 | Column | Description |
 | --- | --- |
