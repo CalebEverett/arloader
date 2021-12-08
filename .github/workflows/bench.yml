@@ -14,7 +14,7 @@ jobs:
   Benchmark:
     runs-on: ubuntu-18.04
     steps:
-        run: sudo apt-get update -y
+      - run: sudo apt-get update -y
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -25,7 +25,7 @@ jobs:
         with:
           use-cross: false
           command: bench
-        - name: Redirect
+      - name: Redirect
         run: echo "<meta http-equiv="refresh" content="0; url= https://calebeverett.github.io/arloader/report/index.html" />" >> target/criterion/benchmarks/index.html
       - name: Deploy benchmark report
         uses: JamesIves/github-pages-deploy-action@4.1.2
