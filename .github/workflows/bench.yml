@@ -3,11 +3,13 @@ on:
   push:
     branches:
       - master
+      - bench
     tags:
       - "v*.*.*"
   pull_request:
     branches:
       - master
+      - bench
 jobs:
   LinuxBuild:
     runs-on: ubuntu-18.04
@@ -30,6 +32,8 @@ jobs:
         with:
           use-cross: false
           command: bench
+        - name: Redirect
+        run: echo "<meta http-equiv="refresh" content="0; url= https://calebeverett.github.io/arloader/report/index.html" />" >> target/criterion/benchmarks/index.html
       - name: Deploy benchmark report
         uses: JamesIves/github-pages-deploy-action@4.1.2
         with:
