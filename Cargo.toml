@@ -46,13 +46,14 @@ serde_derive = "1.0.130"
 serde_json = { version = "1.0.68", features = ["preserve_order"] }
 solana-sdk = "1.8.2"
 thiserror = "1.0.30"
-tokio = { version = "1", features = ["rt-multi-thread", "fs", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "fs", "macros", ] }
 url = "2.2.2"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = { version = "0.3", features = ["async_futures", "async_tokio", "html_reports"] }
 tempdir = "0.3"
+rand = "0.8.4"
 
 [[bench]]
-name = "dataitems"
+name = "benchmark"
 harness = false

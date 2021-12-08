@@ -298,7 +298,7 @@ impl Arweave {
         Ok(arweave)
     }
 
-    pub async fn from_keypair_path_sync(
+    pub fn from_keypair_path_sync(
         keypair_path: PathBuf,
         base_url: Option<Url>,
     ) -> Result<Arweave, Error> {
@@ -371,6 +371,23 @@ impl Arweave {
         Ok(resp)
     }
 
+    pub fn process_data(&self, data: Vec<u8>) -> Result<Transaction, Error> {
+        let chunks = generate_leaves(data.clone(), self.get_crypto()?)?;
+        let root = generate_data_root(chunks.clone(), self.get_crypto()?)?;
+        let data_root = Base64(root.id.clone().into_iter().collect());
+        let proofs = resolve_proofs(root, None)?;
+
+        Ok(Transaction {
+            format: 2,
+            data_size: data.len() as u64,
+            data: Base64(data),
+            data_root,
+            chunks,
+            proofs,
+            ..Default::default()
+        })
+    }
+
     pub async fn create_transaction(
         &self,
         data: Vec<u8>,
@@ -379,11 +396,8 @@ impl Arweave {
         price_terms: (u64, u64),
         auto_content_tag: bool,
     ) -> Result<Transaction, Error> {
-        let chunks = generate_leaves(data.clone(), self.get_crypto()?)?;
-        let root = generate_data_root(chunks.clone(), self.get_crypto()?)?;
-        let data_root = Base64(root.id.clone().into_iter().collect());
-        let proofs = resolve_proofs(root, None)?;
-        let owner = self.get_crypto()?.keypair_modulus()?;
+        let mut transaction = self.process_data(data)?;
+        transaction.owner = self.get_crypto()?.keypair_modulus()?;
 
         let mut tags = vec![Tag::<Base64>::from_utf8_strs(
             "User-Agent",
@@ -393,7 +407,7 @@ impl Arweave {
         // Get content type from [magic numbers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
         // and include additional tags if any.
         if auto_content_tag {
-            let content_type = if let Some(kind) = infer::get(&data) {
+            let content_type = if let Some(kind) = infer::get(&transaction.data.0) {
                 kind.mime_type()
             } else {
                 "application/octet-stream"
@@ -406,6 +420,7 @@ impl Arweave {
         if let Some(other_tags) = other_tags {
             tags.extend(other_tags);
         }
+        transaction.tags = tags;
 
         // Fetch and set last_tx if not provided (primarily for testing).
         let last_tx = if let Some(last_tx) = last_tx {
@@ -416,24 +431,14 @@ impl Arweave {
             let last_tx_str = resp.text().await?;
             Base64::from_str(&last_tx_str)?
         };
+        transaction.last_tx = last_tx;
 
-        let data_len = data.len() as u64;
-        let blocks_len = data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
+        let blocks_len =
+            transaction.data_size / BLOCK_SIZE + (transaction.data_size % BLOCK_SIZE != 0) as u64;
         let reward = price_terms.0 + price_terms.1 * (blocks_len - 1);
+        transaction.reward = reward;
 
-        Ok(Transaction {
-            format: 2,
-            data_size: data_len.clone(),
-            data: Base64(data),
-            data_root,
-            tags,
-            reward,
-            owner,
-            last_tx,
-            chunks,
-            proofs,
-            ..Default::default()
-        })
+        Ok(transaction)
     }
 
     pub async fn create_transaction_from_file_path(

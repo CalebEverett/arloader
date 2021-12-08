@@ -1,0 +1,37 @@
+name: benchmark
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - master
+jobs:
+  LinuxBuild:
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+        include:
+          - target: x86_64-unknown-linux-gnu
+            host_os: ubuntu-18.04
+    steps:
+        run: sudo apt-get update -y
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: bench
+      - name: Deploy benchmark report
+        uses: JamesIves/github-pages-deploy-action@4.1.2
+        with:
+          branch: gh-pages
+          folder: target/criterion/benchmarks
