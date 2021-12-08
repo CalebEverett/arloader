@@ -1,0 +1,30 @@
+name: benchmark
+on:
+  push:
+    branches:
+      - master
+      - bench
+  pull_request:
+    branches:
+      - master
+      - bench
+jobs:
+  Benchmark:
+    if: false
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: bench
+      - run: echo "<meta http-equiv="refresh" content="0; url= https://calebeverett.github.io/arloader/report/index.html" />" >> target/criterion/benchmarks/index.html
+      - uses: JamesIves/github-pages-deploy-action@4.1.2
+        with:
+          branch: gh-pages
+          folder: target/criterion/benchmarks

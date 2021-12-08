@@ -16,6 +16,7 @@ Upload gigabytes of files with one command specifying a glob pattern to match fi
 * [Usage with SOL](#usage-with-sol)
 * [Reward Multiplier](#reward-multiplier)
 * [Usage without Bundles](#usage-without-bundles)
+* [Benchmarks](#benchmarks)
 
 ## Installation
 
@@ -355,3 +356,32 @@ Given that Arloader bundles by default, your transaction is hopefully relatively
 ## Usage without Bundles
 
 You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `LOG_DIR` and you can run `update-status` to update them from the network and `status-report` for a count of transactions by status.
+
+## Benchmarks
+
+The table below shows the average duration required to create transactions across a range of file sizes and numbers of files. Detailed statistical analyses and charts can be found [here](https://calebeverett.github.io/arloader/) (numbers may vary slightly).
+
+For an NFT project with 10,000 tokens it would take 20 seconds to process the images if they were 256 KB. If the images were 4 MB, it would take approximately two minutes.
+
+
+| File Size | Num Files | Total Size | Data Item | Data Items | Bundle | Transaction | Total | Per 1,000 |
+| --------: | --------: | ---------: | --------: | ---------: | -----: | ----------: | ----: | --------: |
+|     32 KB |       500 |         16 |         4 |        430 |     30 |          40 |   0.5 |       1.0 |
+|    256 KB |       500 |        128 |         4 |        493 |    179 |         326 |   1.0 |       2.0 |
+|      1 MB |       500 |        512 |         5 |        616 |    903 |        1033 |   2.6 |       4.1 |
+|      4 MB |       150 |        614 |        11 |        360 |   1050 |        1554 |   3.0 |      10.4 |
+|     16 MB |       50  |        819 |        35 |        393 |   1403 |        2058 |   3.9 |      77.1 |
+
+
+Benchmarks include only processing activity and exclude reading files from disk and uploading them to the network. Benchmarks were performed on an Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz processor with 6 cores.
+
+| Column | Description |
+| --- | --- |
+| Total Size | File size x number of files in megabytes.|
+| Data Item | Time in milliseconds required to create a single data item of the file size. The entails creating a merkle tree data root, generating an id from the deep hash algorithm and signing it.|
+| Data Items | Time in milliseconds required to create data items for the number of files. |
+| Bundle | Time in milliseconds required to create a single bundle from the data items. This entails serializing each of the data items and packing them together.|
+| Transaction |Time in milliseconds required to create a transaction from the bundle. This entails creating a merkle tree data root, generating an id from the deep hash algorithm and signing it.|
+| Total | Sum of the time required to create data items, bundle and transaction in seconds.|
+| Est. per 1,000 | Extrapolation of total to common number of files.|
+
