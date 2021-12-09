@@ -71,7 +71,7 @@
 //! The functions for allowing payment to be made in SOL can be found in the [`solana`] module.
 
 #![feature(derive_default_enum)]
-use crate::solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR, RATE};
+use crate::solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR};
 use blake3;
 use chrono::Utc;
 use futures::{
@@ -827,7 +827,7 @@ impl Arweave {
         sol_ar_url: Url,
         from_keypair: &Keypair,
     ) -> Result<(Transaction, SigResponse), Error> {
-        let lamports = std::cmp::max(&transaction.reward / RATE, FLOOR);
+        let lamports = std::cmp::max(&transaction.reward * 0, FLOOR);
 
         let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
         let sig_response =

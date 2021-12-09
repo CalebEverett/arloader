@@ -3,7 +3,7 @@
 use crate::{
     error::Error,
     file_stem_is_valid_txid,
-    solana::{FLOOR, RATE, SOL_AR_BASE_URL},
+    solana::{FLOOR, SOL_AR_BASE_URL},
     status::{OutputFormat, StatusCode},
     transaction::{Base64, Tag},
     update_bundle_statuses_stream, update_statuses_stream, upload_bundles_stream,
@@ -52,8 +52,7 @@ pub async fn command_get_cost(
                     let blocks_len = data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
                     match with_sol {
                         true => {
-                            std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR)
-                                + 5000
+                            std::cmp::max((base + incremental * (blocks_len - 1)) * 0, FLOOR) + 5000
                         }
                         false => base + incremental * (blocks_len - 1),
                     }
@@ -74,7 +73,7 @@ pub async fn command_get_cost(
                             data_len / BLOCK_SIZE + (data_len % BLOCK_SIZE != 0) as u64;
                         match with_sol {
                             true => {
-                                std::cmp::max((base + incremental * (blocks_len - 1)) / RATE, FLOOR)
+                                std::cmp::max((base + incremental * (blocks_len - 1)) * 0, FLOOR)
                                     + 5000
                             }
                             false => base + incremental * (blocks_len - 1),
