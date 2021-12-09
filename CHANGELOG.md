@@ -5,8 +5,10 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# v0.1.37 (2021-12-08)
+# v0.1.38 (2021-12-09)
 - **changed:** reduced `--with-sol` cost to 10,000 lamports per transaction.
+
+# v0.1.37 (2021-12-08)
 - **added:** [benchmarks](https://calebeverett.github.io/arloader/)
 - **changed:** now able to pass `--ar-default-keypair` with `--with-sol` to use a default keypair instead of connecting a blank wallet. This will mean that data items are owned by the default wallet instead of a user wallet, but since data uploaded to Arweave is immutable, the convenience of not having to connect a wallet may outweigh this potential drawback. It is still possible to connect an AR wallet when you pass `--with-sol` to specify the owner of the Arweave transactions funded with SOL.
 
