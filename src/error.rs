@@ -11,6 +11,8 @@ use url::ParseError;
 /// Errors propagated by library functions.
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("error posting arweave transaction: {0}")]
+    ArweavPostError(reqwest::Error),
     #[error("avro desserialize: {0}")]
     AvroDeError(#[from] avro_rs::DeError),
     #[error("base64 decode: {0}")]
