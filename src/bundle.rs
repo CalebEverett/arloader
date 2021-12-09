@@ -204,13 +204,17 @@ mod tests {
         Arweave,
     };
     use std::path::PathBuf;
+    use std::str::FromStr;
     use tokio::fs;
+    use url::Url;
 
     async fn get_test_data_item() -> DataItem {
-        let arweave =
-            Arweave::from_keypair_path(PathBuf::from("tests/fixtures/test_key0.json"), None)
-                .await
-                .unwrap();
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from("tests/fixtures/test_key0.json"),
+            Url::from_str("http://url.com").unwrap(),
+        )
+        .await
+        .unwrap();
 
         let tags = vec![
             Tag::<String>::from_utf8_strs(
@@ -224,7 +228,7 @@ mod tests {
             )
             .unwrap(),
         ];
-        let owner = arweave.get_crypto().unwrap().keypair_modulus().unwrap();
+        let owner = arweave.crypto.keypair_modulus().unwrap();
         let anchor = Base64::from_utf8_str("TWF0aC5hcHQnI11nbmcoMzYpLnN1YnN0").unwrap();
         let data = Base64::from_utf8_str("tasty").unwrap();
         let signature = Base64(vec![0; 512]);
@@ -278,18 +282,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_data_item_deep_hash() {
-        let arweave =
-            Arweave::from_keypair_path(PathBuf::from("tests/fixtures/test_key0.json"), None)
-                .await
-                .unwrap();
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from("tests/fixtures/test_key0.json"),
+            Url::from_str("http://url.com").unwrap(),
+        )
+        .await
+        .unwrap();
 
         let data_item = get_test_data_item().await;
         let deep_hash_item = data_item.to_deep_hash_item().unwrap();
-        let deep_hash = arweave
-            .get_crypto()
-            .unwrap()
-            .deep_hash(deep_hash_item)
-            .unwrap();
+        let deep_hash = arweave.crypto.deep_hash(deep_hash_item).unwrap();
         println!("deep_hash: {:#?}", deep_hash);
         assert_eq!(
             vec![
@@ -303,10 +305,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_data_items_to_bundle() {
-        let arweave =
-            Arweave::from_keypair_path(PathBuf::from("tests/fixtures/test_key0.json"), None)
-                .await
-                .unwrap();
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from("tests/fixtures/test_key0.json"),
+            Url::from_str("http://url.com").unwrap(),
+        )
+        .await
+        .unwrap();
 
         let data_item = get_test_data_item().await;
         let status = Status {

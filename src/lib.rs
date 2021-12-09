@@ -267,7 +267,7 @@ pub struct Arweave {
     pub name: String,
     pub units: String,
     pub base_url: Url,
-    pub crypto: Option<crypto::Provider>,
+    pub crypto: crypto::Provider,
 }
 
 impl Default for Arweave {
@@ -276,46 +276,32 @@ impl Default for Arweave {
             name: String::from("arweave"),
             units: String::from("winstons"),
             base_url: Url::from_str("https://arweave.net/").unwrap(),
-            crypto: None,
+            crypto: crypto::Provider::default(),
         }
     }
 }
 
 impl Arweave {
-    pub async fn from_keypair_path(
-        keypair_path: PathBuf,
-        base_url: Option<Url>,
-    ) -> Result<Arweave, Error> {
+    pub async fn from_keypair_path(keypair_path: PathBuf, base_url: Url) -> Result<Arweave, Error> {
         let crypto = crypto::Provider::from_keypair_path(keypair_path).await?;
-        let mut arweave = Arweave {
-            crypto: Some(crypto),
+        let arweave = Arweave {
+            base_url,
+            crypto,
             ..Default::default()
-        };
-        if let Some(base_url) = base_url {
-            arweave.base_url = base_url
         };
 
         Ok(arweave)
     }
 
-    pub fn from_keypair_path_sync(
-        keypair_path: PathBuf,
-        base_url: Option<Url>,
-    ) -> Result<Arweave, Error> {
+    pub fn from_keypair_path_sync(keypair_path: PathBuf, base_url: Url) -> Result<Arweave, Error> {
         let crypto = crypto::Provider::from_keypair_path_sync(keypair_path)?;
-        let mut arweave = Arweave {
-            crypto: Some(crypto),
+        let arweave = Arweave {
+            base_url,
+            crypto,
             ..Default::default()
-        };
-        if let Some(base_url) = base_url {
-            arweave.base_url = base_url
         };
 
         Ok(arweave)
-    }
-
-    pub fn get_crypto(&self) -> Result<&crypto::Provider, Error> {
-        self.crypto.as_ref().ok_or(Error::KeyPairNotProvided)
     }
 
     /// Returns the balance of the wallet.
@@ -326,7 +312,7 @@ impl Arweave {
         let wallet_address = if let Some(wallet_address) = wallet_address {
             wallet_address
         } else {
-            self.get_crypto()?.wallet_address()?.to_string()
+            self.crypto.wallet_address()?.to_string()
         };
         let url = self
             .base_url
@@ -372,8 +358,8 @@ impl Arweave {
     }
 
     pub fn process_data(&self, data: Vec<u8>) -> Result<Transaction, Error> {
-        let chunks = generate_leaves(data.clone(), self.get_crypto()?)?;
-        let root = generate_data_root(chunks.clone(), self.get_crypto()?)?;
+        let chunks = generate_leaves(data.clone(), &self.crypto)?;
+        let root = generate_data_root(chunks.clone(), &self.crypto)?;
         let data_root = Base64(root.id.clone().into_iter().collect());
         let proofs = resolve_proofs(root, None)?;
 
@@ -397,7 +383,7 @@ impl Arweave {
         auto_content_tag: bool,
     ) -> Result<Transaction, Error> {
         let mut transaction = self.process_data(data)?;
-        transaction.owner = self.get_crypto()?.keypair_modulus()?;
+        transaction.owner = self.crypto.keypair_modulus()?;
 
         let mut tags = vec![Tag::<Base64>::from_utf8_strs(
             "User-Agent",
@@ -457,9 +443,9 @@ impl Arweave {
     /// Gets deep hash, signs and sets signature and id.
     pub fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
         let deep_hash_item = transaction.to_deep_hash_item()?;
-        let deep_hash = self.get_crypto()?.deep_hash(deep_hash_item)?;
-        let signature = self.get_crypto()?.sign(&deep_hash)?;
-        let id = self.get_crypto()?.hash_sha256(&signature)?;
+        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
+        let signature = self.crypto.sign(&deep_hash)?;
+        let id = self.crypto.hash_sha256(&signature)?;
         transaction.signature = Base64(signature);
         transaction.id = Base64(id.to_vec());
         Ok(transaction)
@@ -1035,11 +1021,11 @@ impl Arweave {
     }
 
     pub fn sign_data_item(&self, mut data_item: DataItem) -> Result<DataItem, Error> {
-        data_item.owner = self.get_crypto()?.keypair_modulus()?;
+        data_item.owner = self.crypto.keypair_modulus()?;
         let deep_hash_item = data_item.to_deep_hash_item()?;
-        let deep_hash = self.get_crypto()?.deep_hash(deep_hash_item)?;
-        let signature = self.get_crypto()?.sign(&deep_hash)?;
-        let id = self.get_crypto()?.hash_sha256(&signature)?;
+        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
+        let signature = self.crypto.sign(&deep_hash)?;
+        let id = self.crypto.hash_sha256(&signature)?;
 
         data_item.signature = Base64(signature);
         data_item.id = Base64(id.to_vec());
@@ -1215,10 +1201,10 @@ impl Arweave {
                 let mut data_item = DataItem::deserialize(bytes_vec)?;
 
                 let deep_hash = self
-                    .get_crypto()?
+                    .crypto
                     .deep_hash(data_item.to_deep_hash_item()?)
                     .unwrap();
-                self.get_crypto()?
+                self.crypto
                     .verify(&data_item.signature.0, &deep_hash)
                     .unwrap();
 
@@ -1521,6 +1507,7 @@ mod tests {
     use matches::assert_matches;
     use std::{path::PathBuf, str::FromStr, time::Instant};
     use tokio::fs;
+    use url::Url;
 
     #[tokio::test]
     async fn test_cannot_post_unsigned_transaction() -> Result<(), Error> {
@@ -1528,7 +1515,7 @@ mod tests {
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
             ),
-            None,
+            Url::from_str("http://url.com").unwrap(),
         )
         .await?;
 
@@ -1557,7 +1544,7 @@ mod tests {
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
             ),
-            None,
+            Url::from_str("http://url.com").unwrap(),
         )
         .await?;
 
@@ -1603,7 +1590,7 @@ mod tests {
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
             ),
-            None,
+            Url::from_str("http://url.com").unwrap(),
         )
         .await?;
 
@@ -1677,7 +1664,7 @@ mod tests {
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
             ),
-            None,
+            Url::from_str("http://url.com").unwrap(),
         )
         .await?;
 

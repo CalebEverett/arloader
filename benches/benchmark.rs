@@ -1,12 +1,11 @@
 use arloader::{bundle::DataItem, error::Error, status::Status, Arweave};
-use criterion::{
-    async_executor::FuturesExecutor,
-    {black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput},
-};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use rand::Rng;
 use rayon::prelude::*;
+use std::str::FromStr;
 use std::{fs, path::PathBuf};
 use tempdir::TempDir;
+use url::Url;
 
 fn get_random_bytes(file_size: usize) -> Vec<u8> {
     let mut rng = rand::thread_rng();
@@ -27,7 +26,7 @@ fn create_data_items(data: Vec<Vec<u8>>) -> Vec<(DataItem, Status)> {
         PathBuf::from(
             "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
         ),
-        None,
+        Url::from_str("http://url.com").unwrap(),
     )
     .unwrap();
     data.into_par_iter()
@@ -67,7 +66,7 @@ fn benchmarks(c: &mut Criterion) {
         PathBuf::from(
             "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
         ),
-        None,
+        Url::from_str("http://url.com").unwrap(),
     )
     .unwrap();
     let mut group = c.benchmark_group("benchmarks");

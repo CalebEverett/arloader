@@ -21,6 +21,16 @@ pub struct Provider {
     pub sr: rand::SystemRandom,
 }
 
+impl Default for Provider {
+    fn default() -> Self {
+        let jwk_parsed: JsonWebKey = DEFAULT_KEYPAIR.parse().unwrap();
+        Self {
+            keypair: signature::RsaKeyPair::from_pkcs8(&jwk_parsed.key.as_ref().to_der()).unwrap(),
+            sr: rand::SystemRandom::new(),
+        }
+    }
+}
+
 impl Provider {
     /// Reads a [`JsonWebKey`] from a [`PathBuf`] and stores it as a [`signature::RsaKeyPair`] in
     /// the `keypair` property of [`Provider`] for future use in signing and funding transactions.
@@ -61,13 +71,17 @@ impl Provider {
     ///```
     /// # use arloader::Arweave;
     /// # use ring::{signature, rand};
-    /// # use std::{fmt::Display, path::PathBuf};
+    /// # use std::{fmt::Display, path::PathBuf, str::FromStr};
+    /// # use url::Url;
     /// #
     /// #
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let arweave = Arweave::from_keypair_path(PathBuf::from("tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json"), None).await?;
-    /// let calc = arweave.get_crypto().unwrap().wallet_address()?;
+    /// let arweave = Arweave::from_keypair_path(
+    ///     PathBuf::from("tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json"),
+    ///     Url::from_str("http://url.com").unwrap()
+    /// ).await?;
+    /// let calc = arweave.crypto.wallet_address()?;
     /// let actual = String::from("7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg");
     /// assert_eq!(&calc.to_string(), &actual);
     /// # Ok(())
@@ -190,13 +204,28 @@ impl Provider {
     }
 }
 
+const DEFAULT_KEYPAIR: &str = r##"{
+    "kty": "RSA",
+    "n": "vUS-Urn9wBomxlKPhzZrjcsLZaGqPawdFRxHuy9sCUEF2zkRwbVLUf4vstz04Tis8tbd8TbGbmGxFxfybTFCEltwbfAMPmgAyvu4NZztkcFTg8XmsmADxPF5wOc0lpmwcSbec-r69_zNx6WXEM7qVng2nrufM_yR3ociBCSrG9_jnuhDaLxLayCkbD4gViNTIPPUJCQPCmy3PuRx-DITj7VFwi8u-KdWWjVN5cJ-pLLNKQjlpo0BOYMSc11S6N1s1Od6EG-LdL_gG1rfDX2hWzEtH2kHolN3UTSv1UU6980kG-e1BLIJHm7tHIBqxpwMR6m8HD6e3bDlcVQm23qxq6D3sIdauz4RNOl4yVFlI1o5tLeH_ot9uyWKkqGcknc4FgJ1CcVMwZsSl6S-BcTgZgns9AgfnJApZzWdyIpcyuqHBTaBOtcViGTupbn-LdY-lf1CwJZOgp5uDBFfU34ZhEcyCTLTEd5dCw9kQmO7TTqAJEO4kbtczxHUaNrAW8SViFNeG7SNlZ9uwqNMy7R1wswX_baarVjRzF3yUGkdSkzBMJfYs0lFLTiPY8gcuRsz03GNISi6AFuk25LhS19llIaz9-uucP8T0fnXzwHJqe85ygVLEOPcL72Z4VlRDvrdJMba4GKqcbwU5D17Q1lA9cPX7DmVtRJ7PCX2M_ezLQ0",
+    "e": "AQAB",
+    "d": "duxp1hstmPYVpQmdS61jGT4alCpniMbLo0cYv0IF1S65Gk0anidnA0b--5kgeR-edBuUawsq1ZKmrkcKuZd414YC9-EcIF5DGUffMDjBgZMDAcposW3pEGdWRGJCRdqd5gsxPY7JUObU-fxPFm2dCuYQE976IrUxhqxMMGRF64bbRC7WpEmj7dUd2zGSKe2aPxtWEbtig_9ZiLgL8JKufd69zUzOa8jhVl8l6hcychQzGvSPL_5rZZK5FinufYkb6A7mQMuFyb8Cds27V4O3zk_w9UqOVG2zjB_Z19zfN3L7nFkUAbZISooSjJUYAmFsyd6Z5vll4xBSqsngfIn0djkZBmkV2xhz8-DplEEgCyeEZ1FMsCLiwyHLWZb6e9h6sY_I6aBPaiPU1gLxUzrNM6mGQuuLcJP_6JdjWPmdlG39WGLdIfbFEqWKMBvP6QZIivWwiHVvETYJIGOnPNXTS2tQkC3XO-j8BpGqXLKvm5Tt1lj8RACuzCM0PreVtDyxyfb-DrHL0vb5MwYDSLFBTiy0IctSDDCio3mn0g5zffvc_RCzFcCiqf6x5S6WK2AYqZxRSPiyquCC3eQqDnnp896qkGSxdO1BhR78GvtUOv3qXjKuTsf2x_b4p0X8boZFqln3GjqgXimOT9AD9Cn0RrWGAu7DOKZuJCLJdYum6KE",
+    "p": "5aA2SwF9tYQSEZP1ZTWnDqT16uFXEtAncaAyOpm7RR62wA8nQ9ecTgTvlXsFk8oJ8XTiaBn5GZNGnVybwpYwkpruHa36RSjjOkevETEOJtDFLQI7kk2lijG7ad22Sma4njhsPqE6sGJ4syTNlPNsLfUmma5nIJFe5C-mIcV36VJGxboNQnV9mlozQrS_pZWUPojjphzTH7eTrZ1KOsVQyC_SROVsNZLXWex_tJxQxfF2IKFQCMDFZC0BSvPboz_zXbCvf7jQsrt0WzYJDJNJgvWzQ85swB4tYQxiiOicFgwiALf_o63WNjdCJL40q-puKpbzurTav8xDK0KqhRUdlQ",
+    "q": "0wHjX3cl6GUSv70oWrFaF-XLU_o3mONAmynidhFQd15--wOh7km4BW-4fFUr2FWM3I7-Ve9FFXcVVy8jSaDHpDWh1cr4-niwBGuO7sbqC7z1sjJ4AqhDt5XKTiYedEiWPeqT8XtLCj7I6HrS92yPNuUmnXjJnG_o8fEQzmAhkVuSaoKBqwSMwNNSRxWryDDvVayz84jwoVcFSwJvrxoPKyou35jtOLvGV1EV2DXM6ZDorWcADiovCrRVQShi0qrrEUMY-uI9Cw9o4AS2llsSe4NxdUKRSejeNm19bhRO2DuH-gGOC9DkfugAHey7iOLrLhKFvei7rTA6Wu7eG1zDmQ",
+    "dp": "S30M_EGEOy0s53x1uw0VW3odolbsUjH-FZuth5hMeV-sgp04slPqfbefr8uevMQ52pgraj_HpYHGQCtWxXSsiTXHvBga46uab-lrA0LWPSp69935CZLfLfxFeXs612DHprQz2a8VZTEqLvKVZzdTRBSI2RL9sjY4NNn5SrbpQdobjBsrCsMnRJwMqAxVyLDQ6HIGLPDi81VdhkDkS0fc08Ls5Ftr5HzesSBPp2eQIlLMG9QMRKRjABjPiP18IkH-1rkkKN_wNCHuEaJE_U5aZ2Qwx8TP-aSyFGqG5i1aSuE4OHZE42Fdv7sQ0pV5KV9LUlMH00RreYxENK-Y8WFMtQ",
+    "dq": "l1PeVkPkCuQZ6yrkuw5AV601AlgL8Xjhh6YlRJmsRL-ff7QeOP_jmvqBq6GFnVPVfwSKQOUlfXx28JzcyNwm8YyJMQOtRiyxx6m_y10a0ypEZvUs_nLghdRGT3-lDa5VGbiXO3M54PIgMiKMFGhl2W_EHuFWbfwQaxuA-xEUYePzgLFx_013CH9FnbdcCGmX67C9KeZG9N6s7BumL0UYJdPN5AwP7UU1vL9pVDNZbxS-2kVpU79LF3k3P1CQdxefGDUvwBXqw3jctPSMYg6UlcIx52_DNOduHkit0Pl9hjRDk7fzwGOiy6TlGJED-esL0XH1OrqjhlR1NWvkHGmN2Q",
+    "qi": "QRTwMaZiz-IbZXr0bJCic6iHK1R4y2Yw-RVYCvFolVhyJORBVkqvu9XhJr1sRQlsqONSXa3T7hZwLi_vYhz2v5lKTdIy7aCW0M7HNc-MmpoEJckPJ5ps0gx5RhriK7dLWb4Jm9nixeyp19KPn-PKbo6pTszaaJGU_fG0r6jf8nAxBAT2nfHkB9SrqbDVko1gswFg8W_rqtesJHngqu-_RYSltkz6yzJ4zJZAyOyFlwwGyEnEPVwxWgy5oxuMPPTU5T0mBGWskDR1o4w78ZS42YLwAKQm48qfZmthTTHBnizW40AFMOJTFwEMZD1dV7YAMm1dQHO8ybQbZk1w7ybiiQ"
+}"##;
+
 #[cfg(test)]
 mod tests {
+    use super::Provider;
     use crate::{
         Arweave, Error,
         {transaction::Transaction, ToItems},
     };
     use std::path::PathBuf;
+    use std::str::FromStr;
+    use url::Url;
 
     #[tokio::test]
     async fn test_deep_hash() -> Result<(), Error> {
@@ -204,7 +233,7 @@ mod tests {
             PathBuf::from(
                 "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
             ),
-            None,
+            Url::from_str("http://url.com").unwrap(),
         )
         .await?;
 
@@ -212,9 +241,7 @@ mod tests {
             format: 2,
             ..Transaction::default()
         };
-        let deep_hash = arweave
-            .get_crypto()?
-            .deep_hash(transaction.to_deep_hash_item()?)?;
+        let deep_hash = arweave.crypto.deep_hash(transaction.to_deep_hash_item()?)?;
 
         let correct_hash: [u8; 48] = [
             72, 43, 204, 204, 122, 20, 48, 138, 114, 252, 43, 128, 87, 244, 105, 231, 189, 246, 94,
@@ -225,5 +252,14 @@ mod tests {
         assert_eq!(deep_hash, correct_hash);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_default_keypair() {
+        let provider = Provider::default();
+        assert_eq!(
+            provider.wallet_address().unwrap().to_string(),
+            "jA6UzKJ1cIvL2vUIct7Qf90QhC5b1UttvwknaGGBtjI"
+        );
     }
 }
