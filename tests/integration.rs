@@ -19,7 +19,7 @@ async fn get_arweave() -> Result<Arweave, Error> {
     let keypair_path =
         "tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json";
     let base_url = Url::from_str("http://localhost:1984/")?;
-    let arweave = Arweave::from_keypair_path(PathBuf::from(keypair_path), Some(base_url)).await?;
+    let arweave = Arweave::from_keypair_path(PathBuf::from(keypair_path), base_url).await?;
     Ok(arweave)
 }
 
@@ -35,12 +35,7 @@ async fn mine(arweave: &Arweave) -> Result<(), Error> {
 async fn airdrop(arweave: &Arweave) -> Result<(), Error> {
     let url = arweave.base_url.join(&format!(
         "mint/{}/100000000000000",
-        arweave
-            .get_crypto()
-            .unwrap()
-            .wallet_address()
-            .unwrap()
-            .to_string()
+        arweave.crypto.wallet_address().unwrap().to_string()
     ))?;
     let resp = reqwest::get(url).await?.text().await?;
     println!("mine resp: {}", resp);

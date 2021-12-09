@@ -92,6 +92,7 @@ jobs:
   
   # Same job as above except:
   # - No service for arlocal integration tests - only supported on linux runners.
+  # - Not published to crates.io.
   # - LICENSE not added to release artifacts since added above.
   MacWinBuild:
     runs-on: ${{ matrix.host_os }}
