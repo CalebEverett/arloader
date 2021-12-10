@@ -443,7 +443,7 @@ async fn test_upload_bundle_from_file_paths() -> Result<(), Error> {
     let paths_chunks = arweave.chunk_file_paths(paths_iter, 2000000)?;
     println!("{:?}", paths_chunks);
     let status = arweave
-        .post_bundle_transaction_from_file_paths(paths_chunks[0].clone(), Vec::new(), (0, 0))
+        .post_bundle_transaction_from_file_paths(paths_chunks[0].clone(), Vec::new(), (0, 0), 1)
         .await?;
 
     println!("{:?}", status);

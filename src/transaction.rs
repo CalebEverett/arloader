@@ -39,7 +39,7 @@ pub struct Chunk {
     data_size: u64,
     data_path: Base64,
     #[serde(with = "stringify")]
-    offset: usize,
+    pub offset: usize,
     chunk: Base64,
 }
 

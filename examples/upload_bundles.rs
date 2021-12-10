@@ -1,5 +1,4 @@
 use arloader::{commands::*, error::Error, Arweave};
-use glob::glob;
 use rand::Rng;
 use rayon::prelude::*;
 use std::env;
@@ -48,7 +47,7 @@ async fn main() -> CommandResult {
         100_000_000,
         2.0,
         None,
-        1,
+        100,
     )
     .await?;
 

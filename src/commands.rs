@@ -25,26 +25,6 @@ use url::Url;
 pub type CommandResult = Result<(), Error>;
 
 /// Gets cost of uploading a list of files.
-pub async fn command_chunk_files(glob_str: &str, num_chunks: usize) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let paths: Vec<PathBuf> = paths_iter.collect();
-    let paths_chunks = paths.chunks(num_chunks);
-
-    for (i, paths) in paths_chunks.enumerate() {
-        let new_parent = paths[0]
-            .clone()
-            .parent()
-            .unwrap()
-            .join(format!("temp_{}", i));
-        fs::create_dir(new_parent.clone()).await?;
-        for p in paths {
-            fs::copy(p.clone(), new_parent.join(p.clone().file_stem().unwrap())).await?;
-        }
-    }
-    Ok(())
-}
-
-/// Gets cost of uploading a list of files.
 pub async fn command_get_cost(
     arweave: &Arweave,
     glob_str: &str,
@@ -380,11 +360,23 @@ pub async fn command_upload_bundles(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
         return Ok(());
     } else {
+        let (num_files, data_size) = path_chunks
+            .iter()
+            .fold((0, 0), |(f, d), c| (f + c.0.len(), d + c.1));
+
+        println!(
+            "Uploading {} files with {} KB of data in {} bundle transactions...\n",
+            num_files,
+            data_size / 1_000,
+            path_chunks.len(),
+        );
+
         let mut stream = upload_bundles_stream(arweave, path_chunks, tags, price_terms, buffer);
 
         let mut counter = 0;
         let mut number_of_files = 0;
         let mut data_size = 0;
+
         while let Some(result) = stream.next().await {
             match result {
                 Ok(status) => {
@@ -442,6 +434,17 @@ pub async fn command_upload_bundles_with_sol(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
         return Ok(());
     } else {
+        let (num_files, data_size) = path_chunks
+            .iter()
+            .fold((0, 0), |(f, d), c| (f + c.0.len(), d + c.1));
+
+        println!(
+            "Uploading {} files with {} KB of data in {} bundle transactions...\n",
+            num_files,
+            data_size / 1_000,
+            path_chunks.len(),
+        );
+
         let mut stream = upload_bundles_stream_with_sol(
             arweave,
             path_chunks,
