@@ -201,6 +201,15 @@ fn buffer_arg<'a, 'b>(default: &'a str) -> Arg<'a, 'b> {
         .help("Sets the maximum number of concurrent network requests.")
 }
 
+fn num_chunks_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("num_chunks")
+        .long("num-chunks")
+        .value_name("NUM_CHUNKS")
+        .takes_value(true)
+        .validator(is_parsable::<usize>)
+        .help("Sets the number of folders to chunk files into.")
+}
+
 fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("bundle_size")
         .long("bundle-size")
@@ -378,6 +387,14 @@ fn get_app() -> App<'static, 'static> {
                 .help("Return information in specified output format."),
         )
         .subcommand(
+            SubCommand::with_name("chunk-files")
+                .about(
+                    "Chunks files into number of folders.",
+                )
+                .arg(glob_arg(true))
+                .arg(num_chunks_arg())
+        )
+        .subcommand(
             SubCommand::with_name("estimate")
                 .about(
                     "Prints the estimated cost of uploading file(s) \
@@ -512,6 +529,11 @@ async fn main() -> CommandResult {
     let (sub_command, arg_matches) = app_matches.subcommand();
 
     match (sub_command, arg_matches) {
+        ("chunk-files", Some(sub_arg_matches)) => {
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let num_chunks = value_t!(sub_arg_matches.value_of("num_chunks"), usize).unwrap();
+            command_chunk_files(glob_str, num_chunks).await
+        }
         ("balance", Some(sub_arg_matches)) => {
             let arweave = if let Some(ar_keypair_path) = sub_arg_matches.value_of("ar_keypair_path")
             {

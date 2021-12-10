@@ -25,6 +25,26 @@ use url::Url;
 pub type CommandResult = Result<(), Error>;
 
 /// Gets cost of uploading a list of files.
+pub async fn command_chunk_files(glob_str: &str, num_chunks: usize) -> CommandResult {
+    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    let paths: Vec<PathBuf> = paths_iter.collect();
+    let paths_chunks = paths.chunks(num_chunks);
+
+    for (i, paths) in paths_chunks.enumerate() {
+        let new_parent = paths[0]
+            .clone()
+            .parent()
+            .unwrap()
+            .join(format!("temp_{}", i));
+        fs::create_dir(new_parent.clone()).await?;
+        for p in paths {
+            fs::copy(p.clone(), new_parent.join(p.clone().file_stem().unwrap())).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Gets cost of uploading a list of files.
 pub async fn command_get_cost(
     arweave: &Arweave,
     glob_str: &str,
