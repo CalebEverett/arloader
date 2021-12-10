@@ -19,7 +19,7 @@ Upload gigabytes of files with one command specifying a glob pattern to match fi
 * [Usage without Bundles](#usage-without-bundles)
 
 ## Discounted Usage with SOL
- During an introductory period, usage with SOL is essentially free. The cost per transaction is 10,000 lamports (~$0.002), including the Solana network fee of 5,000 lamports.
+ Usage with SOL is currently essentially free. The cost per transaction is 10,000 lamports (~$0.002), including the Solana network fee of 5,000 lamports.
 
 ## Installation
 
@@ -387,5 +387,19 @@ Given that Arloader bundles by default, your transaction is hopefully relatively
 ## Usage without Bundles
 
 You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `LOG_DIR` and you can run `update-status` to update them from the network and `status-report` for a count of transactions by status.
+
+## Roadmap
+
+- [x] Bundle size unit in MB
+- [x] Handle error on pricing look up
+- [ ] Stream chunks with buffer
+- [ ] Re upload bundles
+- [ ] Clean up handling of paths
+- [ ] Progress indicators for longer running processes
+- [ ] Output in metaboss format, or include in metaplex cli
+- [ ] Point at folder of assets and json and get back links to uploaded metadata
+- [ ] Implement bundlr
+- [ ] Async benchmarking, including reading files from disk
+- [ ] Bundlr benchmarking
 
 

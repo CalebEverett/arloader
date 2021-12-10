@@ -71,7 +71,6 @@
 //! The functions for allowing payment to be made in SOL can be found in the [`solana`] module.
 
 #![feature(derive_default_enum)]
-use crate::solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR};
 use blake3;
 use chrono::Utc;
 use futures::{
@@ -92,7 +91,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use solana_sdk::signer::keypair::Keypair;
 use std::{collections::HashMap, fmt::Write, path::PathBuf, str::FromStr};
-use tokio::fs;
+use tokio::{
+    fs,
+    time::{sleep, Duration},
+};
 use url::Url;
 
 pub mod bundle;
@@ -108,16 +110,30 @@ pub mod utils;
 use bundle::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
+use solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR};
 use status::{BundleStatus, Status, StatusCode};
 use transaction::{Base64, Chunk, FromUtf8Strs, Tag, ToItems, Transaction};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 /// Winstons are a sub unit of the native Arweave network token, AR. There are 10<sup>12</sup> Winstons per AR.
-pub const WINSTONS_PER_AR: u64 = 1000000000000;
+pub const WINSTONS_PER_AR: u64 = 1_000_000_000_000;
 
 /// Block size used for pricing calculations = 256 KB
 pub const BLOCK_SIZE: u64 = 1024 * 256;
+
+/// Maximum data size to send to `tx/` endpoint. Sent to `chunk/` endpoint above this.
+pub const MAX_TX_DATA: u64 = 10_000_000;
+
+/// Multiplier applied to the buffer argument from the cli to determine the maximum number
+/// of simultaneous request to the `chunk/ endpoint`.
+pub const CHUNKS_BUFFER_FACTOR: usize = 20;
+
+/// Number of times to retry posting chunks if not successful.
+pub const CHUNKS_RETRIES: u16 = 10;
+
+/// Number of seconds to wait between retying to post a failed chunk.
+pub const CHUNKS_RETRY_SLEEP: u64 = 1;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct OraclePrice {
@@ -134,7 +150,23 @@ struct OraclePricePair {
 #[derive(Clone, Debug)]
 pub struct PathsChunk(Vec<PathBuf>, u64);
 
+/// Uploads a stream of chunks from [`Vec<Chunk>`]s.
+pub fn upload_transaction_chunks_stream<'a>(
+    arweave: &'a Arweave,
+    signed_transaction: Transaction,
+    buffer: usize,
+) -> impl Stream<Item = Result<usize, Error>> + 'a {
+    stream::iter(0..signed_transaction.chunks.len())
+        .map(move |i| {
+            let chunk = signed_transaction.get_chunk(i).unwrap();
+            arweave.post_chunk_with_retries(chunk)
+        })
+        .buffer_unordered(buffer)
+}
+
 /// Uploads a stream of bundles from [`Vec<PathsChunk>`]s.
+///
+/// Buffers bundles if using the tx/ endpoint, else buffers chunks with bundles processed serially.
 pub fn upload_bundles_stream<'a>(
     arweave: &'a Arweave,
     paths_chunks: Vec<PathsChunk>,
@@ -142,9 +174,23 @@ pub fn upload_bundles_stream<'a>(
     price_terms: (u64, u64),
     buffer: usize,
 ) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a {
+    let bundle_size = paths_chunks[0].1;
+    let (bundles_buffer, chunks_buffer) = if bundle_size > MAX_TX_DATA {
+        (1, buffer * CHUNKS_BUFFER_FACTOR)
+    } else {
+        (buffer, 1)
+    };
+
     stream::iter(paths_chunks)
-        .map(move |p| arweave.post_bundle_transaction_from_file_paths(p, tags.clone(), price_terms))
-        .buffer_unordered(buffer)
+        .map(move |p| {
+            arweave.post_bundle_transaction_from_file_paths(
+                p,
+                tags.clone(),
+                price_terms,
+                chunks_buffer,
+            )
+        })
+        .buffer_unordered(bundles_buffer)
 }
 
 /// Uploads a stream of bundles from [`Vec<PathsChunk>`]s, paying with SOL.
@@ -158,18 +204,26 @@ pub fn upload_bundles_stream_with_sol<'a>(
     sol_ar_url: Url,
     from_keypair: &'a Keypair,
 ) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a {
+    let bundle_size = paths_chunks[0].1;
+    let (bundles_buffer, chunks_buffer) = if bundle_size > MAX_TX_DATA {
+        (1, buffer * CHUNKS_BUFFER_FACTOR)
+    } else {
+        (buffer, 1)
+    };
+
     stream::iter(paths_chunks)
         .map(move |p| {
             arweave.post_bundle_transaction_from_file_paths_with_sol(
                 p,
                 tags.clone(),
                 price_terms,
+                chunks_buffer,
                 solana_url.clone(),
                 sol_ar_url.clone(),
                 from_keypair,
             )
         })
-        .buffer_unordered(buffer)
+        .buffer_unordered(bundles_buffer)
 }
 
 /// Uploads files matching glob pattern, returning a stream of [`Status`] structs.
@@ -325,14 +379,20 @@ impl Arweave {
     /// as a BigUint with two decimals.
     pub async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint, BigUint), Error> {
         let url = self.base_url.join("price/")?.join(&bytes.to_string())?;
-        let winstons_per_bytes = reqwest::get(url).await?.json::<u64>().await?;
+        let winstons_per_bytes = reqwest::get(url)
+            .await
+            .map_err(|e| Error::ArweaveGetPriceError(e))?
+            .json::<u64>()
+            .await?;
         let winstons_per_bytes = BigUint::from(winstons_per_bytes);
+
         let oracle_url =
             "https://api.coingecko.com/api/v3/simple/price?ids=arweave,solana&vs_currencies=usd";
-
-        let resp = reqwest::get(oracle_url).await?;
-
-        let prices = resp.json::<OraclePrice>().await?;
+        let prices = reqwest::get(oracle_url)
+            .await
+            .map_err(|e| Error::OracleGetPriceError(e))?
+            .json::<OraclePrice>()
+            .await?;
 
         let usd_per_ar: BigUint = BigUint::from((prices.arweave.usd * 100.0).floor() as u32);
         let usd_per_sol: BigUint = BigUint::from((prices.solana.usd * 100.0).floor() as u32);
@@ -477,6 +537,7 @@ impl Arweave {
     pub async fn post_transaction_chunks(
         &self,
         signed_transaction: Transaction,
+        chunks_buffer: usize,
     ) -> Result<(Base64, u64), Error> {
         if signed_transaction.id.0.is_empty() {
             return Err(error::Error::UnsignedTransaction.into());
@@ -485,27 +546,47 @@ impl Arweave {
         let transaction_with_no_data = signed_transaction.clone_with_no_data()?;
         let (id, reward) = self.post_transaction(&transaction_with_no_data).await?;
 
-        let _ = try_join_all((0..signed_transaction.chunks.len()).map(|i| {
-            let chunk = signed_transaction.get_chunk(i).unwrap();
-            self.post_chunk(chunk)
-        }))
-        .await?;
+        let results: Vec<Result<usize, Error>> =
+            upload_transaction_chunks_stream(&self, signed_transaction, chunks_buffer)
+                .collect()
+                .await;
+
+        results.into_iter().collect::<Result<Vec<usize>, Error>>()?;
 
         Ok((id, reward))
     }
 
-    pub async fn post_chunk(&self, chunk: Chunk) -> Result<(), Error> {
+    pub async fn post_chunk(&self, chunk: &Chunk) -> Result<usize, Error> {
         let url = self.base_url.join("chunk/")?;
         let client = reqwest::Client::new();
-        let resp = client
+
+        client
             .post(url)
             .json(&chunk)
             .header(&ACCEPT, "application/json")
             .header(&CONTENT_TYPE, "application/json")
             .send()
-            .await?;
-        assert_eq!(resp.status(), reqwest::StatusCode::OK);
-        Ok(())
+            .await
+            .map_err(|e| Error::ArweavePostError(e))?;
+
+        Ok(chunk.offset)
+    }
+
+    pub async fn post_chunk_with_retries(&self, chunk: Chunk) -> Result<usize, Error> {
+        let mut retries = 0;
+        let mut resp = self.post_chunk(&chunk).await;
+
+        while retries < CHUNKS_RETRIES {
+            match resp {
+                Ok(offset) => return Ok(offset),
+                Err(_) => {
+                    sleep(Duration::from_secs(CHUNKS_RETRY_SLEEP)).await;
+                    retries += 1;
+                    resp = self.post_chunk(&chunk).await;
+                }
+            }
+        }
+        resp
     }
 
     pub async fn get_pending_count(&self) -> Result<usize, Error> {
@@ -1245,6 +1326,7 @@ impl Arweave {
         paths_chunk: PathsChunk,
         tags: Vec<Tag<String>>,
         price_terms: (u64, u64),
+        buffer: usize,
     ) -> Result<BundleStatus, Error> {
         let number_of_files = paths_chunk.0.len() as u64;
         let data_items = self
@@ -1263,8 +1345,9 @@ impl Arweave {
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        let (id, reward) = if paths_chunk.1 > 10000000 {
-            self.post_transaction_chunks(signed_transaction).await?
+        let (id, reward) = if paths_chunk.1 > 10_000_000 {
+            self.post_transaction_chunks(signed_transaction, buffer)
+                .await?
         } else {
             self.post_transaction(&signed_transaction).await?
         };
@@ -1286,6 +1369,7 @@ impl Arweave {
         paths_chunk: PathsChunk,
         tags: Vec<Tag<String>>,
         price_terms: (u64, u64),
+        chunks_buffer: usize,
         solana_url: Url,
         sol_ar_url: Url,
         from_keypair: &Keypair,
@@ -1310,7 +1394,8 @@ impl Arweave {
             .await?;
 
         let (id, reward) = if paths_chunk.1 > 10000000 {
-            self.post_transaction_chunks(signed_transaction).await?
+            self.post_transaction_chunks(signed_transaction, chunks_buffer)
+                .await?
         } else {
             self.post_transaction(&signed_transaction).await?
         };

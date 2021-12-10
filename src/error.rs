@@ -11,9 +11,11 @@ use url::ParseError;
 /// Errors propagated by library functions.
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("error getting arweave price: {0}")]
+    ArweaveGetPriceError(reqwest::Error),
     #[error("error posting arweave transaction: {0}")]
-    ArweavPostError(reqwest::Error),
-    #[error("avro desserialize: {0}")]
+    ArweavePostError(reqwest::Error),
+    #[error("avro deserialize: {0}")]
     AvroDeError(#[from] avro_rs::DeError),
     #[error("base64 decode: {0}")]
     Base64Decode(#[from] DecodeError),
@@ -51,6 +53,8 @@ pub enum Error {
     MissingTrailingSlash,
     #[error("no bundle statuses found")]
     NoBundleStatusesFound,
+    #[error("error getting oracle prices: {0}")]
+    OracleGetPriceError(reqwest::Error),
     #[error("reqwest: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("ring unspecified: {0}")]
