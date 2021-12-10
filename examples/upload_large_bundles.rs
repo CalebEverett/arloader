@@ -1,4 +1,5 @@
 use arloader::{commands::*, error::Error, Arweave};
+use glob::glob;
 use rand::Rng;
 use rayon::prelude::*;
 use std::env;
