@@ -911,8 +911,32 @@ impl Arweave {
         let lamports = std::cmp::max(&transaction.reward * 0, FLOOR);
 
         let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
-        let sig_response =
-            get_sol_ar_signature(sol_ar_url, transaction.to_deep_hash_item()?, sol_tx).await?;
+        let mut resp = get_sol_ar_signature(
+            sol_ar_url.clone(),
+            transaction.to_deep_hash_item()?,
+            sol_tx.clone(),
+        )
+        .await;
+
+        let mut retries = 0;
+        while retries < CHUNKS_RETRIES {
+            match resp {
+                Ok(_) => {
+                    retries = CHUNKS_RETRIES;
+                }
+                Err(_) => {
+                    retries += 1;
+                    sleep(Duration::from_secs(500)).await;
+                    resp = get_sol_ar_signature(
+                        sol_ar_url.clone(),
+                        transaction.to_deep_hash_item()?,
+                        sol_tx.clone(),
+                    )
+                    .await;
+                }
+            }
+        }
+        let sig_response = resp?;
         let sig_response_copy = sig_response.clone();
         transaction.signature = sig_response.ar_tx_sig;
         transaction.id = sig_response.ar_tx_id;

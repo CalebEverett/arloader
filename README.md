@@ -392,7 +392,8 @@ You can add the `--no-bundle` flag if for some reason you want to create individ
 
 - [x] Bundle size unit in MB
 - [x] Handle error on pricing look up
-- [ ] Stream chunks with buffer
+- [x] Buffer chunks post stream
+- [ ] Add upload nft project example
 - [ ] Re upload bundles
 - [ ] Clean up handling of paths
 - [ ] Progress indicators for longer running processes

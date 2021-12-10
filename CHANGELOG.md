@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 # v0.1.40 (2021-12-10)
 - **changed:** buffer post requests to `chunk/` endpoint.
 - **changed:** `--bundle-size` units from bytes to megabytes.
+- **changed:** retry solana transaction.
 - **changed:** handle errors from getting Arweave and oracle prices.
 - **breaking:** remove `--chunk-files`
 
