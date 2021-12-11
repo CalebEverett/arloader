@@ -10,7 +10,7 @@ fn files_setup(file_size: usize, num_files: usize, ext: &str) -> Result<TempDir,
     let mut bytes = Vec::with_capacity(file_size);
     (0..file_size).for_each(|_| bytes.push(rng.gen()));
 
-    let temp_dir = tempdir::TempDir::new("test_files")?;
+    let temp_dir = TempDir::new("test_files")?;
 
     let _ = (0..num_files).into_par_iter().for_each(|i| {
         fs::write(

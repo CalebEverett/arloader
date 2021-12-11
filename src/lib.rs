@@ -738,7 +738,13 @@ impl Arweave {
             .into_iter()
             .fold(serde_json::Map::new(), |mut m, s| {
                 m.insert(
-                    s.file_path.unwrap().display().to_string(),
+                    s.file_path
+                        .unwrap()
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
                     json!({"id": s.id.to_string(), "content_type": s.content_type}),
                 );
                 m
@@ -1508,12 +1514,14 @@ impl Arweave {
             let manifest = manifest.as_object_mut().unwrap();
 
             try_join_all(paths_iter.map(|p| {
-                let path_object = manifest.get(p.to_str().unwrap()).unwrap();
+                let path_object = manifest
+                    .get(p.file_name().unwrap().to_str().unwrap())
+                    .unwrap();
                 let image_link = if image_link_file {
                     format!(
                         "https://arweave.net/{}/{}",
                         manifest_id,
-                        p.to_str().unwrap()
+                        p.file_name().unwrap().to_str().unwrap()
                     )
                 } else {
                     format!(

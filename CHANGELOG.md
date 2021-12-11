@@ -5,6 +5,9 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# v0.1.41 (2021-12-11)
+- **changed:** manifest paths now just include file name instead of the full relative paths
+
 # v0.1.40 (2021-12-10)
 - **changed:** buffer post requests to `chunk/` endpoint.
 - **changed:** `--bundle-size` units from bytes to megabytes.

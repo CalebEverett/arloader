@@ -51,8 +51,12 @@ url = "2.2.2"
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["async_futures", "async_tokio", "html_reports"] }
-tempdir = "0.3"
+image = "0.23.14"
+imageproc = "0.22.0"
+num-complex = "0.4.0"
 rand = "0.8.4"
+rusttype = "0.9.2"
+tempdir = "0.3"
 
 [[bench]]
 name = "benchmark"

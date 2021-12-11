@@ -17,6 +17,7 @@ Upload gigabytes of files with one command specifying a glob pattern to match fi
 * [Usage with SOL](#usage-with-sol)
 * [Reward Multiplier](#reward-multiplier)
 * [Usage without Bundles](#usage-without-bundles)
+* [Roadmap](#roadmap)
 
 ## Discounted Usage with SOL
  Usage with SOL is currently essentially free. The cost per transaction is 10,000 lamports (~$0.002), including the Solana network fee of 5,000 lamports.
