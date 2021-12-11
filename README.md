@@ -200,7 +200,7 @@ If you happen to be creating your NFTs with the [Metaplex Candy Machine](https:/
 and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metadata files (something `*.json`).
 
 ```
-arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <MANIFEST_PATH>
+arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <LOG_DIR>
 ```
 
 This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to `<LOG_DIR>` with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
