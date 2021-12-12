@@ -42,26 +42,26 @@ cargo install arloader
 ## NFT Usage
 
 ### Create Upload Folder
- Put your assets and associated metadata file with `.json` extension in folder by themselves.
+ Put your assets and associated metadata files with `.json` extension in a folder by themselves.
 
 ### Upload Assets
-To take advantage of the discounted SOL transactions, run:
+To take advantage of the discounted SOL transactions, run the command below where `<GLOB>` matches your asset files:
 ```
 arloader upload-nfts <GLOB> --with-sol --ar-default-keypair
 ```
 
-This will first upload your assets and log status to a newly created sub directory of the folder where the assets are located of the form `arloader_<RANDOM_CHARS>`.
+This will first upload your assets,  logging statuses to a newly created directory named `arloader_<RANDOM_CHARS>` in the folder named where the assets are located.
 
-A manifest file will be created from these logged statuses and uploaded to Arweave. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link.
+A manifest file will be created from the logged statuses and uploaded to Arweave. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link.
 
 #### Update Metadata and Upload 
 Next your metadata files will be updated with the links to the uploaded assets. Arloader adds or replaces the `image` and `files` keys with the newly created links, defaulting to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `upload-nfts` command.
 
-Then your metadata files will uploaded and a manifest created for them.
+Then your metadata files will be uploaded and a manifest created for them.
 
 ### Get Links to Uploaded Metadata
 
-Once everything is done, you can use the  `manifest_<TXID>.json` file in `arloader_<RAND_CHAR>/metadata/` to get the links to the uploaded metadata to include in our tokens' on chain metadata.
+Once everything is done, you can to get the links to the uploaded metadata files you need to include in the metadata of your tokens from the `manifest_<TXID>.json` file in `arloader_<RAND_CHAR>/metadata/`.
 
 ```json
 {
@@ -93,14 +93,13 @@ Once everything is done, you can use the  `manifest_<TXID>.json` file in `arload
     },
 ```
 
-If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links you can copy
-and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metadata files (something `*.json`).
+If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links that you can copy and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metadata files (`*.json`, e.g.).
 
 ```
 arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <LOG_DIR>
 ```
 
-This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to `<LOG_DIR>` with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
+This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to `<LOG_DIR>`. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
 you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`), by passing the `--link-file` flag.
 
 ```json
@@ -118,7 +117,7 @@ you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`
 ```
 ### Confirm All Transactions
 
-Before you creating your tokens, make sure that all of your transactions have been confirmed at least 25 times. Run the command below where `<LOG_DIR>` refers to the automatically created directory in your assets folder that begins with `arloader_`.
+Before you create your tokens, make sure that all of your transactions have been confirmed at least 25 times. Run the command below where `<LOG_DIR>` refers to the automatically created directory in your assets folder that begins with `arloader_`.
 
 ```
 arloader update-nft-status <LOG_DIR>
