@@ -357,12 +357,12 @@ Benchmarks include only processing activity and exclude reading files from disk 
 - [x] Bundle size unit in MB
 - [x] Handle error on pricing look up
 - [x] Buffer chunks post stream
-- [ ] Add upload nft project example
+- [x] Add upload nft project example
+- [x] Point at folder of assets and json and get back links to uploaded metadata
+- [x] Clean up handling of paths
 - [ ] Re upload bundles
-- [ ] Clean up handling of paths
 - [ ] Progress indicators for longer running processes
 - [ ] Output in metaboss format, or include in metaplex cli
-- [ ] Point at folder of assets and json and get back links to uploaded metadata
 - [ ] Implement bundlr
 - [ ] Async benchmarking, including reading files from disk
 - [ ] Bundlr benchmarking
