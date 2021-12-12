@@ -252,6 +252,35 @@ pub async fn command_update_metadata(
     Ok(())
 }
 
+/// Updates statuses for uploaded nfts.
+pub async fn command_update_nft_statuses(
+    arweave: &Arweave,
+    log_dir: &str,
+    output_format: Option<&str>,
+    buffer: usize,
+) -> CommandResult {
+    let log_dir = PathBuf::from(log_dir);
+    let log_dir_assets = log_dir.join("assets/").display().to_string();
+    let log_dir_metadata = log_dir.join("metadata/").display().to_string();
+    let asset_manifest_txid = get_manifest_id_from_log_dir(&log_dir_assets);
+    let metadata_manifest_txid = get_manifest_id_from_log_dir(&log_dir_metadata);
+
+    println!("\n\nUpdating asset bundle statuses...\n");
+    command_update_bundle_statuses(&arweave, &log_dir_assets, output_format, buffer).await?;
+    println!("\n\nUpdating metadata bundle statuses...\n");
+    command_update_bundle_statuses(&arweave, &log_dir_assets, output_format, buffer).await?;
+    println!("\n\nUpdating asset manifest status...\n");
+    command_get_status(&arweave, &asset_manifest_txid, output_format.unwrap_or("")).await?;
+    println!("\n\nUpdating metadata manifest status...\n");
+    command_get_status(
+        &arweave,
+        &metadata_manifest_txid,
+        output_format.unwrap_or(""),
+    )
+    .await?;
+    Ok(())
+}
+
 /// Updates statuses for provided files in provided directory.
 pub async fn command_update_statuses(
     arweave: &Arweave,
@@ -554,6 +583,7 @@ pub async fn command_upload_nfts(
     output_format: Option<&str>,
     buffer: usize,
     sol_keypair_path: Option<&str>,
+    link_file: bool,
 ) -> CommandResult {
     let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
 
@@ -577,7 +607,7 @@ pub async fn command_upload_nfts(
         let log_dir_metadata = log_dir_metadata.display().to_string();
 
         // Upload images
-        println!("\n\nUploading images...\n");
+        println!("\n\nUploading assets...\n");
         if let Some(sol_keypair_path) = sol_keypair_path.clone() {
             command_upload_bundles_with_sol(
                 &arweave,
@@ -625,7 +655,7 @@ pub async fn command_upload_nfts(
 
         // Update metadata with links to uploaded images.
         println!("\n\nUpdating metadata with links from manifest...\n");
-        command_update_metadata(&arweave, glob_str, &asset_manifest_str, true).await?;
+        command_update_metadata(&arweave, glob_str, &asset_manifest_str, link_file).await?;
 
         // Upload metadata.
         println!("\n\nUploading updated metadata files...\n");
@@ -673,6 +703,11 @@ pub async fn command_upload_nfts(
         println!(
             "\n\nUpload complete! Links to your uploaded metadata files can be found in  `{}`",
             metadata_manifest_path.display().to_string()
+        );
+
+        println!(
+            "Run `arloader update-nft-status \"{}\"` to confirm all transactions.",
+            log_dir.display().to_string()
         );
     } else {
         println!("The pattern \"{}\" didn't match any files.", glob_str);
@@ -840,4 +875,21 @@ pub fn get_output_format(output: &str) -> OutputFormat {
         "json_compact" => OutputFormat::JsonCompact,
         _ => OutputFormat::Display,
     }
+}
+
+pub fn get_manifest_id_from_log_dir(log_dir: &str) -> String {
+    glob(&format!("{}manifest*.json", &log_dir))
+        .unwrap()
+        .filter_map(Result::ok)
+        .nth(0)
+        .unwrap()
+        .display()
+        .to_string()
+        .split(".")
+        .next()
+        .unwrap()
+        .split("manifest_")
+        .nth(1)
+        .unwrap()
+        .to_string()
 }

@@ -11,12 +11,12 @@ Upload gigabytes of files with one command specifying a glob pattern to match fi
 
 ## Contents
 * [Installation](#installation)
-* [Benchmarks](#benchmarks)
 * [NFT Usage](#nft-usage)
 * [General Usage](#general-usage)
 * [Usage with SOL](#usage-with-sol)
 * [Reward Multiplier](#reward-multiplier)
 * [Usage without Bundles](#usage-without-bundles)
+* [Benchmarks](#benchmarks)
 * [Roadmap](#roadmap)
 
 ## Discounted Usage with SOL
@@ -39,163 +39,59 @@ cargo install arloader
 
 4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
 
-## Benchmarks
-
-The table below shows the average duration required to create transactions across a range of file sizes and numbers of files. Detailed statistical analyses and charts can be found [here](https://calebeverett.github.io/arloader/) (numbers may vary slightly from those below).
-
-For an NFT project with 10,000 tokens it would take 20 seconds to process the images if they were 256 KB. If the images were 4 MB, it would take approximately two minutes.
-
-
-| File Size | Num Files | Total Size | Data Item | Data Items | Bundle | Transaction | Total | Per 1,000 |
-| --------: | --------: | ---------: | --------: | ---------: | -----: | ----------: | ----: | --------: |
-|     32 KB |       500 |         16 |         4 |        430 |     30 |          40 |   0.5 |       1.0 |
-|    256 KB |       500 |        128 |         4 |        493 |    179 |         326 |   1.0 |       2.0 |
-|      1 MB |       500 |        512 |         5 |        616 |    903 |        1033 |   2.6 |       4.1 |
-|      4 MB |       150 |        614 |        11 |        360 |   1050 |        1554 |   3.0 |      10.4 |
-|     16 MB |       50  |        819 |        35 |        393 |   1403 |        2058 |   3.9 |      77.1 |
-
-
-Benchmarks include only processing activity and exclude reading files from disk and uploading them to the network. Benchmarks were performed on an Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz processor with 6 cores.
-
-| Column | Description |
-| --- | --- |
-| Total Size | File size x number of files in megabytes.|
-| Data Item | Time in milliseconds required to create a single data item of the file size. The entails creating a merkle tree data root, generating an id from the deep hash algorithm and signing it.|
-| Data Items | Time in milliseconds required to create data items for the number of files. Data items are processed in parallel using all available cores.|
-| Bundle | Time in milliseconds required to create a single bundle from the data items. This entails serializing each of the data items and packing them together.|
-| Transaction |Time in milliseconds required to create a transaction from the bundle. This entails creating a merkle tree data root, generating an id from the deep hash algorithm and signing it.|
-| Total | Sum of the time required to create data items, bundle and transaction in seconds.|
-| Per 1,000 | Extrapolation of total to 1,000 files.|
-
 ## NFT Usage
 
-NFTs consist of an on-chain token, an asset (image, animation, video, or other digital media) and metadata describing the asset. Since on-chain storage is expensive, the token itself typically only includes a link to a metadata file stored off chain that includes a link to the asset stored off chain as well. Arweave is an excellent choice for storing assets and metadata since you only pay once and your files are stored forever. Neither you nor anyone else who might end up with your NFTs ever has to worry about funding storage in the future. Once uploaded to Arweave, your assets and metadata are stored forever!
-
-In order to create your NFTs, you need your assets uploaded to Arweave, your metadata files to include links to the assets and finally, the updated metadata files to be uploaded to Arweave. Once these steps are completed and your upload transactions have been confirmed, you can use the links returned from uploading your metadata files to create your NFTs.
-
-1. Upload your assets
-2. Update your metadata files to include the links to your assets
-3. Upload your metadata files
-4. Get links to your uploaded metadata files to use in your NFTs
-
-To start with, include both your assets and your metadata files in the same directory and make sure that the stems of your asset files match the stems of your metadata files.
-```
-├── 0.json
-├── 0.png
-├── 1.json
-├── 1.png
-├── 2.json
-├── 2.png
-├── 3.json
-├── 3.png
-├── 4.json
-├── 4.png
-├── 5.json
-├── 5.png
-```
-
-Also create directories where you can log the statuses of your asset and metadata uploads. arloader will use these to provide updates on confirmation statuses and to write files with links to your uploaded files. The example below assumes that `status/assets/` and `status/metadata/` have been created in advance.
-
-See [Token Metadata Standard](https://docs.metaplex.com/nft-standard) for details on the standard metadata format.
+### Create Upload Folder
+ Put your assets and associated metadata file with `.json` extension in folder by themselves.
 
 ### Upload Assets
-
+To take advantage of the discounted SOL transactions, run:
 ```
-arloader upload "*.png" --log-dir "status/asset/"
-```
-
-At this point, you can also go ahead and create and upload a manifest file. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link. You'll also be able to use this file to automatically update your metadata files to include links to your uploaded asset files. 
-
-```
-arloader upload-manifest --log-dir "status/assets/" --reward-multiplier 2
+arloader upload-nfts <GLOB> --with-sol --ar-default-keypair
 ```
 
-Since this is a small transaction and you want to make sure it goes through, it's a good idea to increase the reward.
+This will first upload your assets and log status to a newly created sub directory of the folder where the assets are located of the form `arloader_<RANDOM_CHARS>`.
 
-A version of the manifest named `manifest_<TXID>.json` will be written in the `status/assets/` directory.
+A manifest file will be created from these logged statuses and uploaed to Arweave. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link.
 
-```json
-{
-    "0.png": {
-        "files": [
-            {
-                "type": "image/png",
-                "uri": "https://arweave.net/BSvIAiwthQu_xwQBHn9FcgACaZ8ko4py5mqMNP4r-jM/0.png"
-            },
-            {
-                "type": "image/png",
-                "uri": "https://arweave.net/JQbz5py065lqaS_8R7NCtLcK2b-pSkkG6Je0OT8379c"
-            }
-        ],
-        "id": "JQbz5py065lqaS_8R7NCtLcK2b-pSkkG6Je0OT8379c"
-    },
-    "1.png": {
-        "files": [
-            {
-                "type": "image/png",
-                "uri": "https://arweave.net/BSvIAiwthQu_xwQBHn9FcgACaZ8ko4py5mqMNP4r-jM/1.png"
-            },
-            {
-                "type": "image/png",
-                "uri": "https://arweave.net/Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
-            }
-        ],
-        "id": "Os-tEyRqdjwwyNo1mpLaPGu8_r3KbV-iNRH-aPtJFOw"
-    },
-    
-```
+#### Update Metadata and Upload 
+Next your metadata files will be updated with the links to the uploaded assets. Arloader adds or replaces the `image` and `files` keys with the newly created links, defaulting to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `upload-nfts` command.
 
-### Update Metadata
-
-You can proceed with updating your metadata files, but just make sure that you've gotten 25 confirmations on everything - your assets, metadata and manifest files before you create your NFTs. You can check the number of confirmations by running:
-
-```
-arloader update-status --log-dir "status/asset/"
-```
-
-Also check your manifest confirmations by running:
-
-```
-arloader get-status <MANIFEST_ID>
-```
-
-If your metadata files have the same stem as your asset files and an extension of `json`, you can update the `image` and `files` keys from the newly created manifest file with the command below.
-
-```
-arloader update-metadata "*.png" --manifest-path <MANIFEST_PATH>
-```
-
-arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `update-metadata` command.
-
-### Upload Metadata
-
-Now that your metadata files include links to your uploaded assets, you're ready to upload your metadata files.
-
-```
-arloader upload "*.json" --log-dir "status/metadata/"
-```
-
-Go ahead and create and upload a separate manifest for your metadata files as well.
-
-```
-arloader upload-manifest --log-dir "status/metadata/"
-```
-
-Same thing as with your asset files, before creating your NFTs, you make sure that each of your metadata upload transactions has been confirmed at least 25 times.
-
-```
-arloader update-status --log-dir "status/metadata/"
-```
-
-And for your metadata manifest:
-
-```
-arloader get-status <MANIFEST_ID>
-```
+Then your metadata files will uploaded and a manifest created for them.
 
 ### Get Links to Uploaded Metadata
 
-Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in `status/metadata/` and use the included links to create your NFTs!
+Once everything is done, you can use the  `manifest_<TXID>.json` file in `arloader_<RAND_CHAR>/metadata/` to get the links to the uploaded metadata to include in our tokens' on chain metadata.
+
+```json
+{
+    "0.json": {
+        "id": "ScU9mEuKBbPX5o5nv8DZkDnZuJbzf84lyLk-uLVDqNk",
+        "files": [
+            {
+                "uri": "https://arweave.net/ScU9mEuKBbPX5o5nv8DZkDnZuJbzf84lyLk-uLVDqNk",
+                "type": "application/json"
+            },
+            {
+                "uri": "https://arweave.net/fo9P3OOq78REajk48vFWbKfIhw6mDzgjANQIh3L7Njs/0.json",
+                "type": "application/json"
+            }
+        ]
+    },
+    "1.json": {
+        "id": "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8",
+        "files": [
+            {
+                "uri": "https://arweave.net/8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8",
+                "type": "application/json"
+            },
+            {
+                "uri": "https://arweave.net/fo9P3OOq78REajk48vFWbKfIhw6mDzgjANQIh3L7Njs/1.json",
+                "type": "application/json"
+            }
+        ]
+    },
+```
 
 If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links you can copy
 and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metadata files (something `*.json`).
@@ -220,6 +116,44 @@ you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`
             "onChain": false
         },
 ```
+### Confirm All Transactions
+
+Before you creating your tokens, make sure that all of your transactions have been confirmed at least 25 times. Run the command below where `<LOG_DIR>` refers to the automatically created directory in your assets folder that begins with `arloader_`.
+
+```
+arloader update-nft-status <LOG_DIR>
+```
+
+```
+Updating asset bundle statuses...
+
+ bundle txid                                   items      KB  status       confirms
+------------------------------------------------------------------------------------
+ kmgLCgV-dB-DGML8cvFwuP3a-ZKedz7nyDuEsqYPTis      10     980  Confirmed          60
+Updated 1 statuses.
+
+
+Updating metadata bundle statuses...
+
+ bundle txid                                   items      KB  status       confirms
+------------------------------------------------------------------------------------
+ kmgLCgV-dB-DGML8cvFwuP3a-ZKedz7nyDuEsqYPTis      10     980  Confirmed          60
+Updated 1 statuses.
+
+
+Updating asset manifest status...
+
+ id                                           status     confirms
+------------------------------------------------------------------
+ URwQtoqrbYlc5183STNy3ZPwSCRY4o8goaF7MJay3xY  Confirmed        60
+
+
+Updating metadata manifest status...
+
+ id                                           status     confirms
+------------------------------------------------------------------
+ fo9P3OOq78REajk48vFWbKfIhw6mDzgjANQIh3L7Njs  Confirmed        57
+ ```
 
 ## General Usage
 
@@ -357,7 +291,7 @@ arloader estimate "<GLOB>" --with-sol
 2. To upload your files run
 
 ```
-arloader upload "<GLOB>" --log-dir "<LOG_DIR>" --with sol
+arloader upload "<GLOB>" --log-dir "<LOG_DIR>" --with sol --ar-default-keypair
 ```
 
 This will create the same stream of bundles that gets created without using SOL and then goes out to an api to get your transactions signed. Once the SOL payment transaction has gone through, the signature comes back from the api and gets added to your bundle transaction. Then the transaction gets uploaded directly to the [arweave.net](https:://arweave.net) gateway from your computer.
@@ -388,6 +322,35 @@ Given that Arloader bundles by default, your transaction is hopefully relatively
 ## Usage without Bundles
 
 You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `LOG_DIR` and you can run `update-status` to update them from the network and `status-report` for a count of transactions by status.
+
+## Benchmarks
+
+The table below shows the average duration required to create transactions across a range of file sizes and numbers of files. Detailed statistical analyses and charts can be found [here](https://calebeverett.github.io/arloader/) (numbers may vary slightly from those below).
+
+For an NFT project with 10,000 tokens it would take 20 seconds to process the images if they were 256 KB. If the images were 4 MB, it would take approximately two minutes.
+
+
+| File Size | Num Files | Total Size | Data Item | Data Items | Bundle | Transaction | Total | Per 1,000 |
+| --------: | --------: | ---------: | --------: | ---------: | -----: | ----------: | ----: | --------: |
+|     32 KB |       500 |         16 |         4 |        430 |     30 |          40 |   0.5 |       1.0 |
+|    256 KB |       500 |        128 |         4 |        493 |    179 |         326 |   1.0 |       2.0 |
+|      1 MB |       500 |        512 |         5 |        616 |    903 |        1033 |   2.6 |       4.1 |
+|      4 MB |       150 |        614 |        11 |        360 |   1050 |        1554 |   3.0 |      10.4 |
+|     16 MB |       50  |        819 |        35 |        393 |   1403 |        2058 |   3.9 |      77.1 |
+
+
+Benchmarks include only processing activity and exclude reading files from disk and uploading them to the network. Benchmarks were performed on an Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz processor with 6 cores.
+
+| Column | Description |
+| --- | --- |
+| Total Size | File size x number of files in megabytes.|
+| Data Item | Time in milliseconds required to create a single data item of the file size. The entails creating a merkle tree data root, generating an id from the deep hash algorithm and signing it.|
+| Data Items | Time in milliseconds required to create data items for the number of files. Data items are processed in parallel using all available cores.|
+| Bundle | Time in milliseconds required to create a single bundle from the data items. This entails serializing each of the data items and packing them together.|
+| Transaction |Time in milliseconds required to create a transaction from the bundle. This entails creating a merkle tree data root, generating an id from the deep hash algorithm and signing it.|
+| Total | Sum of the time required to create data items, bundle and transaction in seconds.|
+| Per 1,000 | Extrapolation of total to 1,000 files.|
+
 
 ## Roadmap
 

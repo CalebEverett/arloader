@@ -36,6 +36,7 @@ async fn main() -> CommandResult {
             None,
             5,
             Some(&sol_keypair_path),
+            true,
         )
         .await?;
     }

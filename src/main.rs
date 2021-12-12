@@ -114,7 +114,8 @@ fn is_valid_file_path(path_str: String) -> Result<(), String> {
 // ====================
 
 fn add_trailing_slash(value: &str) -> String {
-    if value.chars().last().unwrap() != '/' {
+    let last_char = value.chars().last().unwrap();
+    if !(last_char == '/' || last_char == '\\') {
         format!("{}/", value)
     } else {
         value.to_string()
@@ -154,12 +155,16 @@ pub trait ExpandTilde {
     fn expand_tilde(&self) -> String;
 }
 
+// This gets applied to all directories to both expand the tilde for the home directory
+// and to make sure that there is a trailing slash.
 impl ExpandTilde for &str {
     fn expand_tilde(&self) -> String {
         if self.chars().next().unwrap() == '~' {
-            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
+            add_trailing_slash(
+                &self.replace("~", &dirs_next::home_dir().unwrap().display().to_string()),
+            )
         } else {
-            self.to_string()
+            add_trailing_slash(&self.to_string())
         }
     }
 }
@@ -326,6 +331,15 @@ fn statuses_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Status codes to filter by. Multiple Ok.")
 }
 
+fn status_log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("log_dir")
+        .value_name("LOG_DIR")
+        .takes_value(true)
+        .takes_value(true)
+        .validator(is_valid_dir)
+        .help("Directory that status updates have been written to.")
+}
+
 fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("tags")
         .long("tags")
@@ -431,6 +445,13 @@ fn get_app() -> App<'static, 'static> {
                 .about("Displays the count of pending transactions in the mempool."),
         )
         .subcommand(
+            SubCommand::with_name("update-nft-status")
+                .about("Updates statuses from nft upload. `log_dir` must refer to the parent status directory
+                and contain `assets/` and `metadata/` sub folders.")
+                .arg(status_log_dir_arg())
+                .arg(buffer_arg("10")),
+        )
+        .subcommand(
             SubCommand::with_name("update-status")
                 .about("Updates statuses stored in `log_dir`. Glob arg only used for --no-bundle.")
                 .arg(log_dir_arg(true))
@@ -489,6 +510,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(sol_keypair_path_arg())
                 .arg(buffer_arg("5"))
                 .arg(bundle_size_arg())
+                .arg(link_file_arg())
                 .group(ArgGroup::with_name("ar_keypair").args(&["ar_keypair_path", "ar_default_keypair"]).required(true))
                 ,
         )
@@ -607,6 +629,13 @@ async fn main() -> CommandResult {
             let link_file = sub_arg_matches.is_present("link_file");
             command_update_metadata(&Arweave::default(), glob_str, manifest_str, link_file).await
         }
+        ("update-nft-status", Some(sub_arg_matches)) => {
+            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let arweave = Arweave::default();
+            let output_format = app_matches.value_of("output_format");
+            let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
+            command_update_nft_statuses(&arweave, log_dir, output_format, buffer).await
+        }
         ("update-status", Some(sub_arg_matches)) => {
             let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
             let arweave = Arweave::default();
@@ -721,6 +750,7 @@ async fn main() -> CommandResult {
             let bundle_size =
                 value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap() * 1_000_000;
             let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
+            let link_file = sub_arg_matches.is_present("link_file");
             let output_format = app_matches.value_of("output_format");
             command_upload_nfts(
                 &arweave,
@@ -730,6 +760,7 @@ async fn main() -> CommandResult {
                 output_format,
                 buffer,
                 sub_arg_matches.value_of("sol_keypair_path"),
+                link_file,
             )
             .await
         }
