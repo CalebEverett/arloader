@@ -11,7 +11,7 @@ use crate::{
     PathsChunk, BLOCK_SIZE, WINSTONS_PER_AR,
 };
 
-use futures::StreamExt;
+use futures::{future::try_join, StreamExt};
 use glob::glob;
 use num_traits::cast::ToPrimitive;
 use solana_sdk::signer::keypair;
@@ -542,6 +542,142 @@ pub async fn command_upload_filter(
             &log_dir.display()
         );
     }
+    Ok(())
+}
+
+/// Uploads folder of nft assets and metadata, updating metadata with links to uploaded assets.
+pub async fn command_upload_nfts(
+    arweave: &Arweave,
+    glob_str: &str,
+    bundle_size: u64,
+    reward_mult: f32,
+    output_format: Option<&str>,
+    buffer: usize,
+    sol_keypair_path: Option<&str>,
+) -> CommandResult {
+    let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
+
+    if let Some(p) = paths_iter.next() {
+        let parent_dir = p.parent().unwrap();
+        let mut rand_bytes: [u8; 8] = [0; 8];
+        arweave.crypto.fill_rand(&mut rand_bytes)?;
+        let suffix = base64::encode_config(rand_bytes, base64::URL_SAFE_NO_PAD);
+        let log_dir = parent_dir.join(format!("arloader_{}", suffix));
+        let log_dir_assets = log_dir.join("assets/");
+        let log_dir_metadata = log_dir.join("metadata/");
+        let metadata_glob_str = format!("{}/*.json", parent_dir.display().to_string());
+
+        try_join(
+            fs::create_dir_all(&log_dir_assets),
+            fs::create_dir_all(&log_dir_metadata),
+        )
+        .await?;
+
+        let log_dir_assets = log_dir_assets.display().to_string();
+        let log_dir_metadata = log_dir_metadata.display().to_string();
+
+        // Upload images
+        println!("\n\nUploading images...\n");
+        if let Some(sol_keypair_path) = sol_keypair_path.clone() {
+            command_upload_bundles_with_sol(
+                &arweave,
+                glob_str,
+                Some(log_dir_assets.clone()),
+                None,
+                bundle_size,
+                reward_mult,
+                output_format,
+                buffer,
+                &sol_keypair_path,
+            )
+            .await?;
+        } else {
+            command_upload_bundles(
+                &arweave,
+                glob_str,
+                Some(log_dir_assets.clone()),
+                None,
+                bundle_size,
+                reward_mult,
+                None,
+                buffer,
+            )
+            .await?;
+        }
+
+        // Upload manifest
+        println!("\n\nUploading manifest for images...\n");
+        command_upload_manifest(
+            &arweave,
+            &log_dir_assets,
+            reward_mult,
+            sol_keypair_path.map(|s| s.to_string()),
+        )
+        .await?;
+
+        let asset_manifest_str = glob(&format!("{}manifest*.json", &log_dir_assets))
+            .unwrap()
+            .filter_map(Result::ok)
+            .nth(0)
+            .unwrap()
+            .display()
+            .to_string();
+
+        // Update metadata with links to uploaded images.
+        println!("\n\nUpdating metadata with links from manifest...\n");
+        command_update_metadata(&arweave, glob_str, &asset_manifest_str, true).await?;
+
+        // Upload metadata.
+        println!("\n\nUploading updated metadata files...\n");
+        if let Some(sol_keypair_path) = sol_keypair_path.clone() {
+            command_upload_bundles_with_sol(
+                &arweave,
+                &metadata_glob_str,
+                Some(log_dir_metadata.clone()),
+                None,
+                bundle_size,
+                reward_mult,
+                output_format,
+                buffer,
+                &sol_keypair_path,
+            )
+            .await?;
+        } else {
+            command_upload_bundles(
+                &arweave,
+                &metadata_glob_str,
+                Some(log_dir_metadata.clone()),
+                None,
+                bundle_size,
+                reward_mult,
+                output_format,
+                buffer,
+            )
+            .await?;
+        }
+
+        println!("\n\nUploading manifest for metadata...\n");
+        command_upload_manifest(
+            &arweave,
+            &log_dir_metadata,
+            reward_mult,
+            sol_keypair_path.map(|s| s.to_string()),
+        )
+        .await?;
+        let metadata_manifest_path = glob(&format!("{}/manifest*.json", &log_dir_metadata))
+            .unwrap()
+            .filter_map(Result::ok)
+            .nth(0)
+            .unwrap();
+
+        println!(
+            "\n\nUpload complete! Links to your uploaded metadata files can be found in  `{}`",
+            metadata_manifest_path.display().to_string()
+        );
+    } else {
+        println!("The pattern \"{}\" didn't match any files.", glob_str);
+    }
+
     Ok(())
 }
 

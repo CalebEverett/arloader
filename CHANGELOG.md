@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 # v0.1.41 (2021-12-11)
-- **changed:** manifest paths now just include file name instead of the full relative paths
+- **added:** `--upload-nfts` command that automates uploading of pairs of assets and metadata files, including updating metadata files with links to uploaded assets. You can now provide a glob pattern matching your asset file and the complete process will run, returning a manifest file with links to your uploaded metadata files that can be included in your on chain token metadata.
+- **added:** `examples/upload_nfts`
+- **changed:** manifest paths now just include just file name instead of the full relative path
+- **changed:** sol service now has private rpc
 
 # v0.1.40 (2021-12-10)
 - **changed:** buffer post requests to `chunk/` endpoint.

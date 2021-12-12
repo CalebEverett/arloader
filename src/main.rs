@@ -477,6 +477,22 @@ fn get_app() -> App<'static, 'static> {
                 .group(ArgGroup::with_name("ar_keypair").args(&["ar_keypair_path", "ar_default_keypair"]).required(true))
         )
         .subcommand(
+            SubCommand::with_name("upload-nfts")
+                .about("Uploads a directory with pairs of assets and metadata files, updating the metadata files with \
+                links to the uploaded images and returning a manifest file with links to the uploaded metadata files \
+                which can then be used to create tokens with.")
+                .arg(glob_arg(true))
+                .arg(reward_multiplier_arg())
+                .arg(ar_keypair_path_arg().required_unless("with_sol"))
+                .arg(ar_default_keypair())
+                .arg(with_sol_arg().requires("sol_keypair_path"))
+                .arg(sol_keypair_path_arg())
+                .arg(buffer_arg("5"))
+                .arg(bundle_size_arg())
+                .group(ArgGroup::with_name("ar_keypair").args(&["ar_keypair_path", "ar_default_keypair"]).required(true))
+                ,
+        )
+        .subcommand(
             SubCommand::with_name("status-report")
                 .about("Prints a summary of statuses stored in `log_dir`.")
                 .arg(glob_arg(true))
@@ -690,6 +706,32 @@ async fn main() -> CommandResult {
                     .await
                 }
             }
+        }
+        ("upload-nfts", Some(sub_arg_matches)) => {
+            let arweave = if let Some(ar_keypair_path) = sub_arg_matches.value_of("ar_keypair_path")
+            {
+                Arweave::from_keypair_path(PathBuf::from(ar_keypair_path.expand_tilde()), base_url)
+                    .await
+                    .unwrap()
+            } else {
+                Arweave::default()
+            };
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
+            let bundle_size =
+                value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap() * 1_000_000;
+            let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
+            let output_format = app_matches.value_of("output_format");
+            command_upload_nfts(
+                &arweave,
+                glob_str,
+                bundle_size,
+                reward_mult,
+                output_format,
+                buffer,
+                sub_arg_matches.value_of("sol_keypair_path"),
+            )
+            .await
         }
         ("upload-filter", Some(sub_arg_matches)) => {
             let arweave = if let Some(ar_keypair_path) = sub_arg_matches.value_of("ar_keypair_path")

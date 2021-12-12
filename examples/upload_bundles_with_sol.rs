@@ -24,14 +24,19 @@ fn files_setup(file_size: usize, num_files: usize, ext: &str) -> Result<TempDir,
 
 #[tokio::main]
 async fn main() -> CommandResult {
+    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH");
+    if sol_keypair_path.is_err() {
+        println!("Example requires SOL_KEYPAIR_PATH environment variable to be set.");
+        return Ok(());
+    };
+    let sol_keypair_path = sol_keypair_path.unwrap();
+
     let ext = "bin";
     let temp_dir = files_setup(10_000_000, 20, ext)?;
     let log_dir = temp_dir.path().join("status");
     fs::create_dir(log_dir.clone()).unwrap();
 
     let arweave = Arweave::default();
-
-    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH").unwrap();
 
     let glob_str = format!("{}/*.{}", temp_dir.path().display().to_string(), ext);
     let log_dir_str = log_dir.display().to_string();

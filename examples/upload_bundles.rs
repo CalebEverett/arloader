@@ -26,13 +26,21 @@ fn files_setup(file_size: usize, num_files: usize, ext: &str) -> Result<TempDir,
 
 #[tokio::main]
 async fn main() -> CommandResult {
+    let ar_keypair_path = env::var("AR_KEYPAIR_PATH");
+
+    if ar_keypair_path.is_err() {
+        println!("Example requires AR_KEYPAIR_PATH environment variable to be set.");
+        return Ok(());
+    };
+    let ar_keypair_path = ar_keypair_path.unwrap();
+
     let ext = "bin";
     let temp_dir = files_setup(10_000_000, 20, ext)?;
     let log_dir = temp_dir.path().join("status");
     fs::create_dir(log_dir.clone()).unwrap();
 
     let arweave = Arweave::from_keypair_path_sync(
-        PathBuf::from(env::var("AR_KEYPAIR_PATH").unwrap()),
+        PathBuf::from(ar_keypair_path),
         Url::from_str("https://arweave.net/")?,
     )?;
 
