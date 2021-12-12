@@ -5,6 +5,10 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+# v0.1.42 (2021-12-11)
+- **fixed:** `upload_nfts` example to create `target/examples/upload_nfts` 
+
 # v0.1.41 (2021-12-11)
 - **added:** `--upload-nfts` command that automates uploading of pairs of assets and metadata files, including updating metadata files with links to uploaded assets. You can now provide a glob pattern matching your asset file and the complete process will run, returning a manifest file with links to your uploaded metadata files that can be included in your on chain token metadata.
 - **added:** `--update-nft-status` command that reports on status for all nft uploads, assets, metadata and manifests
