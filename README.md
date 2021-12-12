@@ -52,7 +52,7 @@ arloader upload-nfts <GLOB> --with-sol --ar-default-keypair
 
 This will first upload your assets and log status to a newly created sub directory of the folder where the assets are located of the form `arloader_<RANDOM_CHARS>`.
 
-A manifest file will be created from these logged statuses and uploaed to Arweave. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link.
+A manifest file will be created from these logged statuses and uploaded to Arweave. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link.
 
 #### Update Metadata and Upload 
 Next your metadata files will be updated with the links to the uploaded assets. Arloader adds or replaces the `image` and `files` keys with the newly created links, defaulting to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `upload-nfts` command.
