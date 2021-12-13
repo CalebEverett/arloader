@@ -68,6 +68,7 @@ jobs:
           target/${{ matrix.target }}/release/arloader update-status nfts/status
           target/${{ matrix.target }}/release/arloader upload-manifest nfts/status
           target/${{ matrix.target }}/release/arloader upload-nfts "nfts/*.png"
+          rm -rf nfts
       - name: Paths
         id: paths
         shell: bash
