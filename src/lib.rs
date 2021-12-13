@@ -937,7 +937,7 @@ impl Arweave {
                 }
                 Err(_) => {
                     retries += 1;
-                    sleep(Duration::from_secs(500)).await;
+                    sleep(Duration::from_millis(300)).await;
                     resp = get_sol_ar_signature(
                         sol_ar_url.clone(),
                         transaction.to_deep_hash_item()?,
