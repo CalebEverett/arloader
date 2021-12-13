@@ -474,6 +474,13 @@ fn get_app() -> App<'static, 'static> {
                 .arg(buffer_arg("10")),
         )
         .subcommand(
+            SubCommand::with_name("update-metadata")
+                .about("Update `image` and `files` keys in NFT metadata json files with links from provided manifest file.")
+                .arg(glob_arg(true))
+                .arg(manifest_path_arg())
+                .arg(link_file_arg())
+        )
+        .subcommand(
             SubCommand::with_name("upload")
                 .about("Uploads one or more files that match the specified glob.")
                 .arg(glob_arg(true))
@@ -533,13 +540,6 @@ fn get_app() -> App<'static, 'static> {
                 .about("Prints a summary of statuses stored in `log_dir`.")
                 .arg(glob_arg(true))
                 .arg(log_dir_arg().long("log-dir").required(true))
-        )
-        .subcommand(
-            SubCommand::with_name("update-metadata")
-                .about("Update `image` and `files` keys in NFT metadata json files with links from provided manifest file.")
-                .arg(glob_arg(true))
-                .arg(manifest_path_arg())
-                .arg(link_file_arg())
         )
         .subcommand(
             SubCommand::with_name("write-metaplex-items")

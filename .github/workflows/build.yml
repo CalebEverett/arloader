@@ -55,16 +55,17 @@ jobs:
           command: test
           args: --target ${{ matrix.target }} --release -- --nocapture
       - name: Commands
+        if: false
         run: |
           curl http://localhost:1984/mint/MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y/100000000000000
-          sudo mkdir nfts
-          sudo mkdir nfts/status
+          mkdir nfts
+          mkdir nfts/status
           cp tests/fixtures/[0-9].png nfts/
           cp tests/fixtures/[0-9].json nfts/
           cargo run -- --base-url http://localhost:1984 upload '"nfts/*.png"' --log-dir nfts/status
           cargo run -- --base-url http://localhost:1984 update-status nfts/status
           cargo run -- --base-url http://localhost:1984 upload-manifest nfts/status
-          cargo run -- --base-url http://localhost:1984 upload-nfts '"nfts"'
+          cargo run -- --base-url http://localhost:1984 upload-nfts nfts
       - name: Paths
         id: paths
         shell: bash
