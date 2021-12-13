@@ -936,6 +936,11 @@ impl Arweave {
                     retries = CHUNKS_RETRIES;
                 }
                 Err(_) => {
+                    println!(
+                        "Retrying Solana transaction ({} of {})...",
+                        retries + 1,
+                        CHUNKS_RETRIES
+                    );
                     retries += 1;
                     sleep(Duration::from_millis(300)).await;
                     resp = get_sol_ar_signature(
@@ -947,12 +952,18 @@ impl Arweave {
                 }
             }
         }
-        let sig_response = resp?;
-        let sig_response_copy = sig_response.clone();
-        transaction.signature = sig_response.ar_tx_sig;
-        transaction.id = sig_response.ar_tx_id;
-        transaction.owner = sig_response.ar_tx_owner;
-        Ok((transaction, sig_response_copy))
+        if let Ok(sig_response) = resp {
+            let sig_response_copy = sig_response.clone();
+            transaction.signature = sig_response.ar_tx_sig;
+            transaction.id = sig_response.ar_tx_id;
+            transaction.owner = sig_response.ar_tx_owner;
+            Ok((transaction, sig_response_copy))
+        } else {
+            println!(
+                "There was a problem with the Solana network. Please try again later or use AR."
+            );
+            Err(Error::SolanaNetworkError)
+        }
     }
 
     pub async fn upload_file_from_path_with_sol(

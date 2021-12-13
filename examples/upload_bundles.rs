@@ -8,7 +8,7 @@ use url::Url;
 
 // For smaller sample sizes, you may have to increase this to have the transactions mined.
 const REWARD_MULTIPLIER: f32 = 2.0;
-const NUM_FILES: usize = 20;
+const NUM_FILES: usize = 2;
 const FILE_SIZE: usize = 10_000_000;
 const BUNDLE_SIZE: u64 = 100_000_000;
 const BUFFER: usize = 5;
