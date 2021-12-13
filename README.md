@@ -66,10 +66,10 @@ arloader upload-nfts <GLOB> --with-sol --sol-keypair_path <SOL_KEYPAIR_PATH> --a
 
 To fund transactions with AR, instead run:
 ```
-arloader upload-nfts <GLOB> --with-sol --ar-keypair-path <AR_KEYPAIR_PATH>
+arloader upload-nfts <GLOB> --ar-keypair-path <AR_KEYPAIR_PATH>
 ```
 
-This will first upload your assets, logging statuses to a newly created directory named `arloader_<RANDOM_CHARS>` in the folder named where the assets are located.
+This will first upload your assets, logging statuses to a newly created directory named `arloader_<RANDOM_CHARS>` in the folder where the assets are located.
 
 Then a manifest file will be created from the logged statuses and uploaded. A manifest is a special file that Arweave uses to access your files by their names, relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files by their id at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either. Once uploaded, the manifest file itself can be accessed online at `https://arweave.net/tx/<MANIFEST_ID>/data.json`.
 

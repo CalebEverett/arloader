@@ -52,6 +52,11 @@ jobs:
           use-cross: false
           command: test
           args: --target ${{ matrix.target }} --release -- --nocapture
+      - name: Commands
+        run: |
+          curl http://localhost:1984/mint/MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y/100000000000000
+          sudo mkdir status
+          cargo run upload '"tests/fixtures/*.png"' --log-dir status --ar-keypair-path tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json
       - name: Paths
         id: paths
         shell: bash
