@@ -50,11 +50,10 @@ jobs:
           command: build
           args: --target ${{ matrix.target }} --release
       - uses: actions-rs/cargo@v1
-        if: false
         with:
           use-cross: false
           command: test
-          args: --target ${{ matrix.target }} --release -- --nocapture
+          args: --target ${{ matrix.target }} -- --nocapture
       - name: Commands
         run: |
           curl http://localhost:1984/mint/MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y/100000000000000
@@ -108,7 +107,6 @@ jobs:
   # - Not published to crates.io.
   # - LICENSE not added to release artifacts since added above.
   MacWinBuild:
-    if: false
     runs-on: ${{ matrix.host_os }}
     strategy:
       matrix:
@@ -148,7 +146,7 @@ jobs:
         with:
           use-cross: false
           command: test
-          args: --target ${{ matrix.target }} --release
+          args: --target ${{ matrix.target }}
       - name: Paths
         id: paths
         shell: bash
