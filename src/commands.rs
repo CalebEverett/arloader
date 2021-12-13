@@ -605,6 +605,14 @@ pub async fn command_upload_nfts(
     let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
 
     if let Some(p) = paths_iter.next() {
+        if p.is_dir() {
+            println!(
+                "Provided <GLOB>, \"{}\", is a directory. It must match your asset files, `*.<EXT>`, e.g. Remember to enclose it in quotes.",
+                glob_str
+            );
+            return Ok(());
+        }
+
         let parent_dir = p.parent().unwrap();
         let log_dir = arweave.create_log_dir(parent_dir).await?;
         let log_dir_assets = log_dir.join("assets/");

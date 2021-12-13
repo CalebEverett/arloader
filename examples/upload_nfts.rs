@@ -5,23 +5,29 @@ use rand::Rng;
 use rayon::prelude::*;
 use rusttype::{Font, Scale};
 use serde_json::json;
-use std::env;
-use std::fs;
-use std::path::PathBuf;
+use std::{env, fs, path::PathBuf, str::FromStr};
 
 // For smaller sample sizes, you may have to increase this to have the transactions mined.
 const REWARD_MULTIPLIER: f32 = 2.0;
 
 #[tokio::main]
 async fn main() -> CommandResult {
-    let arweave = Arweave::default();
-    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH");
+    let ar_keypair_path = env::var("AR_KEYPAIR_PATH").ok();
+    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH").ok();
 
-    if sol_keypair_path.is_err() {
-        println!("Example requires SOL_KEYPAIR_PATH environment variable to be set.");
-        return Ok(());
+    let arweave = if let Some(ar_keypair_path) = ar_keypair_path {
+        Arweave::from_keypair_path(
+            PathBuf::from(ar_keypair_path),
+            url::Url::from_str("https://arweave.net").unwrap(),
+        )
+        .await?
+    } else {
+        if sol_keypair_path.is_none() {
+            println!("Example requires either AR_KEYPAIR_PATH or SOL_KEYPAIR_PATH environment variable to be set.");
+            return Ok(());
+        };
+        Arweave::default()
     };
-    let sol_keypair_path = sol_keypair_path.unwrap();
 
     // Generate images and metadata.
     println!("\n\nCreating images...\n");
@@ -35,7 +41,7 @@ async fn main() -> CommandResult {
             REWARD_MULTIPLIER,
             None,
             5,
-            Some(&sol_keypair_path),
+            sol_keypair_path.as_deref(),
             true,
         )
         .await?;

@@ -179,12 +179,12 @@ If you're uploading more than one file, you should pretty much always be using b
 
 Arloader accepts file glob patterns and defaults to creating a bundle for your files.
 
-Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100000000` to specify a size of 100 MB, for example.
+Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100` to specify a size of 100 MB, for example.
 
 1. To get an estimate of the cost of uploading your files run
 
 ```
-arloader estimate "<GLOB>"
+arloader estimate <GLOB>
 ```
 
 Make sure to include quotes around your glob patterns, otherwise your shell will expand them into a list of files. Arloader expects a glob pattern, not a list of files.
@@ -192,7 +192,7 @@ Make sure to include quotes around your glob patterns, otherwise your shell will
 2. To upload your files run
 
 ```
-arloader upload "<GLOB>"
+arloader upload <GLOB>
 ```
 
 This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 10 MB. The example output below had a bundle size of 5000 bytes.
@@ -232,7 +232,7 @@ A status object gets written to a json file named `<TXID>.json` in a newly creat
 3. After uploading your files, you'll want to check on their status to make sure the have been uploaded successfully and that they ultimately are confirmed at least 25 times before you can be absolutely certain they have been permanently uploaded.
 
 ```
-arloader update-status "<LOG_DIR>"
+arloader update-status <LOG_DIR>
 ```
 
 This will read the files in `<LOG_DIR>`, looking for a valid transaction id as a file stem, and then go out to the network to update the status of each. The example below contained two sets of bundles, one still pending and one with 45 confirmations.
@@ -255,7 +255,7 @@ bundle txid                                   items      KB  status       confir
 4. Once you have a sufficient number of confirmations of your files, you may want to create a manifest file, which is used by the Arweave gateways to provide relative paths to your files. In order to do that, you run
 
 ```
-arloader upload-manifest "<LOG_DIR>"
+arloader upload-manifest <LOG_DIR>
 ```
 where `<LOG_DIR>` is the directory containing your bundle status json files. This will go through and consolidate the paths from each of the bundles, create a consolidated manifest, upload it to Arweave and then write a file named `manifest_<TXID>.json`to `<LOG_DIR>`. Once the transaction uploading the manifest has been confirmed, you will be able to access your files and both `https://arweave.net/<BUNDLE_ITEM_ID>` and `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`  where `MANIFEST_ID` is the id of the manifest transaction and `FILE_PATH` is the relative path of the file included in the `GLOB` pattern you specified with the `upload` command.
 
@@ -291,7 +291,7 @@ where `<LOG_DIR>` is the directory containing your bundle status json files. Thi
 
 You can run the following command to get an update on the status of your manifest transaction.
 ```
-arloader get-status `<MANIFEST_ID>`
+arloader get-status <MANIFEST_ID>
 ```
 
 ## Usage with SOL
@@ -303,13 +303,13 @@ Arloader usage is pretty much exactly the same as above, with the addition of th
 1. To get an estimate of the cost of uploading your files run
 
 ```
-arloader estimate "<GLOB>" --with-sol
+arloader estimate <GLOB> --with-sol
 ```
 
 2. To upload your files run
 
 ```
-arloader upload "<GLOB>" --with sol --ar-default-keypair
+arloader upload <GLOB> --with sol --ar-default-keypair
 ```
 
 This will create the same stream of bundles that gets created without using SOL and then goes out to an api to get your transactions signed. Once the SOL payment transaction has gone through, the signature comes back from the api and gets added to your bundle transaction. Then the transaction gets uploaded directly to the [arweave.net](https:://arweave.net) gateway from your computer.
@@ -339,7 +339,7 @@ Given that Arloader bundles by default, your transaction is hopefully relatively
 
 ## Usage without Bundles
 
-You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `LOG_DIR` and you can run `update-status` to update them from the network and `status-report` for a count of transactions by status.
+You can add the `--no-bundle` flag if for some reason you want to create individual transactions. This works with both `estimate` and `upload` commands. In that case individual status objects are written to `<LOG_DIR>` and you can run `update-status` to update them from the network and `status-report` for a count of transactions by status.
 
 ## Benchmarks
 

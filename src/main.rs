@@ -266,10 +266,10 @@ fn log_dir_arg_write<'a, 'b>() -> Arg<'a, 'b> {
 
 fn log_dir_arg_read<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("log_dir")
+        .required(true)
         .value_name("LOG_DIR")
         .validator(is_valid_dir)
         .takes_value(true)
-        .required(true)
         .help("Specify the directory that statuses have been written to.")
 }
 
@@ -377,11 +377,7 @@ fn get_app() -> App<'static, 'static> {
                 .validator(is_parsable::<Url>)
                 .default_value("https://arweave.net/")
                 .env("AR_BASE_URL")
-                .help(
-                    "Base url for network requests. \
-                Can also be set with AR_BASE_URL environment \
-                variable",
-                ),
+                .help("Base url for network requests."),
         )
         .arg(
             Arg::with_name("output_format")

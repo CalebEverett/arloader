@@ -14,7 +14,9 @@ jobs:
   LinuxBuild:
     runs-on: ${{ matrix.host_os }}
     env:
+      AR_BASE_URL: http://localhost:1984
       AR_KEYPAIR_PATH: tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json
+      
     services:
       arlocal:
           image: calebeverett/arlocal
@@ -53,19 +55,19 @@ jobs:
         with:
           use-cross: false
           command: test
-          args: --target ${{ matrix.target }} --release -- --nocapture
+          args: --target ${{ matrix.target }} -- --nocapture
       - name: Commands
-        if: false
         run: |
           curl http://localhost:1984/mint/MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y/100000000000000
           mkdir nfts
           mkdir nfts/status
-          cp tests/fixtures/[0-9].png nfts/
-          cp tests/fixtures/[0-9].json nfts/
-          cargo run -- --base-url http://localhost:1984 upload '"nfts/*.png"' --log-dir nfts/status
-          cargo run -- --base-url http://localhost:1984 update-status nfts/status
-          cargo run -- --base-url http://localhost:1984 upload-manifest nfts/status
-          cargo run -- --base-url http://localhost:1984 upload-nfts nfts
+          cp tests/fixtures/[0-9].* nfts/
+          target/${{ matrix.target }}/release/arloader balance
+          target/${{ matrix.target }}/release/arloader estimate "nfts/*.png"
+          target/${{ matrix.target }}/release/arloader upload "nfts/*.png" --log-dir nfts/status
+          target/${{ matrix.target }}/release/arloader update-status nfts/status
+          target/${{ matrix.target }}/release/arloader upload-manifest nfts/status
+          target/${{ matrix.target }}/release/arloader upload-nfts "nfts/*.png"
       - name: Paths
         id: paths
         shell: bash
@@ -148,7 +150,7 @@ jobs:
         with:
           use-cross: false
           command: test
-          args: --target ${{ matrix.target }} --release
+          args: --target ${{ matrix.target }}
       - name: Paths
         id: paths
         shell: bash
