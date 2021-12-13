@@ -195,10 +195,7 @@ fn ar_default_keypair<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("AR_DEFAULT_KEYPAIR")
         .takes_value(false)
         .requires("with_sol")
-        .help(
-            "If funding with SOL, pass to use default AR keypair to sign \
-            data items.",
-        )
+        .help("Uses the default AR keypair to sign data items if funding with SOL.")
 }
 
 fn ar_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -207,11 +204,7 @@ fn ar_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("AR_KEYPAIR_PATH")
         .validator(is_valid_file_path)
         .env("AR_KEYPAIR_PATH")
-        .help(
-            "Path of keypair file to used to fund transactions. \
-            Will use value from AR_KEYPAIR_PATH environment variable \
-            if it exists.",
-        )
+        .help("Specify path of keypair file to use for funding transactions.")
 }
 
 fn buffer_arg<'a, 'b>(default: &'a str) -> Arg<'a, 'b> {
@@ -221,7 +214,7 @@ fn buffer_arg<'a, 'b>(default: &'a str) -> Arg<'a, 'b> {
         .takes_value(true)
         .validator(is_parsable::<usize>)
         .default_value(default)
-        .help("Sets the maximum number of concurrent network requests.")
+        .help("Specify the maximum number of concurrent network requests.")
 }
 
 fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -231,7 +224,7 @@ fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
         .validator(is_valid_bundle_size)
         .default_value("10")
-        .help("Sets the bundle size in megabytes.")
+        .help("Specify the bundle size in megabytes.")
 }
 
 fn glob_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
@@ -240,9 +233,8 @@ fn glob_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
         .takes_value(true)
         .required(required)
         .help(
-            "Glob pattern of files. \
-            PATTERN MUST BE IN \
-            QUOTES TO AVOID SHELL EXPANSION.",
+            "Specify pattern to match files against. \
+            MUST BE IN QUOTES TO AVOID SHELL EXPANSION.",
         )
 }
 
@@ -261,21 +253,24 @@ fn link_file_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("LINK_FILE")
         .required(false)
         .takes_value(false)
-        .help(
-            "Specify whether to update key with \
-            file based link instead of id based link.",
-        )
+        .help("Uses file based link instead of id based link.")
 }
 
-fn log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
+fn log_dir_arg_write<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("log_dir")
         .value_name("LOG_DIR")
         .validator(is_valid_dir)
         .takes_value(true)
-        .help(
-            "Directory that status updates will be written to. If not \
-        provided, status updates will not be written.",
-        )
+        .help("Specify a directory to write status updates to.")
+}
+
+fn log_dir_arg_read<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("log_dir")
+        .value_name("LOG_DIR")
+        .validator(is_valid_dir)
+        .takes_value(true)
+        .required(true)
+        .help("Specify the directory that statuses have been written to.")
 }
 
 fn manifest_path_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -284,15 +279,15 @@ fn manifest_path_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("MANIFEST_PATH")
         .required(true)
         .validator(is_parsable::<PathBuf>)
-        .help("Path of manifest file to use to update NFT metadata files.")
+        .help("Path of manifest file from which to update NFT metadata files.")
 }
 
 fn max_confirms_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("max_confirms")
-        .long("min-confirms")
+        .long("max-confirms")
         .value_name("MAX_CONFIRM")
         .takes_value(true)
-        .help("Provide maximum number of confirmations to filter statuses by.")
+        .help("Specify maximum number of confirmations to filter statuses by.")
 }
 
 fn no_bundle_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -303,8 +298,8 @@ fn no_bundle_arg<'a, 'b>() -> Arg<'a, 'b> {
         .required(false)
         .takes_value(false)
         .help(
-            "Specify whether to upload with individual \
-            transactions instead of in a bundle.",
+            "Uploads with an individual transaction \
+            for each file without bundling.",
         )
 }
 
@@ -315,11 +310,7 @@ fn reward_multiplier_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("REWARD_MULT")
         .default_value("1.0")
         .validator(is_valid_reward_multiplier)
-        .help(
-            "Specify a reward multiplier as float. \
-        The reward from the network will be multiplied \
-        by this amount for submission.",
-        )
+        .help("Specify a float between 0.0 and 10.0 to multiply the reward by.")
 }
 
 fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -328,11 +319,7 @@ fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("SOL_KEYPAIR_PATH")
         .validator(is_valid_file_path)
         .env("SOL_KEYPAIR_PATH")
-        .help(
-            "Path of Solana keypair file to use to pay for transactions. \
-        Will use value from SOL_KEYPAIR_PATH environment variable \
-        if it exists",
-        )
+        .help("Specify path of keypair file to use for funding transactions.")
 }
 
 fn statuses_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -342,7 +329,7 @@ fn statuses_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
         .multiple(true)
         .possible_values(&["Submitted", "Pending", "Confirmed", "NotFound"])
-        .help("Status codes to filter by. Multiple Ok.")
+        .help("Specify the status codes to filter by.")
 }
 
 fn status_log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -351,7 +338,7 @@ fn status_log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
         .takes_value(true)
         .validator(is_valid_dir)
-        .help("Directory that status updates have been written to.")
+        .help("Parent status directory that contains `assets/` and `metadata/` sub-folders.")
 }
 
 fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -362,11 +349,10 @@ fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
         .validator(is_valid_tag)
         .help(
-            "Specify additional tags for the files as \
+            "Specify additional tags for uploaded files as \
         <NAME>:<VALUE>, separated by spaces. Content-Type tag \
-        will be inferred automatically so not necessary so \
-        include here. Additional tags will be applied
-        to all of the uploaded files.",
+        is inferred automatically so not necessary to \
+        specify. Applied to each uploaded file.",
         )
 }
 
@@ -376,7 +362,7 @@ fn with_sol_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("WITH_SOL")
         .required(false)
         .takes_value(false)
-        .help("Pass to fund transactions with with SOL.")
+        .help("Funds transactions with with SOL.")
 }
 
 fn get_app() -> App<'static, 'static> {
@@ -405,29 +391,7 @@ fn get_app() -> App<'static, 'static> {
                 .global(true)
                 .takes_value(true)
                 .possible_values(&["quiet", "verbose", "json", "json-compact"])
-                .help("Return information in specified output format."),
-        )
-        .subcommand(
-            SubCommand::with_name("estimate")
-                .about(
-                    "Prints the estimated cost of uploading file(s) \
-                matching provided glob.",
-                )
-                .arg(glob_arg(true))
-                .arg(reward_multiplier_arg())
-                .arg(with_sol_arg())
-                .arg(bundle_size_arg())
-                .arg(no_bundle_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("get-status")
-                .about("Prints the status of a transaction from the network.")
-                .arg(id_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("get-transaction")
-                .about("Gets a transaction from the network and writes to disk as a file.")
-                .arg(id_arg()),
+                .help("Specify output format."),
         )
         .subcommand(
             SubCommand::with_name("balance")
@@ -439,52 +403,77 @@ fn get_app() -> App<'static, 'static> {
                         .validator(is_parsable::<Base64>)
                         .required_unless("ar_keypair_path")
                         .help(
-                            "Specify the address of the wallet to print \
-                            the balance for. Defaults to the keypair
-                            specified in `ar_keypair_path`.",
+                            "Specify the address of the wallet. \
+                            Defaults to <AR_KEYPAIR_PATH>.",
                         ),
                 )
                 .arg(ar_keypair_path_arg())
         )
         .subcommand(
-            SubCommand::with_name("list-status")
-                .about("Lists statuses as currently stored in `log_dir`.")
+            SubCommand::with_name("estimate")
+                .about(
+                    "Prints the estimated cost of uploading files.",
+                )
                 .arg(glob_arg(true))
-                .arg(log_dir_arg().long("log-dir").required(true))
+                .arg(reward_multiplier_arg())
+                .arg(with_sol_arg())
+                .arg(bundle_size_arg())
+                .arg(no_bundle_arg())
+        )
+        .subcommand(
+            SubCommand::with_name("get-status")
+                .about("Prints the status of a transaction.")
+                .arg(id_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("get-transaction")
+                .about("Gets a transaction from the network.")
+                .arg(id_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("list-status")
+                .about("Prints statuses stored in <LOG_DIR>.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg_read().long("log-dir"))
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
         )
         .subcommand(
             SubCommand::with_name("pending")
-                .about("Displays the count of pending transactions in the mempool."),
+                .about("Prints count of pending network transactions."),
+        )
+        .subcommand(
+            SubCommand::with_name("status-report")
+                .about("Prints a summary of statuses stored in <LOG_DIR>.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg_read().long("log-dir"))
         )
         .subcommand(
             SubCommand::with_name("update-nft-status")
-                .about("Updates statuses from nft upload. `log_dir` must refer to the parent status directory
-                and contain `assets/` and `metadata/` sub folders.")
+                .about("Updates statuses from NFT upload.")
                 .arg(status_log_dir_arg())
                 .arg(buffer_arg("10")),
         )
         .subcommand(
             SubCommand::with_name("update-status")
-                .about("Updates statuses stored in `log_dir`. Glob arg only used for --no-bundle.")
-                .arg(log_dir_arg().required(true))
+                .about("Updates statuses stored in <LOG_DIR> and prints them.")
+                .arg(log_dir_arg_read())
                 .arg(glob_arg(false))
                 .arg(no_bundle_arg())
                 .arg(buffer_arg("10")),
         )
         .subcommand(
             SubCommand::with_name("update-metadata")
-                .about("Update `image` and `files` keys in NFT metadata json files with links from provided manifest file.")
+                .about("Updates NFT metadata files with links to uploaded asset files.")
                 .arg(glob_arg(true))
                 .arg(manifest_path_arg())
                 .arg(link_file_arg())
         )
         .subcommand(
             SubCommand::with_name("upload")
-                .about("Uploads one or more files that match the specified glob.")
+                .about("Uploads files.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg().long("log-dir"))
+                .arg(log_dir_arg_write().long("log-dir"))
                 .arg(tags_arg())
                 .arg(reward_multiplier_arg())
                 .arg(ar_keypair_path_arg().required_unless("with_sol"))
@@ -501,7 +490,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("upload-filter")
                 .about("Re-uploads files that meet filter criteria. Not currently implemented for bundles.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg().long("log-dir").required(true))
+                .arg(log_dir_arg_write().long("log-dir").required(true))
                 .arg(reward_multiplier_arg())
                 .arg(statuses_arg())
                 .arg(max_confirms_arg())
@@ -509,8 +498,8 @@ fn get_app() -> App<'static, 'static> {
         )
         .subcommand(
             SubCommand::with_name("upload-manifest")
-                .about("Uploads a manifest for files uploaded in bundles with statuses stored in `log_dir`.")
-                .arg(log_dir_arg().required(true))
+                .about("Uploads a manifest for uploaded files. Only currently implemented bundles.")
+                .arg(log_dir_arg_read())
                 .arg(reward_multiplier_arg())
                 .arg(ar_keypair_path_arg().required_unless("with_sol"))
                 .arg(ar_default_keypair())
@@ -520,9 +509,7 @@ fn get_app() -> App<'static, 'static> {
         )
         .subcommand(
             SubCommand::with_name("upload-nfts")
-                .about("Uploads a directory with pairs of assets and metadata files, updating the metadata files with \
-                links to the uploaded images and returning a manifest file with links to the uploaded metadata files \
-                which can then be used to create tokens with.")
+                .about("Uploads a directory with pairs of asset and metadata files.")
                 .arg(glob_arg(true))
                 .arg(reward_multiplier_arg())
                 .arg(ar_keypair_path_arg().required_unless("with_sol"))
@@ -536,14 +523,8 @@ fn get_app() -> App<'static, 'static> {
                 ,
         )
         .subcommand(
-            SubCommand::with_name("status-report")
-                .about("Prints a summary of statuses stored in `log_dir`.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg().long("log-dir").required(true))
-        )
-        .subcommand(
             SubCommand::with_name("write-metaplex-items")
-                .about("Write name and link for uploaded metadata files to `<LOG_DIR>/metaplex_items_<MANIFEST_ID>.json")
+                .about("Writes metaplex items file.")
                 .arg(glob_arg(true))
                 .arg(manifest_path_arg())
                 .arg(link_file_arg())

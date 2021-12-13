@@ -112,7 +112,7 @@ Once everything has been uploaded, the links to your uploaded metadata files, to
     },
 ```
 
-If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file with links it that you can copy and paste into your candy machine config by running the command below. `<GLOB>` should match your metadata files (`*.json`, e.g.).
+If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file with links it that you can copy and paste into your candy machine config by running the command below. `<GLOB>` can match your either your asset or metadata files.
 
 ```
 arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH>

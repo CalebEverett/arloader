@@ -865,7 +865,9 @@ pub async fn command_write_metaplex_items(
 
     let metaplex_items_path = arweave
         .write_metaplex_items(
-            glob(glob_str)?.filter_map(Result::ok),
+            glob(glob_str)?
+                .filter_map(Result::ok)
+                .map(|p| p.with_extension("json")),
             manifest_path,
             link_file,
         )
