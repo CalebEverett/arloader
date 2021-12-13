@@ -50,6 +50,7 @@ jobs:
           command: build
           args: --target ${{ matrix.target }} --release
       - uses: actions-rs/cargo@v1
+        if: false
         with:
           use-cross: false
           command: test
@@ -109,6 +110,7 @@ jobs:
   # - Not published to crates.io.
   # - LICENSE not added to release artifacts since added above.
   MacWinBuild:
+    if: false
     runs-on: ${{ matrix.host_os }}
     strategy:
       matrix:
