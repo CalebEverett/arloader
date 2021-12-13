@@ -430,7 +430,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("list-status")
                 .about("Prints statuses stored in <LOG_DIR>.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg_read())
+                .arg(log_dir_arg_read().long("log-dir"))
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
         )
