@@ -56,7 +56,6 @@ jobs:
           command: test
           args: --target ${{ matrix.target }} --release -- --nocapture
       - name: Commands
-        if: false
         run: |
           curl http://localhost:1984/mint/MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y/100000000000000
           mkdir nfts
