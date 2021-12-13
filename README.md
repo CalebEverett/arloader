@@ -5,9 +5,9 @@
 
 # arloader
 
-Command line application and library for effortlessly uploading files to [Arweave](https://www.arweave.org/). Arweave enables you to store documents and applications forever.
+Command line application and client for uploading files to [Arweave](https://www.arweave.org/). Arweave stores documents and applications forever.
 
-Upload gigabytes of files with one command specifying a glob pattern to match files against. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel across multiple threads.
+Upload gigabytes of files with one command specifying a glob pattern to match files against. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel on multiple threads.
 
 ## Contents
 * [Installation](#installation)
@@ -20,7 +20,7 @@ Upload gigabytes of files with one command specifying a glob pattern to match fi
 * [Roadmap](#roadmap)
 
 ## Discounted Usage with SOL
- Usage with SOL is currently essentially free. The cost per transaction is 10,000 lamports (~$0.002), including the Solana network fee of 5,000 lamports.
+ Usage with SOL is currently essentially free. The cost per transaction is 10,000 lamports (~$0.002) and includes the Solana network fee of 5,000 lamports.
 
 ## Installation
 
@@ -35,7 +35,7 @@ cargo install arloader
 
 2. Get an Arweave wallet json file [here](https://faucet.arweave.net/).
 
-3. If you're going to use AR to pay for transactions, get AR tokens. I've been using [gate.io](https://gate.io) despite the high withdrawal fees and KYC delays.
+3. If you're going to use AR to pay for transactions, [get AR tokens](https://arweave.news/how-to-buy-arweave-token/).
 
 4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
 
@@ -43,25 +43,44 @@ cargo install arloader
 
 ### Create Upload Folder
  Put your assets and associated metadata files with `.json` extension in a folder by themselves.
+ ```
+├── 0.json
+├── 0.png
+├── 1.json
+├── 1.png
+├── 2.json
+├── 2.png
+├── 3.json
+├── 3.png
+├── 4.json
+├── 4.png
+├── 5.json
+├── 5.png
+```
 
 ### Upload Assets
-To take advantage of the discounted SOL transactions, run the command below where `<GLOB>` matches your asset files:
+If you want to fund transactions with SOL, run the command below where `<GLOB>` matches your asset files.
 ```
-arloader upload-nfts <GLOB> --with-sol --ar-default-keypair
+arloader upload-nfts <GLOB> --with-sol --sol-keypair_path <SOL_KEYPAIR_PATH> --ar-default-keypair
 ```
 
-This will first upload your assets,  logging statuses to a newly created directory named `arloader_<RANDOM_CHARS>` in the folder named where the assets are located.
+To fund transactions with AR, instead run:
+```
+arloader upload-nfts <GLOB> --with-sol --ar-keypair-path <AR_KEYPAIR_PATH>
+```
 
-A manifest file will be created from the logged statuses and uploaded to Arweave. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link.
+This will first upload your assets, logging statuses to a newly created directory named `arloader_<RANDOM_CHARS>` in the folder named where the assets are located.
+
+Then a manifest file will be created from the logged statuses and uploaded. A manifest is a special file that Arweave uses to access your files by their names, relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files by their id at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either. Once uploaded, the manifest file itself can be accessed online at `https://arweave.net/tx/<MANIFEST_ID>/data.json`.
 
 #### Update Metadata and Upload 
-Next your metadata files will be updated with the links to the uploaded assets. Arloader adds or replaces the `image` and `files` keys with the newly created links, defaulting to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `upload-nfts` command.
+Next your metadata files will be updated with links to the uploaded assets. Arloader adds or replaces the `image` and `files` keys in your metadata `.json` files with the newly created links. It defaults to using the id link, `https://arweave.net/<BUNDLE_ITEM_ID>`, for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`, for the `image` key, you can pass the `--link-file` flag to the `upload-nfts` command.
 
-Then your metadata files will be uploaded and a manifest created for them.
+After your metadata files have been updated, they will be uploaded, followed by the creation and upload of a manifest file for your metadata  files.
 
 ### Get Links to Uploaded Metadata
 
-Once everything is done, you can to get the links to the uploaded metadata files you need to include in the metadata of your tokens from the `manifest_<TXID>.json` file in `arloader_<RAND_CHAR>/metadata/`.
+Once everything has been uploaded, the links to your uploaded metadata files, to be included in your on chain token metadata, can be found in `arloader_<RAND_CHAR>/metadata/manifest_<TXID>.json`.
 
 ```json
 {
@@ -93,14 +112,14 @@ Once everything is done, you can to get the links to the uploaded metadata files
     },
 ```
 
-If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links that you can copy and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metadata files (`*.json`, e.g.).
+If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file with links it that you can copy and paste into your candy machine config by running the command below. `<GLOB>` should match your metadata files (`*.json`, e.g.).
 
 ```
-arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <LOG_DIR>
+arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH>
 ```
 
-This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to `<LOG_DIR>`. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
-you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`), by passing the `--link-file` flag.
+This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to the same directory as `<MANIFEST_PATH>`. As with updating metadata files, Arloader defaults to using the id based link, `https://arweave.net/<BUNDLE_ITEM_ID>`, but 
+you can use the file based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`, by passing the `--link-file` flag.
 
 ```json
 {
@@ -173,7 +192,7 @@ Make sure to include quotes around your glob patterns, otherwise your shell will
 2. To upload your files run
 
 ```
-arloader upload "<GLOB>" --log-dir "<LOG_DIR>"
+arloader upload "<GLOB>"
 ```
 
 This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 10 MB. The example output below had a bundle size of 5000 bytes.
@@ -188,7 +207,7 @@ bundle txid                                   items      KB  status       confir
  qzQlASZrQXNF9HYIOTPjEZL9uy1U9Ou086kCkQWqld0       2       3  Submitted           0
  ```
 
-A json status object gets written to `LOG_DIR` for each uploaded bundle with a file name of `<TXID>.json`. It has the transaction id, reward, creation time and ids and paths of the files included in the bundle.
+A status object gets written to a json file named `<TXID>.json` in a newly created sub directory in the parent folder of the first file to match `<GLOB>`. The folder will be named `arloader_<RAND_CHAR>`. You can specify an existing folder to write statuses to by passing the `--log-dir` argument.
 
 ```json
 {
@@ -213,7 +232,7 @@ A json status object gets written to `LOG_DIR` for each uploaded bundle with a f
 3. After uploading your files, you'll want to check on their status to make sure the have been uploaded successfully and that they ultimately are confirmed at least 25 times before you can be absolutely certain they have been permanently uploaded.
 
 ```
-arloader update-status --log-dir "<LOG_DIR>"
+arloader update-status "<LOG_DIR>"
 ```
 
 This will read the files in `<LOG_DIR>`, looking for a valid transaction id as a file stem, and then go out to the network to update the status of each. The example below contained two sets of bundles, one still pending and one with 45 confirmations.
@@ -236,7 +255,7 @@ bundle txid                                   items      KB  status       confir
 4. Once you have a sufficient number of confirmations of your files, you may want to create a manifest file, which is used by the Arweave gateways to provide relative paths to your files. In order to do that, you run
 
 ```
-arloader upload-manifest --log-dir "<LOG_DIR>"
+arloader upload-manifest "<LOG_DIR>"
 ```
 where `<LOG_DIR>` is the directory containing your bundle status json files. This will go through and consolidate the paths from each of the bundles, create a consolidated manifest, upload it to Arweave and then write a file named `manifest_<TXID>.json`to `<LOG_DIR>`. Once the transaction uploading the manifest has been confirmed, you will be able to access your files and both `https://arweave.net/<BUNDLE_ITEM_ID>` and `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`  where `MANIFEST_ID` is the id of the manifest transaction and `FILE_PATH` is the relative path of the file included in the `GLOB` pattern you specified with the `upload` command.
 
@@ -290,7 +309,7 @@ arloader estimate "<GLOB>" --with-sol
 2. To upload your files run
 
 ```
-arloader upload "<GLOB>" --log-dir "<LOG_DIR>" --with sol --ar-default-keypair
+arloader upload "<GLOB>" --with sol --ar-default-keypair
 ```
 
 This will create the same stream of bundles that gets created without using SOL and then goes out to an api to get your transactions signed. Once the SOL payment transaction has gone through, the signature comes back from the api and gets added to your bundle transaction. Then the transaction gets uploaded directly to the [arweave.net](https:://arweave.net) gateway from your computer.

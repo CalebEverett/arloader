@@ -6,11 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+# v0.1.43 (2021-12-12)
+- **fix:** bug adding trailing slash to glob strings in addition to directory strings
+- **changed:** made `--log-dir` an optional argument for `upload`, defaulting instead to creating a sub directory in the parent dir of the first file matching `glob` named `arloader_<RAND_CHARS>`.
+- **changed:** removed `--log-dir` argument from `write-metaplex-items` in favor of writing to same parent director as `--manifest-path`
+- **changed:** removed requirement to pass `--log-dir` ahead of value in commands where it is the first argument, including `upload-manifest` and `update-status`
+
 # v0.1.42 (2021-12-11)
 - **fixed:** `upload_nfts` example to create `target/examples/upload_nfts` 
 
 # v0.1.41 (2021-12-11)
-- **added:** `--upload-nfts` command that automates uploading of pairs of assets and metadata files, including updating metadata files with links to uploaded assets. You can now provide a glob pattern matching your asset file and the complete process will run, returning a manifest file with links to your uploaded metadata files that can be included in your on chain token metadata.
+- **added:** `--upload-nfts` command that automates uploading of pairs of assets and metadata files, including updating metadata files with links to uploaded assets. You can now provide a glob pattern matching your asset files and the complete process will run, returning a manifest file with links to your uploaded metadata files that can be included in your on chain token metadata.
 - **added:** `--update-nft-status` command that reports on status for all nft uploads, assets, metadata and manifests
 for both assets and metadata.
 - **added:** `examples/upload_nfts`

@@ -1,4 +1,4 @@
-//! Functions for Cli commands composed from library functions.
+//! Functions for Cli commands comprised of library functions.
 
 use crate::{
     error::Error,
@@ -357,10 +357,10 @@ pub async fn command_upload(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir \"{}\"` to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" \"{}\"` to confirm transaction(s).",
             counter,
+            &log_dir.unwrap_or(PathBuf::from("")).display(),
             glob_str,
-            &log_dir.unwrap_or(PathBuf::from("")).display()
         );
     }
 
@@ -379,16 +379,24 @@ pub async fn command_upload_bundles(
     buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = log_dir.map(|s| PathBuf::from(s)).unwrap();
-    let output_format = get_output_format(output_format.unwrap_or(""));
-    let tags = tags.unwrap_or(Vec::new());
-    let price_terms = arweave.get_price_terms(reward_mult).await?;
     let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
 
     if path_chunks.len() == 0 {
         println!("The pattern \"{}\" didn't match any files.", glob_str);
         return Ok(());
     } else {
+        let output_format = get_output_format(output_format.unwrap_or(""));
+        let tags = tags.unwrap_or(Vec::new());
+        let price_terms = arweave.get_price_terms(reward_mult).await?;
+        let log_dir = if let Some(log_dir) = log_dir {
+            PathBuf::from(log_dir)
+        } else {
+            let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
+            let file_path = paths_iter.next().unwrap();
+            let parent_dir = file_path.parent().unwrap();
+            arweave.create_log_dir(parent_dir).await?
+        };
+
         let (num_files, data_size) = path_chunks
             .iter()
             .fold((0, 0), |(f, d), c| (f + c.0.len(), d + c.1));
@@ -427,7 +435,7 @@ pub async fn command_upload_bundles(
         }
 
         println!(
-            "\nUploaded {} KB in {} files in {} bundle transactions. Run `arloader update-status --log-dir \"{}\"` to update statuses.",
+            "\nUploaded {} KB in {} files in {} bundle transactions. Run `arloader update-status \"{}\"` to update statuses.",
             data_size / 1000,
             number_of_files,
             counter,
@@ -450,19 +458,28 @@ pub async fn command_upload_bundles_with_sol(
     sol_keypair_path: &str,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = log_dir.map(|s| PathBuf::from(s)).unwrap();
-    let output_format = get_output_format(output_format.unwrap_or(""));
-    let tags = tags.unwrap_or(Vec::new());
-    let price_terms = arweave.get_price_terms(reward_mult).await?;
     let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
-    let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
-    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
-    let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
 
     if path_chunks.len() == 0 {
         println!("The pattern \"{}\" didn't match any files.", glob_str);
         return Ok(());
     } else {
+        let output_format = get_output_format(output_format.unwrap_or(""));
+        let tags = tags.unwrap_or(Vec::new());
+        let price_terms = arweave.get_price_terms(reward_mult).await?;
+        let log_dir = if let Some(log_dir) = log_dir {
+            PathBuf::from(log_dir)
+        } else {
+            let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
+            let file_path = paths_iter.next().unwrap();
+            let parent_dir = file_path.parent().unwrap();
+            arweave.create_log_dir(parent_dir).await?
+        };
+        println!("{:?}", log_dir);
+        let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
+        let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
+        let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
+
         let (num_files, data_size) = path_chunks
             .iter()
             .fold((0, 0), |(f, d), c| (f + c.0.len(), d + c.1));
@@ -509,7 +526,7 @@ pub async fn command_upload_bundles_with_sol(
         }
 
         println!(
-            "\nUploaded {} KB in {} files in {} bundle transaction(s). Run `arloader update-status --log-dir \"{}\"` to update statuses.",
+            "\nUploaded {} KB in {} files in {} bundle transaction(s). Run `arloader update-status \"{}\"` to update statuses.",
             data_size / 1000,
             number_of_files,
             counter,
@@ -589,10 +606,7 @@ pub async fn command_upload_nfts(
 
     if let Some(p) = paths_iter.next() {
         let parent_dir = p.parent().unwrap();
-        let mut rand_bytes: [u8; 8] = [0; 8];
-        arweave.crypto.fill_rand(&mut rand_bytes)?;
-        let suffix = base64::encode_config(rand_bytes, base64::URL_SAFE_NO_PAD);
-        let log_dir = parent_dir.join(format!("arloader_{}", suffix));
+        let log_dir = arweave.create_log_dir(parent_dir).await?;
         let log_dir_assets = log_dir.join("assets/");
         let log_dir_metadata = log_dir.join("metadata/");
         let metadata_glob_str = format!("{}/*.json", parent_dir.display().to_string());
@@ -795,10 +809,10 @@ pub async fn command_upload_with_sol(
         println!("The pattern \"{}\" didn't match any files.", glob_str);
     } else {
         println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir \"{}\"` to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" \"{}\"` to confirm transaction(s).",
             counter,
+            &log_dir.unwrap_or(PathBuf::from("")).display(),
             glob_str,
-            &log_dir.unwrap_or(PathBuf::from("")).display()
         );
     }
 
@@ -843,25 +857,24 @@ pub async fn command_write_metaplex_items(
     arweave: &Arweave,
     glob_str: &str,
     manifest_str: &str,
-    log_dir: &str,
     link_file: bool,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
     let manifest_path = PathBuf::from(manifest_str);
 
-    arweave
+    let metaplex_items_path = arweave
         .write_metaplex_items(
             glob(glob_str)?.filter_map(Result::ok),
             manifest_path,
-            PathBuf::from(log_dir),
             link_file,
         )
         .await?;
 
     println!(
         "Successfully wrote metaplex items for {} metadata files to {}",
-        num_paths, log_dir
+        num_paths,
+        metaplex_items_path.display().to_string()
     );
     Ok(())
 }
@@ -877,6 +890,7 @@ pub fn get_output_format(output: &str) -> OutputFormat {
     }
 }
 
+/// Gets manifest transaction id from first manifest file in a log directory.
 pub fn get_manifest_id_from_log_dir(log_dir: &str) -> String {
     glob(&format!("{}manifest*.json", &log_dir))
         .unwrap()

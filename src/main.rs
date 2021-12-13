@@ -113,15 +113,6 @@ fn is_valid_file_path(path_str: String) -> Result<(), String> {
 // Helpers
 // ====================
 
-fn add_trailing_slash(value: &str) -> String {
-    let last_char = value.chars().last().unwrap();
-    if !(last_char == '/' || last_char == '\\') {
-        format!("{}/", value)
-    } else {
-        value.to_string()
-    }
-}
-
 fn get_tags_vec<T>(tag_values: Option<Values>) -> Option<Vec<T>>
 where
     T: FromUtf8Strs<T>,
@@ -151,20 +142,45 @@ fn get_status_code(output: &str) -> StatusCode {
     }
 }
 
-pub trait ExpandTilde {
+pub trait CleanPaths {
     fn expand_tilde(&self) -> String;
+    fn add_trailing_slash(&self) -> String;
 }
 
 // This gets applied to all directories to both expand the tilde for the home directory
 // and to make sure that there is a trailing slash.
-impl ExpandTilde for &str {
+impl CleanPaths for &str {
     fn expand_tilde(&self) -> String {
         if self.chars().next().unwrap() == '~' {
-            add_trailing_slash(
-                &self.replace("~", &dirs_next::home_dir().unwrap().display().to_string()),
-            )
+            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
         } else {
-            add_trailing_slash(&self.to_string())
+            self.to_string()
+        }
+    }
+    fn add_trailing_slash(&self) -> String {
+        let last_char = self.chars().last().unwrap();
+        if !(last_char == '/' || last_char == '\\') {
+            format!("{}/", self)
+        } else {
+            self.to_string()
+        }
+    }
+}
+
+impl CleanPaths for String {
+    fn expand_tilde(&self) -> String {
+        if self.chars().next().unwrap() == '~' {
+            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
+        } else {
+            self.to_string()
+        }
+    }
+    fn add_trailing_slash(&self) -> String {
+        let last_char = self.chars().last().unwrap();
+        if !(last_char == '/' || last_char == '\\') {
+            format!("{}/", self)
+        } else {
+            self.to_string()
         }
     }
 }
@@ -251,13 +267,11 @@ fn link_file_arg<'a, 'b>() -> Arg<'a, 'b> {
         )
 }
 
-fn log_dir_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
+fn log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("log_dir")
-        .long("log-dir")
         .value_name("LOG_DIR")
-        .takes_value(true)
-        .takes_value(required)
         .validator(is_valid_dir)
+        .takes_value(true)
         .help(
             "Directory that status updates will be written to. If not \
         provided, status updates will not be written.",
@@ -436,7 +450,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("list-status")
                 .about("Lists statuses as currently stored in `log_dir`.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg(true))
+                .arg(log_dir_arg().long("log-dir").required(true))
                 .arg(statuses_arg())
                 .arg(max_confirms_arg()),
         )
@@ -454,7 +468,7 @@ fn get_app() -> App<'static, 'static> {
         .subcommand(
             SubCommand::with_name("update-status")
                 .about("Updates statuses stored in `log_dir`. Glob arg only used for --no-bundle.")
-                .arg(log_dir_arg(true))
+                .arg(log_dir_arg().required(true))
                 .arg(glob_arg(false))
                 .arg(no_bundle_arg())
                 .arg(buffer_arg("10")),
@@ -463,7 +477,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("upload")
                 .about("Uploads one or more files that match the specified glob.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg(true))
+                .arg(log_dir_arg().long("log-dir"))
                 .arg(tags_arg())
                 .arg(reward_multiplier_arg())
                 .arg(ar_keypair_path_arg().required_unless("with_sol"))
@@ -480,7 +494,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("upload-filter")
                 .about("Re-uploads files that meet filter criteria. Not currently implemented for bundles.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg(true))
+                .arg(log_dir_arg().long("log-dir").required(true))
                 .arg(reward_multiplier_arg())
                 .arg(statuses_arg())
                 .arg(max_confirms_arg())
@@ -489,7 +503,7 @@ fn get_app() -> App<'static, 'static> {
         .subcommand(
             SubCommand::with_name("upload-manifest")
                 .about("Uploads a manifest for files uploaded in bundles with statuses stored in `log_dir`.")
-                .arg(log_dir_arg(true))
+                .arg(log_dir_arg().required(true))
                 .arg(reward_multiplier_arg())
                 .arg(ar_keypair_path_arg().required_unless("with_sol"))
                 .arg(ar_default_keypair())
@@ -518,7 +532,7 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("status-report")
                 .about("Prints a summary of statuses stored in `log_dir`.")
                 .arg(glob_arg(true))
-                .arg(log_dir_arg(true)),
+                .arg(log_dir_arg().long("log-dir").required(true))
         )
         .subcommand(
             SubCommand::with_name("update-metadata")
@@ -532,7 +546,6 @@ fn get_app() -> App<'static, 'static> {
                 .about("Write name and link for uploaded metadata files to `<LOG_DIR>/metaplex_items_<MANIFEST_ID>.json")
                 .arg(glob_arg(true))
                 .arg(manifest_path_arg())
-                .arg(log_dir_arg(true))
                 .arg(link_file_arg())
         );
     app_matches
@@ -544,8 +557,7 @@ async fn main() -> CommandResult {
     let app_matches = get_app().get_matches();
     let base_url = app_matches
         .value_of("base_url")
-        .map(add_trailing_slash)
-        .map(|s| Url::from_str(&s))
+        .map(|s| Url::from_str(&s.add_trailing_slash()))
         .unwrap()
         .unwrap();
 
@@ -594,7 +606,11 @@ async fn main() -> CommandResult {
         }
         ("list-status", Some(sub_arg_matches)) => {
             let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
-            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches
+                .value_of("log_dir")
+                .unwrap()
+                .expand_tilde()
+                .add_trailing_slash();
 
             let statuses = if let Some(values) = sub_arg_matches.values_of("statuses") {
                 Some(values.map(get_status_code).collect())
@@ -617,7 +633,11 @@ async fn main() -> CommandResult {
         ("pending", Some(_)) => command_get_pending_count(&Arweave::default()).await,
         ("status-report", Some(sub_arg_matches)) => {
             let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
-            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches
+                .value_of("log_dir")
+                .unwrap()
+                .expand_tilde()
+                .add_trailing_slash();
             command_status_report(&Arweave::default(), glob_str, log_dir).await
         }
         ("update-metadata", Some(sub_arg_matches)) => {
@@ -630,14 +650,22 @@ async fn main() -> CommandResult {
             command_update_metadata(&Arweave::default(), glob_str, manifest_str, link_file).await
         }
         ("update-nft-status", Some(sub_arg_matches)) => {
-            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches
+                .value_of("log_dir")
+                .unwrap()
+                .expand_tilde()
+                .add_trailing_slash();
             let arweave = Arweave::default();
             let output_format = app_matches.value_of("output_format");
             let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
             command_update_nft_statuses(&arweave, log_dir, output_format, buffer).await
         }
         ("update-status", Some(sub_arg_matches)) => {
-            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches
+                .value_of("log_dir")
+                .unwrap()
+                .expand_tilde()
+                .add_trailing_slash();
             let arweave = Arweave::default();
             let glob_str = sub_arg_matches.value_of("glob");
             let no_bundle = sub_arg_matches.is_present("no_bundle");
@@ -672,7 +700,7 @@ async fn main() -> CommandResult {
             let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
             let log_dir = sub_arg_matches
                 .value_of("log_dir")
-                .map(|s| s.expand_tilde());
+                .map(|s| s.expand_tilde().add_trailing_slash());
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
             let bundle_size =
                 value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap() * 1_000_000;
@@ -774,7 +802,11 @@ async fn main() -> CommandResult {
                 Arweave::default()
             };
             let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
-            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches
+                .value_of("log_dir")
+                .unwrap()
+                .expand_tilde()
+                .add_trailing_slash();
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
 
             let statuses = if let Some(values) = sub_arg_matches.values_of("statuses") {
@@ -807,7 +839,11 @@ async fn main() -> CommandResult {
             } else {
                 Arweave::default()
             };
-            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches
+                .value_of("log_dir")
+                .unwrap()
+                .expand_tilde()
+                .add_trailing_slash();
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
             let sol_key_pair_path = sub_arg_matches
                 .value_of("sol_keypair_path")
@@ -821,16 +857,9 @@ async fn main() -> CommandResult {
                 .value_of("manifest_path")
                 .unwrap()
                 .expand_tilde();
-            let log_dir = &sub_arg_matches.value_of("log_dir").unwrap().expand_tilde();
             let link_file = sub_arg_matches.is_present("link_file");
-            command_write_metaplex_items(
-                &Arweave::default(),
-                glob_str,
-                manifest_str,
-                log_dir,
-                link_file,
-            )
-            .await
+            command_write_metaplex_items(&Arweave::default(), glob_str, manifest_str, link_file)
+                .await
         }
         _ => unreachable!(),
     }
@@ -838,8 +867,8 @@ async fn main() -> CommandResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{add_trailing_slash, get_app};
-    use crate::ExpandTilde;
+    use super::get_app;
+    use crate::CleanPaths;
     use arloader::error::Error;
     use clap::{value_t, ErrorKind};
 
@@ -961,7 +990,6 @@ mod tests {
         let resp = get_app().get_matches_from_safe(vec![
             "arloader",
             "upload-manifest",
-            "--log-dir",
             "tests/fixtures/",
             "--ar-default-keypair",
         ]);
@@ -970,7 +998,6 @@ mod tests {
         let m = get_app().get_matches_from(vec![
             "arloader",
             "upload-manifest",
-            "--log-dir",
             "tests/fixtures/",
             "--ar-keypair-path",
             "tests/fixtures/arweave-keyfile-MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y.json",
@@ -986,7 +1013,6 @@ mod tests {
         let resp = get_app().get_matches_from_safe(vec![
             "arloader",
             "upload-manifest",
-            "--log-dir",
             "tests/fixtures/",
             "--with-sol",
         ]);
@@ -996,7 +1022,6 @@ mod tests {
         let resp = get_app().get_matches_from_safe(vec![
             "arloader",
             "upload-manifest",
-            "--log-dir",
             "tests/fixtures/",
             "--with-sol",
             "--sol-keypair-path",
@@ -1008,7 +1033,6 @@ mod tests {
         let m = get_app().get_matches_from(vec![
             "arloader",
             "upload-manifest",
-            "--log-dir",
             "tests/fixtures/",
             "--with-sol",
             "--sol-keypair-path",
@@ -1026,7 +1050,6 @@ mod tests {
         let m = get_app().get_matches_from(vec![
             "arloader",
             "upload-manifest",
-            "--log-dir",
             "tests/fixtures/",
             "--with-sol",
             "--sol-keypair-path",
@@ -1056,11 +1079,11 @@ mod tests {
             "pending",
         ]);
         let value = m.value_of("base_url");
-        let new_value = value.map(add_trailing_slash).unwrap();
+        let new_value = value.unwrap().add_trailing_slash();
         assert_eq!(value.unwrap(), "https://valid_url.com");
         assert_eq!(new_value, "https://valid_url.com/");
         assert_eq!(
-            add_trailing_slash("https://valid_url.com/"),
+            ("https://valid_url.com/").add_trailing_slash(),
             "https://valid_url.com/"
         );
 
@@ -1069,8 +1092,7 @@ mod tests {
 
     #[test]
     fn update_status() {
-        let m =
-            get_app().get_matches_from(vec!["arloader", "update-status", "--log-dir", "tests/"]);
+        let m = get_app().get_matches_from(vec!["arloader", "update-status", "tests/"]);
 
         let sub_m = m.subcommand_matches("update-status").unwrap();
         assert_eq!(sub_m.value_of("log_dir").unwrap(), "tests/");

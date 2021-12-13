@@ -90,7 +90,12 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use solana_sdk::signer::keypair::Keypair;
-use std::{collections::HashMap, fmt::Write, path::PathBuf, str::FromStr};
+use std::{
+    collections::HashMap,
+    fmt::Write,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use tokio::{
     fs,
     time::{sleep, Duration},
@@ -1552,9 +1557,8 @@ impl Arweave {
         &self,
         paths_iter: IP,
         manifest_path: PathBuf,
-        log_dir: PathBuf,
         link_file: bool,
-    ) -> Result<(), Error>
+    ) -> Result<PathBuf, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
     {
@@ -1597,17 +1601,26 @@ impl Arweave {
                         m
                     });
 
-            fs::write(
-                log_dir
-                    .join(format!("metaplex_items_{}", manifest_id))
-                    .with_extension("json"),
-                serde_json::to_string(&json!(items))?,
-            )
-            .await?;
-            Ok(())
+            let manifest_items_path = manifest_path
+                .parent()
+                .unwrap()
+                .to_path_buf()
+                .join(format!("metaplex_items_{}", manifest_id))
+                .with_extension("json");
+            fs::write(&manifest_items_path, serde_json::to_string(&json!(items))?).await?;
+            Ok(manifest_items_path)
         } else {
             Err(Error::ManifestNotFound)
         }
+    }
+
+    pub async fn create_log_dir(&self, parent_dir: &Path) -> Result<PathBuf, Error> {
+        let mut rand_bytes: [u8; 8] = [0; 8];
+        self.crypto.fill_rand(&mut rand_bytes)?;
+        let suffix = base64::encode_config(rand_bytes, base64::URL_SAFE_NO_PAD);
+        let log_dir = parent_dir.join(format!("arloader_{}", suffix));
+        fs::create_dir_all(&log_dir).await?;
+        Ok(log_dir)
     }
 }
 
