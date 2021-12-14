@@ -119,7 +119,7 @@ fn benchmarks(c: &mut Criterion) {
             |b, _| {
                 b.iter_batched(
                     || bundle.clone(),
-                    |bundle| arweave.process_data(bundle).unwrap(),
+                    |bundle| arweave.merklize(bundle).unwrap(),
                     criterion::BatchSize::SmallInput,
                 )
             },

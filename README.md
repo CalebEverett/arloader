@@ -42,7 +42,7 @@ cargo install arloader
 ## NFT Usage
 
 ### Create Upload Folder
- Put your assets and associated metadata files with `.json` extension in a folder by themselves.
+ Put your assets and associated metadata files with `.json` extension in a folder by themselves. You can use any kind of file you want. Arloader automatically adds a content type tag to your upload so that browsers will handle it correctly when accessed from Arweave.
  ```
 ├── 0.json
 ├── 0.png
@@ -62,6 +62,12 @@ cargo install arloader
 If you want to fund transactions with SOL, run the command below where `<GLOB>` matches your asset files.
 ```
 arloader upload-nfts <GLOB> --with-sol --sol-keypair_path <SOL_KEYPAIR_PATH> --ar-default-keypair
+```
+
+For example, if you were uploading mp4 files as your assets and they were in a folder called `path/to/my/assets` and the path to your SOL keypair was `path/to/my/solkeypair.json`, you would enter:
+
+```
+arloader upload-nfts "path/to/my/assets/*.mp4" --with-sol --sol-keypair_path path/to/my/solkeypair.json --ar-default-keypair
 ```
 
 To fund transactions with AR, instead run:
@@ -137,6 +143,8 @@ you can use the file based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`
 ### Confirm All Transactions
 
 Before you create your tokens, make sure that all of your transactions have been confirmed at least 25 times. Run the command below where `<LOG_DIR>` refers to the automatically created directory in your assets folder that begins with `arloader_`.
+
+The primary reason for transactions having a status of `NotFound` is that they were rejected by miners for not having a big enough reward. See [Reward Multiplier](#reward-multiplier) for instructions on increasing the reward by passing the optional `--reward-multiplier` argument.
 
 ```
 arloader update-nft-status <LOG_DIR>

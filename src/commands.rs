@@ -221,7 +221,10 @@ pub async fn command_update_bundle_statuses(
         counter += 1;
     }
     if counter == 0 {
-        println!("The `log_dir`you provided didn't have any statuses in it.");
+        println!(
+            "The <LOG_DIR> you provided, \"{}\", didn't have any statuses in it.",
+            log_dir
+        );
     } else {
         println!("Updated {} statuses.", counter);
     }
@@ -304,7 +307,7 @@ pub async fn command_update_statuses(
         counter += 1;
     }
     if counter == 0 {
-        println!("The `glob` and `log_dir` combination you provided didn't return any statuses.");
+        println!("The <GLOB> and <LOG_DIR> combination you provided didn't return any statuses.");
     } else {
         println!("Updated {} statuses.", counter);
     }
@@ -723,7 +726,7 @@ pub async fn command_upload_nfts(
             .unwrap();
 
         println!(
-            "\n\nUpload complete! Links to your uploaded metadata files can be found in  `{}`",
+            "\n\nUpload complete! Links to your uploaded metadata files can be found in `{}`",
             metadata_manifest_path.display().to_string()
         );
 
