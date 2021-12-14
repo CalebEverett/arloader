@@ -140,34 +140,9 @@ pub const CHUNKS_RETRIES: u16 = 10;
 /// Number of seconds to wait between retying to post a failed chunk.
 pub const CHUNKS_RETRY_SLEEP: u64 = 1;
 
-#[derive(Serialize, Deserialize, Debug)]
-struct OraclePrice {
-    pub arweave: OraclePricePair,
-    pub solana: OraclePricePair,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct OraclePricePair {
-    pub usd: f32,
-}
-
-/// Tuple struct includes two elements: chunk of paths and aggregatge data size of paths.
-#[derive(Clone, Debug)]
-pub struct PathsChunk(Vec<PathBuf>, u64);
-
-/// Uploads a stream of chunks from [`Vec<Chunk>`]s.
-pub fn upload_transaction_chunks_stream<'a>(
-    arweave: &'a Arweave,
-    signed_transaction: Transaction,
-    buffer: usize,
-) -> impl Stream<Item = Result<usize, Error>> + 'a {
-    stream::iter(0..signed_transaction.chunks.len())
-        .map(move |i| {
-            let chunk = signed_transaction.get_chunk(i).unwrap();
-            arweave.post_chunk_with_retries(chunk)
-        })
-        .buffer_unordered(buffer)
-}
+//=========================
+// Streams
+//=========================
 
 /// Uploads a stream of bundles from [`Vec<PathsChunk>`]s.
 ///
@@ -196,6 +171,20 @@ pub fn upload_bundles_stream<'a>(
             )
         })
         .buffer_unordered(bundles_buffer)
+}
+
+/// Queries network and updates locally stored [`BundleStatus`] structs.
+pub fn update_bundle_statuses_stream<'a, IP>(
+    arweave: &'a Arweave,
+    paths_iter: IP,
+    buffer: usize,
+) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync + 'a,
+{
+    stream::iter(paths_iter)
+        .map(move |p| arweave.update_bundle_status(p))
+        .buffer_unordered(buffer)
 }
 
 /// Uploads a stream of bundles from [`Vec<PathsChunk>`]s, paying with SOL.
@@ -229,6 +218,20 @@ pub fn upload_bundles_stream_with_sol<'a>(
             )
         })
         .buffer_unordered(bundles_buffer)
+}
+
+/// Uploads a stream of chunks from [`Vec<Chunk>`]s.
+pub fn upload_transaction_chunks_stream<'a>(
+    arweave: &'a Arweave,
+    signed_transaction: Transaction,
+    buffer: usize,
+) -> impl Stream<Item = Result<usize, Error>> + 'a {
+    stream::iter(0..signed_transaction.chunks.len())
+        .map(move |i| {
+            let chunk = signed_transaction.get_chunk(i).unwrap();
+            arweave.post_chunk_with_retries(chunk)
+        })
+        .buffer_unordered(buffer)
 }
 
 /// Uploads files matching glob pattern, returning a stream of [`Status`] structs.
@@ -296,19 +299,24 @@ where
         .buffer_unordered(buffer)
 }
 
-/// Queries network and updates locally stored [`BundleStatus`] structs.
-pub fn update_bundle_statuses_stream<'a, IP>(
-    arweave: &'a Arweave,
-    paths_iter: IP,
-    buffer: usize,
-) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a
-where
-    IP: Iterator<Item = PathBuf> + Send + Sync + 'a,
-{
-    stream::iter(paths_iter)
-        .map(move |p| arweave.update_bundle_status(p))
-        .buffer_unordered(buffer)
+//=========================
+// Helpers
+//=========================
+
+#[derive(Serialize, Deserialize, Debug)]
+struct OraclePrice {
+    pub arweave: OraclePricePair,
+    pub solana: OraclePricePair,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+struct OraclePricePair {
+    pub usd: f32,
+}
+
+/// Tuple struct includes two elements: chunk of paths and aggregatge data size of paths.
+#[derive(Clone, Debug)]
+pub struct PathsChunk(Vec<PathBuf>, u64);
 
 /// Used in updating [`BundleStatus`]s to determine whether a file stem includes a valid transaction id.
 pub fn file_stem_is_valid_txid(file_path: &PathBuf) -> bool {
@@ -320,6 +328,10 @@ pub fn file_stem_is_valid_txid(file_path: &PathBuf) -> bool {
         Err(_) => false,
     }
 }
+
+//=========================
+// Arweave
+//=========================
 
 /// Struct with methods for interacting with the Arweave network.
 pub struct Arweave {
@@ -363,21 +375,15 @@ impl Arweave {
         Ok(arweave)
     }
 
-    /// Returns the balance of the wallet.
-    pub async fn get_wallet_balance(
-        &self,
-        wallet_address: Option<String>,
-    ) -> Result<BigUint, Error> {
-        let wallet_address = if let Some(wallet_address) = wallet_address {
-            wallet_address
-        } else {
-            self.crypto.wallet_address()?.to_string()
-        };
-        let url = self
-            .base_url
-            .join(&format!("wallet/{}/balance", &wallet_address))?;
-        let winstons = reqwest::get(url).await?.json::<u64>().await?;
-        Ok(BigUint::from(winstons))
+    //-------------------------
+    // Get Request
+    //-------------------------
+
+    /// Get pending network transaction count.
+    pub async fn get_pending_count(&self) -> Result<usize, Error> {
+        let url = self.base_url.join("tx/pending")?;
+        let tx_ids: Vec<String> = reqwest::get(url).await?.json().await?;
+        Ok(tx_ids.len())
     }
 
     /// Returns price of uploading data to the network in winstons and USD per AR and USD per SOL
@@ -405,6 +411,7 @@ impl Arweave {
         Ok((winstons_per_bytes, usd_per_ar, usd_per_sol))
     }
 
+    /// Gets base and incremental prices for a 256 KB block of data.
     pub async fn get_price_terms(&self, reward_mult: f32) -> Result<(u64, u64), Error> {
         let (prices1, prices2) = try_join(
             self.get_price(&(256 * 1024)),
@@ -416,829 +423,33 @@ impl Arweave {
         Ok((base, incremental))
     }
 
+    /// Gets transaction from the network.
     pub async fn get_transaction(&self, id: &Base64) -> Result<Transaction, Error> {
         let url = self.base_url.join("tx/")?.join(&id.to_string())?;
         let resp = reqwest::get(url).await?.json::<Transaction>().await?;
         Ok(resp)
     }
 
-    pub fn process_data(&self, data: Vec<u8>) -> Result<Transaction, Error> {
-        let chunks = generate_leaves(data.clone(), &self.crypto)?;
-        let root = generate_data_root(chunks.clone(), &self.crypto)?;
-        let data_root = Base64(root.id.clone().into_iter().collect());
-        let proofs = resolve_proofs(root, None)?;
-
-        Ok(Transaction {
-            format: 2,
-            data_size: data.len() as u64,
-            data: Base64(data),
-            data_root,
-            chunks,
-            proofs,
-            ..Default::default()
-        })
-    }
-
-    pub async fn create_transaction(
+    /// Returns the balance of the wallet.
+    pub async fn get_wallet_balance(
         &self,
-        data: Vec<u8>,
-        other_tags: Option<Vec<Tag<Base64>>>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-        auto_content_tag: bool,
-    ) -> Result<Transaction, Error> {
-        let mut transaction = self.process_data(data)?;
-        transaction.owner = self.crypto.keypair_modulus()?;
-
-        let mut tags = vec![Tag::<Base64>::from_utf8_strs(
-            "User-Agent",
-            &format!("arloader/{}", VERSION),
-        )?];
-
-        // Get content type from [magic numbers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
-        // and include additional tags if any.
-        if auto_content_tag {
-            let content_type = if let Some(kind) = infer::get(&transaction.data.0) {
-                kind.mime_type()
-            } else {
-                "application/octet-stream"
-            };
-
-            tags.push(Tag::<Base64>::from_utf8_strs("Content-Type", content_type)?)
-        }
-
-        // Add other tags if provided.
-        if let Some(other_tags) = other_tags {
-            tags.extend(other_tags);
-        }
-        transaction.tags = tags;
-
-        // Fetch and set last_tx if not provided (primarily for testing).
-        let last_tx = if let Some(last_tx) = last_tx {
-            last_tx
+        wallet_address: Option<String>,
+    ) -> Result<BigUint, Error> {
+        let wallet_address = if let Some(wallet_address) = wallet_address {
+            wallet_address
         } else {
-            let resp = reqwest::get(self.base_url.join("tx_anchor")?).await?;
-            debug!("last_tx: {}", resp.status());
-            let last_tx_str = resp.text().await?;
-            Base64::from_str(&last_tx_str)?
+            self.crypto.wallet_address()?.to_string()
         };
-        transaction.last_tx = last_tx;
-
-        let blocks_len =
-            transaction.data_size / BLOCK_SIZE + (transaction.data_size % BLOCK_SIZE != 0) as u64;
-        let reward = price_terms.0 + price_terms.1 * (blocks_len - 1);
-        transaction.reward = reward;
-
-        Ok(transaction)
+        let url = self
+            .base_url
+            .join(&format!("wallet/{}/balance", &wallet_address))?;
+        let winstons = reqwest::get(url).await?.json::<u64>().await?;
+        Ok(BigUint::from(winstons))
     }
 
-    pub async fn create_transaction_from_file_path(
-        &self,
-        file_path: PathBuf,
-        other_tags: Option<Vec<Tag<Base64>>>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-        auto_content_tag: bool,
-    ) -> Result<Transaction, Error> {
-        let data = fs::read(file_path).await?;
-        self.create_transaction(data, other_tags, last_tx, price_terms, auto_content_tag)
-            .await
-    }
-
-    /// Gets deep hash, signs and sets signature and id.
-    pub fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
-        let deep_hash_item = transaction.to_deep_hash_item()?;
-        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
-        let signature = self.crypto.sign(&deep_hash)?;
-        let id = self.crypto.hash_sha256(&signature)?;
-        transaction.signature = Base64(signature);
-        transaction.id = Base64(id.to_vec());
-        Ok(transaction)
-    }
-
-    pub async fn post_transaction(
-        &self,
-        signed_transaction: &Transaction,
-    ) -> Result<(Base64, u64), Error> {
-        if signed_transaction.id.0.is_empty() {
-            return Err(error::Error::UnsignedTransaction.into());
-        }
-
-        let url = self.base_url.join("tx/")?;
-        let client = reqwest::Client::new();
-        let resp = client
-            .post(url)
-            .json(&signed_transaction)
-            .header(&ACCEPT, "application/json")
-            .header(&CONTENT_TYPE, "application/json")
-            .send()
-            .await?;
-        debug!("post_transaction {:?}", &resp);
-        assert_eq!(resp.status().as_u16(), 200);
-
-        Ok((signed_transaction.id.clone(), signed_transaction.reward))
-    }
-
-    pub async fn post_transaction_chunks(
-        &self,
-        signed_transaction: Transaction,
-        chunks_buffer: usize,
-    ) -> Result<(Base64, u64), Error> {
-        if signed_transaction.id.0.is_empty() {
-            return Err(error::Error::UnsignedTransaction.into());
-        }
-
-        let transaction_with_no_data = signed_transaction.clone_with_no_data()?;
-        let (id, reward) = self.post_transaction(&transaction_with_no_data).await?;
-
-        let results: Vec<Result<usize, Error>> =
-            upload_transaction_chunks_stream(&self, signed_transaction, chunks_buffer)
-                .collect()
-                .await;
-
-        results.into_iter().collect::<Result<Vec<usize>, Error>>()?;
-
-        Ok((id, reward))
-    }
-
-    pub async fn post_chunk(&self, chunk: &Chunk) -> Result<usize, Error> {
-        let url = self.base_url.join("chunk/")?;
-        let client = reqwest::Client::new();
-
-        client
-            .post(url)
-            .json(&chunk)
-            .header(&ACCEPT, "application/json")
-            .header(&CONTENT_TYPE, "application/json")
-            .send()
-            .await
-            .map_err(|e| Error::ArweavePostError(e))?;
-
-        Ok(chunk.offset)
-    }
-
-    pub async fn post_chunk_with_retries(&self, chunk: Chunk) -> Result<usize, Error> {
-        let mut retries = 0;
-        let mut resp = self.post_chunk(&chunk).await;
-
-        while retries < CHUNKS_RETRIES {
-            match resp {
-                Ok(offset) => return Ok(offset),
-                Err(_) => {
-                    sleep(Duration::from_secs(CHUNKS_RETRY_SLEEP)).await;
-                    retries += 1;
-                    resp = self.post_chunk(&chunk).await;
-                }
-            }
-        }
-        resp
-    }
-
-    pub async fn get_pending_count(&self) -> Result<usize, Error> {
-        let url = self.base_url.join("tx/pending")?;
-        let tx_ids: Vec<String> = reqwest::get(url).await?.json().await?;
-        Ok(tx_ids.len())
-    }
-
-    pub async fn get_status(&self, id: &Base64) -> Result<Status, Error> {
-        let url = self.base_url.join(&format!("tx/{}/status", id))?;
-        let resp = reqwest::get(url).await?;
-        let mut status = Status {
-            id: id.clone(),
-            ..Status::default()
-        };
-
-        match resp.status() {
-            ResponseStatusCode::OK => {
-                let resp_string = resp.text().await?;
-                if &resp_string == &String::from("Pending") {
-                    status.status = StatusCode::Pending;
-                } else {
-                    status.raw_status = Some(serde_json::from_str(&resp_string)?);
-                    status.status = StatusCode::Confirmed;
-                }
-            }
-            ResponseStatusCode::ACCEPTED => {
-                status.status = StatusCode::Pending;
-            }
-            ResponseStatusCode::NOT_FOUND => {
-                status.status = StatusCode::NotFound;
-            }
-            _ => unreachable!(),
-        }
-        Ok(status)
-    }
-
-    /// Writes Status Json to `log_dir` with file name based on BLAKE3 hash of `status.file_path`.
-    ///
-    /// This is done to facilitate checking the status of uploaded file and also means that only
-    /// one status object can exist for a given `file_path`. If for some reason you wanted to record
-    /// statuses for multiple uploads of the same file you can provide a different `log_dir` (or copy the
-    /// file to a different directory and upload from there).
-    pub async fn write_status(
-        &self,
-        status: Status,
-        log_dir: PathBuf,
-        file_stem: Option<String>,
-    ) -> Result<(), Error> {
-        let file_stem = if let Some(stem) = file_stem {
-            stem
-        } else {
-            if let Some(file_path) = &status.file_path {
-                if status.id.0.is_empty() {
-                    return Err(error::Error::UnsignedTransaction.into());
-                }
-                blake3::hash(file_path.to_str().unwrap().as_bytes()).to_string()
-            } else {
-                format!("txid_{}", status.id)
-            }
-        };
-
-        fs::write(
-            log_dir.join(file_stem).with_extension("json"),
-            serde_json::to_string(&status)?,
-        )
-        .await?;
-        Ok(())
-    }
-
-    pub async fn read_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error> {
-        let file_path_hash = blake3::hash(file_path.to_str().unwrap().as_bytes());
-
-        let status_path = log_dir
-            .join(file_path_hash.to_string())
-            .with_extension("json");
-
-        if status_path.exists() {
-            let data = fs::read_to_string(status_path).await?;
-            let status: Status = serde_json::from_str(&data)?;
-            Ok(status)
-        } else {
-            Err(Error::StatusNotFound)
-        }
-    }
-
-    pub async fn read_statuses<IP>(
-        &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-    {
-        try_join_all(paths_iter.map(|p| self.read_status(p, log_dir.clone()))).await
-    }
-
-    pub async fn status_summary<IP>(
-        &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
-    ) -> Result<String, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-    {
-        let statuses = self.read_statuses(paths_iter, log_dir).await?;
-        let status_counts: HashMap<StatusCode, u32> =
-            statuses
-                .into_iter()
-                .fold(HashMap::new(), |mut map, status| {
-                    *map.entry(status.status).or_insert(0) += 1;
-                    map
-                });
-
-        let mut total = 0;
-        let mut output = String::new();
-        writeln!(output, " {:<15}  {:>10}", "status", "count")?;
-        writeln!(output, "{:-<29}", "")?;
-        for k in vec![
-            StatusCode::Submitted,
-            StatusCode::Pending,
-            StatusCode::NotFound,
-            StatusCode::Confirmed,
-        ] {
-            let v = status_counts.get(&k).unwrap_or(&0);
-            writeln!(output, " {:<16} {:>10}", &k.to_string(), v)?;
-            total += v;
-        }
-
-        writeln!(output, "{:-<29}", "")?;
-        writeln!(output, " {:<15}  {:>10}", "Total", total)?;
-
-        Ok(output)
-    }
-
-    pub async fn update_bundle_status(&self, file_path: PathBuf) -> Result<BundleStatus, Error> {
-        let data = fs::read_to_string(&file_path).await?;
-        let mut status: BundleStatus = serde_json::from_str(&data)?;
-        let trans_status = self.get_status(&status.id).await?;
-        status.last_modified = Utc::now();
-        status.status = trans_status.status;
-        status.raw_status = trans_status.raw_status;
-        fs::write(&file_path, serde_json::to_string(&status)?).await?;
-        Ok(status)
-    }
-
-    pub fn create_manifest(&self, statuses: Vec<Status>) -> Result<Value, Error> {
-        let paths = statuses
-            .into_iter()
-            .fold(serde_json::Map::new(), |mut m, s| {
-                m.insert(
-                    s.file_path
-                        .unwrap()
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                    json!({"id": s.id.to_string(), "content_type": s.content_type}),
-                );
-                m
-            });
-
-        let manifest = json!({
-            "manifest": "arweave/paths",
-            "version": "0.1.0",
-            "paths": Value::Object(paths)
-        });
-
-        Ok(manifest)
-    }
-
-    pub fn create_manifest_from_bundle_statuses(
-        &self,
-        statuses: Vec<BundleStatus>,
-    ) -> Result<Value, Error> {
-        let paths = statuses
-            .into_iter()
-            .fold(serde_json::Map::new(), |mut m, mut s| {
-                m.append(s.file_paths.as_object_mut().unwrap());
-                m
-            });
-
-        let manifest = json!({
-            "manifest": "arweave/paths",
-            "version": "0.1.0",
-            "paths": Value::Object(paths)
-        });
-
-        Ok(manifest)
-    }
-
-    pub async fn upload_manifest_from_bundle_log_dir(
-        &self,
-        log_dir: &str,
-        price_terms: (u64, u64),
-        solana_url: Url,
-        sol_ar_url: Url,
-        from_keypair: Option<Keypair>,
-    ) -> Result<String, Error> {
-        let paths: Vec<PathBuf> = glob(&format!("{}*.json", log_dir.clone()))?
-            .filter_map(Result::ok)
-            .collect();
-
-        let paths_len = paths.len();
-        if paths_len == 0 {
-            return Ok(format!("No bundle statuses found in {}", log_dir));
-        };
-
-        let statuses = try_join_all(
-            paths
-                .iter()
-                .filter(|p| file_stem_is_valid_txid(p))
-                .map(|p| fs::read_to_string(p)),
-        )
-        .await?
-        .iter()
-        .map(|s| serde_json::from_str::<BundleStatus>(s).unwrap())
-        .collect();
-
-        let manifest = self.create_manifest_from_bundle_statuses(statuses)?;
-        let num_files = manifest["paths"].as_object().unwrap().keys().len();
-        let transaction = self
-            .create_transaction_from_manifest(manifest.clone(), price_terms)
-            .await?;
-
-        let signed_transaction = if let Some(from_keypair) = from_keypair {
-            let (signed_transaction, _): (Transaction, SigResponse) = self
-                .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, &from_keypair)
-                .await?;
-            signed_transaction
-        } else {
-            self.sign_transaction(transaction)?
-        };
-
-        let (id, _) = self.post_transaction(&signed_transaction).await?;
-
-        self.write_manifest(manifest, id.to_string(), PathBuf::from(log_dir))
-            .await?;
-
-        Ok(format!("Uploaded manifest for {} files and wrote to {}manifest_{id}.json.\n\nRun `arloader get-status {id}` to confirm manifest transaction.",
-        num_files, log_dir, id=id.to_string()))
-    }
-
-    pub async fn update_status(
-        &self,
-        file_path: PathBuf,
-        log_dir: PathBuf,
-    ) -> Result<Status, Error> {
-        let mut status = self.read_status(file_path, log_dir.clone()).await?;
-        let trans_status = self.get_status(&status.id).await?;
-        status.last_modified = Utc::now();
-        status.status = trans_status.status;
-        status.raw_status = trans_status.raw_status;
-        self.write_status(status.clone(), log_dir, None).await?;
-        Ok(status)
-    }
-
-    pub async fn update_statuses<IP>(
-        &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-    {
-        try_join_all(paths_iter.map(|p| self.update_status(p, log_dir.clone()))).await
-    }
-
-    pub async fn upload_file_from_path(
-        &self,
-        file_path: PathBuf,
-        log_dir: Option<PathBuf>,
-        mut additional_tags: Option<Vec<Tag<Base64>>>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-    ) -> Result<Status, Error> {
-        let mut auto_content_tag = true;
-        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
-
-        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
-            status_content_type = content_type.to_string();
-            auto_content_tag = false;
-            let content_tag: Tag<Base64> =
-                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
-            if let Some(mut tags) = additional_tags {
-                tags.push(content_tag);
-                additional_tags = Some(tags);
-            } else {
-                additional_tags = Some(vec![content_tag]);
-            }
-        }
-
-        let transaction = self
-            .create_transaction_from_file_path(
-                file_path.clone(),
-                additional_tags,
-                last_tx,
-                price_terms,
-                auto_content_tag,
-            )
-            .await?;
-        let signed_transaction = self.sign_transaction(transaction)?;
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
-
-        let status = Status {
-            id,
-            reward,
-            file_path: Some(file_path),
-            content_type: status_content_type,
-            ..Default::default()
-        };
-
-        if let Some(log_dir) = log_dir {
-            self.write_status(status.clone(), log_dir, None).await?;
-        }
-        Ok(status)
-    }
-
-    /// Signs transaction with sol_ar service.
-    pub async fn sign_transaction_with_sol(
-        &self,
-        mut transaction: Transaction,
-        solana_url: Url,
-        sol_ar_url: Url,
-        from_keypair: &Keypair,
-    ) -> Result<(Transaction, SigResponse), Error> {
-        let lamports = std::cmp::max(&transaction.reward * 0, FLOOR);
-
-        let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
-        let mut resp = get_sol_ar_signature(
-            sol_ar_url.clone(),
-            transaction.to_deep_hash_item()?,
-            sol_tx.clone(),
-        )
-        .await;
-
-        let mut retries = 0;
-        while retries < CHUNKS_RETRIES {
-            match resp {
-                Ok(_) => {
-                    retries = CHUNKS_RETRIES;
-                }
-                Err(_) => {
-                    println!(
-                        "Retrying Solana transaction ({} of {})...",
-                        retries + 1,
-                        CHUNKS_RETRIES
-                    );
-                    retries += 1;
-                    sleep(Duration::from_millis(300)).await;
-                    resp = get_sol_ar_signature(
-                        sol_ar_url.clone(),
-                        transaction.to_deep_hash_item()?,
-                        sol_tx.clone(),
-                    )
-                    .await;
-                }
-            }
-        }
-        if let Ok(sig_response) = resp {
-            let sig_response_copy = sig_response.clone();
-            transaction.signature = sig_response.ar_tx_sig;
-            transaction.id = sig_response.ar_tx_id;
-            transaction.owner = sig_response.ar_tx_owner;
-            Ok((transaction, sig_response_copy))
-        } else {
-            println!(
-                "There was a problem with the Solana network. Please try again later or use AR."
-            );
-            Err(Error::SolanaNetworkError)
-        }
-    }
-
-    pub async fn upload_file_from_path_with_sol(
-        &self,
-        file_path: PathBuf,
-        log_dir: Option<PathBuf>,
-        mut additional_tags: Option<Vec<Tag<Base64>>>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-        solana_url: Url,
-        sol_ar_url: Url,
-        from_keypair: &Keypair,
-    ) -> Result<Status, Error> {
-        let mut auto_content_tag = true;
-        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
-
-        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
-            status_content_type = content_type.to_string();
-            auto_content_tag = false;
-            let content_tag: Tag<Base64> =
-                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
-            if let Some(mut tags) = additional_tags {
-                tags.push(content_tag);
-                additional_tags = Some(tags);
-            } else {
-                additional_tags = Some(vec![content_tag]);
-            }
-        }
-
-        let transaction = self
-            .create_transaction_from_file_path(
-                file_path.clone(),
-                additional_tags,
-                last_tx,
-                price_terms,
-                auto_content_tag,
-            )
-            .await?;
-
-        let (signed_transaction, sig_response): (Transaction, SigResponse) = self
-            .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
-            .await?;
-
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
-
-        let mut status = Status {
-            file_path: Some(file_path),
-            content_type: status_content_type,
-            id,
-            reward,
-            ..Default::default()
-        };
-
-        if let Some(log_dir) = log_dir {
-            status.sol_sig = Some(sig_response);
-            self.write_status(status.clone(), log_dir, None).await?;
-        }
-        Ok(status)
-    }
-
-    /// Uploads files from an iterator of paths.
-    ///
-    /// Optionally logs Status objects to `log_dir`, if provided and optionally adds tags to each
-    ///  transaction from an iterator of tags that must be the same size as the paths iterator.
-    pub async fn upload_files_from_paths<IP, IT>(
-        &self,
-        paths_iter: IP,
-        log_dir: Option<PathBuf>,
-        tags_iter: Option<IT>,
-        last_tx: Option<Base64>,
-        price_terms: (u64, u64),
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-        IT: Iterator<Item = Option<Vec<Tag<Base64>>>> + Send,
-    {
-        let statuses = if let Some(tags_iter) = tags_iter {
-            try_join_all(paths_iter.zip(tags_iter).map(|(p, t)| {
-                self.upload_file_from_path(p, log_dir.clone(), t, last_tx.clone(), price_terms)
-            }))
-        } else {
-            try_join_all(paths_iter.map(|p| {
-                self.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), price_terms)
-            }))
-        }
-        .await?;
-        Ok(statuses)
-    }
-
-    /// Filters saved Status objects by status and/or number of confirmations. Return
-    /// all statuses if no status codes or maximum confirmations are provided.
-    ///
-    /// If there is no raw status object and max_confirms is passed, it
-    /// assumes there are zero confirms. This is designed to be used to
-    /// determine whether all files have a confirmed status and to collect the
-    /// paths of the files that need to be re-uploaded.
-    pub async fn filter_statuses<IP>(
-        &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
-        statuses: Option<Vec<StatusCode>>,
-        max_confirms: Option<u64>,
-    ) -> Result<Vec<Status>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-    {
-        let all_statuses = self.read_statuses(paths_iter, log_dir).await?;
-
-        let filtered = if let Some(statuses) = statuses {
-            if let Some(max_confirms) = max_confirms {
-                all_statuses
-                    .into_iter()
-                    .filter(|s| {
-                        let confirms = if let Some(raw_status) = &s.raw_status {
-                            raw_status.number_of_confirmations
-                        } else {
-                            0
-                        };
-                        (&statuses.iter().any(|c| c == &s.status)) & (confirms <= max_confirms)
-                    })
-                    .collect()
-            } else {
-                all_statuses
-                    .into_iter()
-                    .filter(|s| statuses.iter().any(|c| c == &s.status))
-                    .collect()
-            }
-        } else {
-            if let Some(max_confirms) = max_confirms {
-                all_statuses
-                    .into_iter()
-                    .filter(|s| {
-                        let confirms = if let Some(raw_status) = &s.raw_status {
-                            raw_status.number_of_confirmations
-                        } else {
-                            0
-                        };
-                        confirms <= max_confirms
-                    })
-                    .collect()
-            } else {
-                all_statuses
-            }
-        };
-
-        Ok(filtered)
-    }
-
-    // Create [`data_item::DataItem`] for bundle.
-    pub fn create_data_item(
-        &self,
-        data: Vec<u8>,
-        mut tags: Vec<Tag<String>>,
-        auto_content_tag: bool,
-    ) -> Result<DataItem, Error> {
-        tags.push(Tag::<String>::from_utf8_strs(
-            "User-Agent",
-            &format!("arloader/{}", VERSION),
-        )?);
-
-        // Get content type from [magic numbers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
-        // and include additional tags if any.
-        if auto_content_tag {
-            let content_type = if let Some(kind) = infer::get(&data) {
-                kind.mime_type()
-            } else {
-                "application/octet-stream"
-            };
-
-            tags.push(Tag::<String>::from_utf8_strs("Content-Type", content_type)?)
-        }
-
-        // let mut anchor = Base64(Vec::with_capacity(32));
-        // self.crypto.fill_rand(&mut anchor.0)?;
-
-        Ok(DataItem {
-            data: Base64(data),
-            tags,
-            // anchor,
-            ..DataItem::default()
-        })
-    }
-
-    pub fn sign_data_item(&self, mut data_item: DataItem) -> Result<DataItem, Error> {
-        data_item.owner = self.crypto.keypair_modulus()?;
-        let deep_hash_item = data_item.to_deep_hash_item()?;
-        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
-        let signature = self.crypto.sign(&deep_hash)?;
-        let id = self.crypto.hash_sha256(&signature)?;
-
-        data_item.signature = Base64(signature);
-        data_item.id = Base64(id.to_vec());
-        Ok(data_item)
-    }
-
-    pub async fn create_data_item_from_file_path(
-        &self,
-        file_path: PathBuf,
-        mut tags: Vec<Tag<String>>,
-    ) -> Result<(DataItem, Status), Error> {
-        let mut auto_content_tag = true;
-        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
-
-        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
-            status_content_type = content_type.to_string();
-            auto_content_tag = false;
-            let content_tag: Tag<String> =
-                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
-            tags.push(content_tag);
-        }
-
-        let data = fs::read(&file_path).await?;
-        let data_item = self.create_data_item(data, tags, auto_content_tag)?;
-        let data_item = self.sign_data_item(data_item)?;
-
-        let status = Status {
-            id: data_item.id.clone(),
-            file_path: Some(file_path),
-            content_type: status_content_type,
-            ..Status::default()
-        };
-
-        Ok((data_item, status))
-    }
-
-    pub fn create_data_item_from_manifest(&self, manifest: Value) -> Result<DataItem, Error> {
-        let tags = vec![
-            Tag::<String>::from_utf8_strs("Content-Type", "application/x.arweave-manifest+json")?,
-            Tag::<String>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?,
-        ];
-
-        // let mut anchor = Base64(Vec::with_capacity(32));
-        // self.crypto.fill_rand(&mut anchor.0)?;
-
-        Ok(DataItem {
-            data: Base64(serde_json::to_string(&manifest)?.as_bytes().to_vec()),
-            tags,
-            // anchor,
-            ..DataItem::default()
-        })
-    }
-
-    pub async fn create_transaction_from_manifest(
-        &self,
-        manifest: Value,
-        price_terms: (u64, u64),
-    ) -> Result<Transaction, Error> {
-        let tags = vec![Tag::<Base64>::from_utf8_strs(
-            "Content-Type",
-            "application/x.arweave-manifest+json",
-        )?];
-
-        // let mut anchor = Base64(Vec::with_capacity(32));
-        // self.crypto.fill_rand(&mut anchor.0)?;
-
-        let data = serde_json::to_string(&manifest)?.as_bytes().to_vec();
-        let transaction = self
-            .create_transaction(data, Some(tags), None, price_terms, false)
-            .await?;
-
-        Ok(transaction)
-    }
-
-    pub async fn create_data_items_from_file_paths(
-        &self,
-        paths: Vec<PathBuf>,
-        tags: Vec<Tag<String>>,
-    ) -> Result<Vec<(DataItem, Status)>, Error> {
-        try_join_all(
-            paths
-                .into_iter()
-                .map(|p| self.create_data_item_from_file_path(p, tags.clone())),
-        )
-        .await
-    }
+    //-------------------------
+    // Bundle
+    //-------------------------
 
     pub fn chunk_file_paths<IP>(
         &self,
@@ -1293,6 +504,107 @@ impl Arweave {
         Ok((binary, manifest))
     }
 
+    pub async fn create_bundle_transaction_from_file_paths(
+        &self,
+        paths_iter: Vec<PathBuf>,
+        tags: Vec<Tag<String>>,
+        price_terms: (u64, u64),
+    ) -> Result<(Transaction, Value), Error> {
+        let data_items = self
+            .create_data_items_from_file_paths(paths_iter, tags)
+            .await?;
+
+        let (bundle, manifest_object) = self.create_bundle_from_data_items(data_items)?;
+        let other_tags = Some(vec![
+            Tag::<Base64>::from_utf8_strs("Bundle-Format", "binary")?,
+            Tag::<Base64>::from_utf8_strs("Bundle-Version", "2.0.0")?,
+        ]);
+
+        let transaction = self
+            .create_transaction(bundle, other_tags, None, price_terms, true)
+            .await?;
+
+        Ok((transaction, manifest_object))
+    }
+
+    // Create [`data_item::DataItem`] for bundle.
+    pub fn create_data_item(
+        &self,
+        data: Vec<u8>,
+        mut tags: Vec<Tag<String>>,
+        auto_content_tag: bool,
+    ) -> Result<DataItem, Error> {
+        tags.push(Tag::<String>::from_utf8_strs(
+            "User-Agent",
+            &format!("arloader/{}", VERSION),
+        )?);
+
+        // Get content type from [magic numbers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
+        // and include additional tags if any.
+        if auto_content_tag {
+            let content_type = if let Some(kind) = infer::get(&data) {
+                kind.mime_type()
+            } else {
+                "application/octet-stream"
+            };
+
+            tags.push(Tag::<String>::from_utf8_strs("Content-Type", content_type)?)
+        }
+
+        // let mut anchor = Base64(Vec::with_capacity(32));
+        // self.crypto.fill_rand(&mut anchor.0)?;
+
+        Ok(DataItem {
+            data: Base64(data),
+            tags,
+            // anchor,
+            ..DataItem::default()
+        })
+    }
+
+    pub async fn create_data_item_from_file_path(
+        &self,
+        file_path: PathBuf,
+        mut tags: Vec<Tag<String>>,
+    ) -> Result<(DataItem, Status), Error> {
+        let mut auto_content_tag = true;
+        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
+
+        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
+            status_content_type = content_type.to_string();
+            auto_content_tag = false;
+            let content_tag: Tag<String> =
+                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
+            tags.push(content_tag);
+        }
+
+        let data = fs::read(&file_path).await?;
+        let data_item = self.create_data_item(data, tags, auto_content_tag)?;
+        let data_item = self.sign_data_item(data_item)?;
+
+        let status = Status {
+            id: data_item.id.clone(),
+            file_path: Some(file_path),
+            content_type: status_content_type,
+            ..Status::default()
+        };
+
+        Ok((data_item, status))
+    }
+
+    pub async fn create_data_items_from_file_paths(
+        &self,
+        paths: Vec<PathBuf>,
+        tags: Vec<Tag<String>>,
+    ) -> Result<Vec<(DataItem, Status)>, Error> {
+        try_join_all(
+            paths
+                .into_iter()
+                .map(|p| self.create_data_item_from_file_path(p, tags.clone())),
+        )
+        .await
+    }
+
     // Tested here instead of data_item to verify signature as well - crytpo on data_item.
     pub fn deserialize_bundle(&self, bundle: Vec<u8>) -> Result<Vec<DataItem>, Error> {
         let mut bundle_iter = bundle.into_iter();
@@ -1342,29 +654,6 @@ impl Arweave {
             .collect();
 
         data_items
-    }
-
-    pub async fn create_bundle_transaction_from_file_paths(
-        &self,
-        paths_iter: Vec<PathBuf>,
-        tags: Vec<Tag<String>>,
-        price_terms: (u64, u64),
-    ) -> Result<(Transaction, Value), Error> {
-        let data_items = self
-            .create_data_items_from_file_paths(paths_iter, tags)
-            .await?;
-
-        let (bundle, manifest_object) = self.create_bundle_from_data_items(data_items)?;
-        let other_tags = Some(vec![
-            Tag::<Base64>::from_utf8_strs("Bundle-Format", "binary")?,
-            Tag::<Base64>::from_utf8_strs("Bundle-Version", "2.0.0")?,
-        ]);
-
-        let transaction = self
-            .create_transaction(bundle, other_tags, None, price_terms, true)
-            .await?;
-
-        Ok((transaction, manifest_object))
     }
 
     pub async fn post_bundle_transaction_from_file_paths(
@@ -1459,6 +748,778 @@ impl Arweave {
         Ok(status)
     }
 
+    pub fn sign_data_item(&self, mut data_item: DataItem) -> Result<DataItem, Error> {
+        data_item.owner = self.crypto.keypair_modulus()?;
+        let deep_hash_item = data_item.to_deep_hash_item()?;
+        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
+        let signature = self.crypto.sign(&deep_hash)?;
+        let id = self.crypto.hash_sha256(&signature)?;
+
+        data_item.signature = Base64(signature);
+        data_item.id = Base64(id.to_vec());
+        Ok(data_item)
+    }
+
+    //-------------------------
+    // Transaction
+    //-------------------------
+
+    pub async fn create_transaction(
+        &self,
+        data: Vec<u8>,
+        other_tags: Option<Vec<Tag<Base64>>>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+        auto_content_tag: bool,
+    ) -> Result<Transaction, Error> {
+        let mut transaction = self.merklize(data)?;
+        transaction.owner = self.crypto.keypair_modulus()?;
+
+        let mut tags = vec![Tag::<Base64>::from_utf8_strs(
+            "User-Agent",
+            &format!("arloader/{}", VERSION),
+        )?];
+
+        // Get content type from [magic numbers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
+        // and include additional tags if any.
+        if auto_content_tag {
+            let content_type = if let Some(kind) = infer::get(&transaction.data.0) {
+                kind.mime_type()
+            } else {
+                "application/octet-stream"
+            };
+
+            tags.push(Tag::<Base64>::from_utf8_strs("Content-Type", content_type)?)
+        }
+
+        // Add other tags if provided.
+        if let Some(other_tags) = other_tags {
+            tags.extend(other_tags);
+        }
+        transaction.tags = tags;
+
+        // Fetch and set last_tx if not provided (primarily for testing).
+        let last_tx = if let Some(last_tx) = last_tx {
+            last_tx
+        } else {
+            let resp = reqwest::get(self.base_url.join("tx_anchor")?).await?;
+            debug!("last_tx: {}", resp.status());
+            let last_tx_str = resp.text().await?;
+            Base64::from_str(&last_tx_str)?
+        };
+        transaction.last_tx = last_tx;
+
+        let blocks_len =
+            transaction.data_size / BLOCK_SIZE + (transaction.data_size % BLOCK_SIZE != 0) as u64;
+        let reward = price_terms.0 + price_terms.1 * (blocks_len - 1);
+        transaction.reward = reward;
+
+        Ok(transaction)
+    }
+
+    pub async fn create_transaction_from_file_path(
+        &self,
+        file_path: PathBuf,
+        other_tags: Option<Vec<Tag<Base64>>>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+        auto_content_tag: bool,
+    ) -> Result<Transaction, Error> {
+        let data = fs::read(file_path).await?;
+        self.create_transaction(data, other_tags, last_tx, price_terms, auto_content_tag)
+            .await
+    }
+
+    pub fn merklize(&self, data: Vec<u8>) -> Result<Transaction, Error> {
+        let chunks = generate_leaves(data.clone(), &self.crypto)?;
+        let root = generate_data_root(chunks.clone(), &self.crypto)?;
+        let data_root = Base64(root.id.clone().into_iter().collect());
+        let proofs = resolve_proofs(root, None)?;
+
+        Ok(Transaction {
+            format: 2,
+            data_size: data.len() as u64,
+            data: Base64(data),
+            data_root,
+            chunks,
+            proofs,
+            ..Default::default()
+        })
+    }
+
+    pub async fn post_chunk(&self, chunk: &Chunk) -> Result<usize, Error> {
+        let url = self.base_url.join("chunk/")?;
+        let client = reqwest::Client::new();
+
+        client
+            .post(url)
+            .json(&chunk)
+            .header(&ACCEPT, "application/json")
+            .header(&CONTENT_TYPE, "application/json")
+            .send()
+            .await
+            .map_err(|e| Error::ArweavePostError(e))?;
+
+        Ok(chunk.offset)
+    }
+
+    pub async fn post_chunk_with_retries(&self, chunk: Chunk) -> Result<usize, Error> {
+        let mut retries = 0;
+        let mut resp = self.post_chunk(&chunk).await;
+
+        while retries < CHUNKS_RETRIES {
+            match resp {
+                Ok(offset) => return Ok(offset),
+                Err(_) => {
+                    sleep(Duration::from_secs(CHUNKS_RETRY_SLEEP)).await;
+                    retries += 1;
+                    resp = self.post_chunk(&chunk).await;
+                }
+            }
+        }
+        resp
+    }
+
+    pub async fn post_transaction(
+        &self,
+        signed_transaction: &Transaction,
+    ) -> Result<(Base64, u64), Error> {
+        if signed_transaction.id.0.is_empty() {
+            return Err(error::Error::UnsignedTransaction.into());
+        }
+
+        let url = self.base_url.join("tx/")?;
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(url)
+            .json(&signed_transaction)
+            .header(&ACCEPT, "application/json")
+            .header(&CONTENT_TYPE, "application/json")
+            .send()
+            .await?;
+        debug!("post_transaction {:?}", &resp);
+        assert_eq!(resp.status().as_u16(), 200);
+
+        Ok((signed_transaction.id.clone(), signed_transaction.reward))
+    }
+
+    pub async fn post_transaction_chunks(
+        &self,
+        signed_transaction: Transaction,
+        chunks_buffer: usize,
+    ) -> Result<(Base64, u64), Error> {
+        if signed_transaction.id.0.is_empty() {
+            return Err(error::Error::UnsignedTransaction.into());
+        }
+
+        let transaction_with_no_data = signed_transaction.clone_with_no_data()?;
+        let (id, reward) = self.post_transaction(&transaction_with_no_data).await?;
+
+        let results: Vec<Result<usize, Error>> =
+            upload_transaction_chunks_stream(&self, signed_transaction, chunks_buffer)
+                .collect()
+                .await;
+
+        results.into_iter().collect::<Result<Vec<usize>, Error>>()?;
+
+        Ok((id, reward))
+    }
+
+    /// Gets deep hash, signs and sets signature and id.
+    pub fn sign_transaction(&self, mut transaction: Transaction) -> Result<Transaction, Error> {
+        let deep_hash_item = transaction.to_deep_hash_item()?;
+        let deep_hash = self.crypto.deep_hash(deep_hash_item)?;
+        let signature = self.crypto.sign(&deep_hash)?;
+        let id = self.crypto.hash_sha256(&signature)?;
+        transaction.signature = Base64(signature);
+        transaction.id = Base64(id.to_vec());
+        Ok(transaction)
+    }
+
+    /// Signs transaction with sol_ar service.
+    pub async fn sign_transaction_with_sol(
+        &self,
+        mut transaction: Transaction,
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: &Keypair,
+    ) -> Result<(Transaction, SigResponse), Error> {
+        let lamports = std::cmp::max(&transaction.reward * 0, FLOOR);
+
+        let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
+        let mut resp = get_sol_ar_signature(
+            sol_ar_url.clone(),
+            transaction.to_deep_hash_item()?,
+            sol_tx.clone(),
+        )
+        .await;
+
+        let mut retries = 0;
+        while retries < CHUNKS_RETRIES {
+            match resp {
+                Ok(_) => {
+                    retries = CHUNKS_RETRIES;
+                }
+                Err(_) => {
+                    println!(
+                        "Retrying Solana transaction ({} of {})...",
+                        retries + 1,
+                        CHUNKS_RETRIES
+                    );
+                    retries += 1;
+                    sleep(Duration::from_millis(300)).await;
+                    resp = get_sol_ar_signature(
+                        sol_ar_url.clone(),
+                        transaction.to_deep_hash_item()?,
+                        sol_tx.clone(),
+                    )
+                    .await;
+                }
+            }
+        }
+        if let Ok(sig_response) = resp {
+            let sig_response_copy = sig_response.clone();
+            transaction.signature = sig_response.ar_tx_sig;
+            transaction.id = sig_response.ar_tx_id;
+            transaction.owner = sig_response.ar_tx_owner;
+            Ok((transaction, sig_response_copy))
+        } else {
+            println!(
+                "There was a problem with the Solana network. Please try again later or use AR."
+            );
+            Err(Error::SolanaNetworkError)
+        }
+    }
+
+    pub async fn upload_file_from_path(
+        &self,
+        file_path: PathBuf,
+        log_dir: Option<PathBuf>,
+        mut additional_tags: Option<Vec<Tag<Base64>>>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+    ) -> Result<Status, Error> {
+        let mut auto_content_tag = true;
+        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
+
+        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
+            status_content_type = content_type.to_string();
+            auto_content_tag = false;
+            let content_tag: Tag<Base64> =
+                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
+            if let Some(mut tags) = additional_tags {
+                tags.push(content_tag);
+                additional_tags = Some(tags);
+            } else {
+                additional_tags = Some(vec![content_tag]);
+            }
+        }
+
+        let transaction = self
+            .create_transaction_from_file_path(
+                file_path.clone(),
+                additional_tags,
+                last_tx,
+                price_terms,
+                auto_content_tag,
+            )
+            .await?;
+        let signed_transaction = self.sign_transaction(transaction)?;
+        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+
+        let status = Status {
+            id,
+            reward,
+            file_path: Some(file_path),
+            content_type: status_content_type,
+            ..Default::default()
+        };
+
+        if let Some(log_dir) = log_dir {
+            self.write_status(status.clone(), log_dir, None).await?;
+        }
+        Ok(status)
+    }
+
+    pub async fn upload_file_from_path_with_sol(
+        &self,
+        file_path: PathBuf,
+        log_dir: Option<PathBuf>,
+        mut additional_tags: Option<Vec<Tag<Base64>>>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: &Keypair,
+    ) -> Result<Status, Error> {
+        let mut auto_content_tag = true;
+        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
+
+        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
+            status_content_type = content_type.to_string();
+            auto_content_tag = false;
+            let content_tag: Tag<Base64> =
+                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
+            if let Some(mut tags) = additional_tags {
+                tags.push(content_tag);
+                additional_tags = Some(tags);
+            } else {
+                additional_tags = Some(vec![content_tag]);
+            }
+        }
+
+        let transaction = self
+            .create_transaction_from_file_path(
+                file_path.clone(),
+                additional_tags,
+                last_tx,
+                price_terms,
+                auto_content_tag,
+            )
+            .await?;
+
+        let (signed_transaction, sig_response): (Transaction, SigResponse) = self
+            .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
+            .await?;
+
+        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+
+        let mut status = Status {
+            file_path: Some(file_path),
+            content_type: status_content_type,
+            id,
+            reward,
+            ..Default::default()
+        };
+
+        if let Some(log_dir) = log_dir {
+            status.sol_sig = Some(sig_response);
+            self.write_status(status.clone(), log_dir, None).await?;
+        }
+        Ok(status)
+    }
+
+    /// Uploads files from an iterator of paths.
+    ///
+    /// Optionally logs Status objects to `log_dir`, if provided and optionally adds tags to each
+    ///  transaction from an iterator of tags that must be the same size as the paths iterator.
+    pub async fn upload_files_from_paths<IP, IT>(
+        &self,
+        paths_iter: IP,
+        log_dir: Option<PathBuf>,
+        tags_iter: Option<IT>,
+        last_tx: Option<Base64>,
+        price_terms: (u64, u64),
+    ) -> Result<Vec<Status>, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+        IT: Iterator<Item = Option<Vec<Tag<Base64>>>> + Send,
+    {
+        let statuses = if let Some(tags_iter) = tags_iter {
+            try_join_all(paths_iter.zip(tags_iter).map(|(p, t)| {
+                self.upload_file_from_path(p, log_dir.clone(), t, last_tx.clone(), price_terms)
+            }))
+        } else {
+            try_join_all(paths_iter.map(|p| {
+                self.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), price_terms)
+            }))
+        }
+        .await?;
+        Ok(statuses)
+    }
+
+    //-------------------------
+    // Status
+    //-------------------------
+
+    pub async fn create_log_dir(&self, parent_dir: &Path) -> Result<PathBuf, Error> {
+        let mut rand_bytes: [u8; 8] = [0; 8];
+        self.crypto.fill_rand(&mut rand_bytes)?;
+        let suffix = base64::encode_config(rand_bytes, base64::URL_SAFE_NO_PAD);
+        let log_dir = parent_dir.join(format!("arloader_{}", suffix));
+        fs::create_dir_all(&log_dir).await?;
+        Ok(log_dir)
+    }
+
+    /// Filters saved Status objects by status and/or number of confirmations. Return
+    /// all statuses if no status codes or maximum confirmations are provided.
+    ///
+    /// If there is no raw status object and max_confirms is passed, it
+    /// assumes there are zero confirms. This is designed to be used to
+    /// determine whether all files have a confirmed status and to collect the
+    /// paths of the files that need to be re-uploaded.
+    pub async fn filter_statuses<IP>(
+        &self,
+        paths_iter: IP,
+        log_dir: PathBuf,
+        statuses: Option<Vec<StatusCode>>,
+        max_confirms: Option<u64>,
+    ) -> Result<Vec<Status>, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        let all_statuses = self.read_statuses(paths_iter, log_dir).await?;
+
+        let filtered = if let Some(statuses) = statuses {
+            if let Some(max_confirms) = max_confirms {
+                all_statuses
+                    .into_iter()
+                    .filter(|s| {
+                        let confirms = if let Some(raw_status) = &s.raw_status {
+                            raw_status.number_of_confirmations
+                        } else {
+                            0
+                        };
+                        (&statuses.iter().any(|c| c == &s.status)) & (confirms <= max_confirms)
+                    })
+                    .collect()
+            } else {
+                all_statuses
+                    .into_iter()
+                    .filter(|s| statuses.iter().any(|c| c == &s.status))
+                    .collect()
+            }
+        } else {
+            if let Some(max_confirms) = max_confirms {
+                all_statuses
+                    .into_iter()
+                    .filter(|s| {
+                        let confirms = if let Some(raw_status) = &s.raw_status {
+                            raw_status.number_of_confirmations
+                        } else {
+                            0
+                        };
+                        confirms <= max_confirms
+                    })
+                    .collect()
+            } else {
+                all_statuses
+            }
+        };
+
+        Ok(filtered)
+    }
+
+    /// Gets status from network.
+    pub async fn get_status(&self, id: &Base64) -> Result<Status, Error> {
+        let url = self.base_url.join(&format!("tx/{}/status", id))?;
+        let resp = reqwest::get(url).await?;
+        let mut status = Status {
+            id: id.clone(),
+            ..Status::default()
+        };
+
+        match resp.status() {
+            ResponseStatusCode::OK => {
+                let resp_string = resp.text().await?;
+                if &resp_string == &String::from("Pending") {
+                    status.status = StatusCode::Pending;
+                } else {
+                    status.raw_status = Some(serde_json::from_str(&resp_string)?);
+                    status.status = StatusCode::Confirmed;
+                }
+            }
+            ResponseStatusCode::ACCEPTED => {
+                status.status = StatusCode::Pending;
+            }
+            ResponseStatusCode::NOT_FOUND => {
+                status.status = StatusCode::NotFound;
+            }
+            _ => unreachable!(),
+        }
+        Ok(status)
+    }
+
+    pub async fn read_bundle_status(&self, file_path: PathBuf) -> Result<BundleStatus, Error> {
+        let data = fs::read_to_string(&file_path).await?;
+        let status = serde_json::from_str::<BundleStatus>(&data)?;
+        Ok(status)
+    }
+
+    // Reads statuses from a list of paths.
+    pub async fn read_bundle_statuses<IP>(&self, paths_iter: IP) -> Result<Vec<BundleStatus>, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        try_join_all(paths_iter.map(|p| self.read_bundle_status(p))).await
+    }
+
+    pub async fn status_summary<IP>(
+        &self,
+        paths_iter: IP,
+        log_dir: PathBuf,
+    ) -> Result<String, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        let statuses = self.read_statuses(paths_iter, log_dir).await?;
+        let status_counts: HashMap<StatusCode, u32> =
+            statuses
+                .into_iter()
+                .fold(HashMap::new(), |mut map, status| {
+                    *map.entry(status.status).or_insert(0) += 1;
+                    map
+                });
+
+        let mut total = 0;
+        let mut output = String::new();
+        writeln!(output, " {:<15}  {:>10}", "status", "count")?;
+        writeln!(output, "{:-<29}", "")?;
+        for k in vec![
+            StatusCode::Submitted,
+            StatusCode::Pending,
+            StatusCode::NotFound,
+            StatusCode::Confirmed,
+        ] {
+            let v = status_counts.get(&k).unwrap_or(&0);
+            writeln!(output, " {:<16} {:>10}", &k.to_string(), v)?;
+            total += v;
+        }
+
+        writeln!(output, "{:-<29}", "")?;
+        writeln!(output, " {:<15}  {:>10}", "Total", total)?;
+
+        Ok(output)
+    }
+
+    // Reads a status from file.
+    pub async fn read_status(&self, file_path: PathBuf, log_dir: PathBuf) -> Result<Status, Error> {
+        let file_path_hash = blake3::hash(file_path.to_str().unwrap().as_bytes());
+
+        let status_path = log_dir
+            .join(file_path_hash.to_string())
+            .with_extension("json");
+
+        if status_path.exists() {
+            let data = fs::read_to_string(status_path).await?;
+            let status: Status = serde_json::from_str(&data)?;
+            Ok(status)
+        } else {
+            Err(Error::StatusNotFound)
+        }
+    }
+
+    // Reads statuses from a list of paths.
+    pub async fn read_statuses<IP>(
+        &self,
+        paths_iter: IP,
+        log_dir: PathBuf,
+    ) -> Result<Vec<Status>, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        try_join_all(paths_iter.map(|p| self.read_status(p, log_dir.clone()))).await
+    }
+
+    pub async fn update_bundle_status(&self, file_path: PathBuf) -> Result<BundleStatus, Error> {
+        let data = fs::read_to_string(&file_path).await?;
+        let mut status: BundleStatus = serde_json::from_str(&data)?;
+        let trans_status = self.get_status(&status.id).await?;
+        status.last_modified = Utc::now();
+        status.status = trans_status.status;
+        status.raw_status = trans_status.raw_status;
+        fs::write(&file_path, serde_json::to_string(&status)?).await?;
+        Ok(status)
+    }
+
+    pub async fn update_status(
+        &self,
+        file_path: PathBuf,
+        log_dir: PathBuf,
+    ) -> Result<Status, Error> {
+        let mut status = self.read_status(file_path, log_dir.clone()).await?;
+        let trans_status = self.get_status(&status.id).await?;
+        status.last_modified = Utc::now();
+        status.status = trans_status.status;
+        status.raw_status = trans_status.raw_status;
+        self.write_status(status.clone(), log_dir, None).await?;
+        Ok(status)
+    }
+
+    pub async fn update_statuses<IP>(
+        &self,
+        paths_iter: IP,
+        log_dir: PathBuf,
+    ) -> Result<Vec<Status>, Error>
+    where
+        IP: Iterator<Item = PathBuf> + Send,
+    {
+        try_join_all(paths_iter.map(|p| self.update_status(p, log_dir.clone()))).await
+    }
+
+    /// Writes Status Json to `log_dir` with file name based on BLAKE3 hash of `status.file_path`.
+    ///
+    /// This is done to facilitate checking the status of uploaded file and also means that only
+    /// one status object can exist for a given `file_path`. If for some reason you wanted to record
+    /// statuses for multiple uploads of the same file you can provide a different `log_dir` (or copy the
+    /// file to a different directory and upload from there).
+    pub async fn write_status(
+        &self,
+        status: Status,
+        log_dir: PathBuf,
+        file_stem: Option<String>,
+    ) -> Result<(), Error> {
+        let file_stem = if let Some(stem) = file_stem {
+            stem
+        } else {
+            if let Some(file_path) = &status.file_path {
+                if status.id.0.is_empty() {
+                    return Err(error::Error::UnsignedTransaction.into());
+                }
+                blake3::hash(file_path.to_str().unwrap().as_bytes()).to_string()
+            } else {
+                format!("txid_{}", status.id)
+            }
+        };
+
+        fs::write(
+            log_dir.join(file_stem).with_extension("json"),
+            serde_json::to_string(&status)?,
+        )
+        .await?;
+        Ok(())
+    }
+
+    //-------------------------
+    // Manifest
+    //-------------------------
+
+    pub fn create_data_item_from_manifest(&self, manifest: Value) -> Result<DataItem, Error> {
+        let tags = vec![
+            Tag::<String>::from_utf8_strs("Content-Type", "application/x.arweave-manifest+json")?,
+            Tag::<String>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?,
+        ];
+
+        // let mut anchor = Base64(Vec::with_capacity(32));
+        // self.crypto.fill_rand(&mut anchor.0)?;
+
+        Ok(DataItem {
+            data: Base64(serde_json::to_string(&manifest)?.as_bytes().to_vec()),
+            tags,
+            // anchor,
+            ..DataItem::default()
+        })
+    }
+
+    pub fn create_manifest(&self, statuses: Vec<Status>) -> Result<Value, Error> {
+        let paths = statuses
+            .into_iter()
+            .fold(serde_json::Map::new(), |mut m, s| {
+                m.insert(
+                    s.file_path
+                        .unwrap()
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                    json!({"id": s.id.to_string(), "content_type": s.content_type}),
+                );
+                m
+            });
+
+        let manifest = json!({
+            "manifest": "arweave/paths",
+            "version": "0.1.0",
+            "paths": Value::Object(paths)
+        });
+
+        Ok(manifest)
+    }
+
+    pub fn create_manifest_from_bundle_statuses(
+        &self,
+        statuses: Vec<BundleStatus>,
+    ) -> Result<Value, Error> {
+        let paths = statuses
+            .into_iter()
+            .fold(serde_json::Map::new(), |mut m, mut s| {
+                m.append(s.file_paths.as_object_mut().unwrap());
+                m
+            });
+
+        let manifest = json!({
+            "manifest": "arweave/paths",
+            "version": "0.1.0",
+            "paths": Value::Object(paths)
+        });
+
+        Ok(manifest)
+    }
+
+    pub async fn create_transaction_from_manifest(
+        &self,
+        manifest: Value,
+        price_terms: (u64, u64),
+    ) -> Result<Transaction, Error> {
+        let tags = vec![Tag::<Base64>::from_utf8_strs(
+            "Content-Type",
+            "application/x.arweave-manifest+json",
+        )?];
+
+        // let mut anchor = Base64(Vec::with_capacity(32));
+        // self.crypto.fill_rand(&mut anchor.0)?;
+
+        let data = serde_json::to_string(&manifest)?.as_bytes().to_vec();
+        let transaction = self
+            .create_transaction(data, Some(tags), None, price_terms, false)
+            .await?;
+
+        Ok(transaction)
+    }
+
+    pub async fn upload_manifest_from_bundle_log_dir(
+        &self,
+        log_dir: &str,
+        price_terms: (u64, u64),
+        solana_url: Url,
+        sol_ar_url: Url,
+        from_keypair: Option<Keypair>,
+    ) -> Result<String, Error> {
+        let paths: Vec<PathBuf> = glob(&format!("{}*.json", log_dir.clone()))?
+            .filter_map(Result::ok)
+            .collect();
+
+        let paths_len = paths.len();
+        if paths_len == 0 {
+            return Ok(format!("No bundle statuses found in {}", log_dir));
+        };
+
+        let statuses = try_join_all(
+            paths
+                .iter()
+                .filter(|p| file_stem_is_valid_txid(p))
+                .map(|p| fs::read_to_string(p)),
+        )
+        .await?
+        .iter()
+        .map(|s| serde_json::from_str::<BundleStatus>(s).unwrap())
+        .collect();
+
+        let manifest = self.create_manifest_from_bundle_statuses(statuses)?;
+        let num_files = manifest["paths"].as_object().unwrap().keys().len();
+        let transaction = self
+            .create_transaction_from_manifest(manifest.clone(), price_terms)
+            .await?;
+
+        let signed_transaction = if let Some(from_keypair) = from_keypair {
+            let (signed_transaction, _): (Transaction, SigResponse) = self
+                .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, &from_keypair)
+                .await?;
+            signed_transaction
+        } else {
+            self.sign_transaction(transaction)?
+        };
+
+        let (id, _) = self.post_transaction(&signed_transaction).await?;
+
+        self.write_manifest(manifest, id.to_string(), PathBuf::from(log_dir))
+            .await?;
+
+        Ok(format!("Uploaded manifest for {} files and wrote to {}manifest_{id}.json.\n\nRun `arloader get-status {id}` to confirm manifest transaction.",
+        num_files, log_dir, id=id.to_string()))
+    }
+
     pub async fn write_manifest(
         &self,
         manifest: Value,
@@ -1488,6 +1549,16 @@ impl Arweave {
         )
         .await?;
         Ok(())
+    }
+
+    //-------------------------
+    // Metadata
+    //-------------------------
+
+    pub async fn read_metadata_file(&self, file_path: PathBuf) -> Result<Value, Error> {
+        let data = fs::read_to_string(file_path.clone()).await?;
+        let metadata: Value = serde_json::from_str(&data)?;
+        Ok(json!({"file_path": file_path.display().to_string(), "metadata": metadata}))
     }
 
     pub async fn update_metadata_file(
@@ -1558,12 +1629,6 @@ impl Arweave {
         }
     }
 
-    pub async fn read_metadata_file(&self, file_path: PathBuf) -> Result<Value, Error> {
-        let data = fs::read_to_string(file_path.clone()).await?;
-        let metadata: Value = serde_json::from_str(&data)?;
-        Ok(json!({"file_path": file_path.display().to_string(), "metadata": metadata}))
-    }
-
     pub async fn write_metaplex_items<IP>(
         &self,
         paths_iter: IP,
@@ -1623,15 +1688,6 @@ impl Arweave {
         } else {
             Err(Error::ManifestNotFound)
         }
-    }
-
-    pub async fn create_log_dir(&self, parent_dir: &Path) -> Result<PathBuf, Error> {
-        let mut rand_bytes: [u8; 8] = [0; 8];
-        self.crypto.fill_rand(&mut rand_bytes)?;
-        let suffix = base64::encode_config(rand_bytes, base64::URL_SAFE_NO_PAD);
-        let log_dir = parent_dir.join(format!("arloader_{}", suffix));
-        fs::create_dir_all(&log_dir).await?;
-        Ok(log_dir)
     }
 }
 

@@ -10,524 +10,6 @@ use clap::{
 };
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 use url::Url;
-
-// ====================
-// Validators
-// ====================
-
-fn is_parsable_generic<U, T>(string: T) -> Result<(), String>
-where
-    T: AsRef<str> + Display,
-    U: FromStr,
-    U::Err: Display,
-{
-    string
-        .as_ref()
-        .parse::<U>()
-        .map(|_| ())
-        .map_err(|err| format!("error parsing '{}': {}", string, err))
-}
-
-pub fn is_parsable<T>(string: String) -> Result<(), String>
-where
-    T: FromStr,
-    T::Err: Display,
-{
-    is_parsable_generic::<T, String>(string)
-}
-
-fn is_valid_tag<T>(tag: T) -> Result<(), String>
-where
-    T: AsRef<str> + Display,
-{
-    let split: Vec<_> = tag.as_ref().split(":").collect();
-    match Tag::<Base64>::from_utf8_strs(split[0], split[1]) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(format!("Not a valid tag.")),
-    }
-}
-
-fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
-    match reward_mult.parse::<f32>() {
-        Ok(n) => {
-            if n > 0. && n < 10. {
-                Ok(())
-            } else {
-                Err(format!("Multiplier must be between 0 and 10."))
-            }
-        }
-        Err(_) => Err(format!("Not a valid multiplier.")),
-    }
-}
-
-fn is_valid_bundle_size(bundle_size: String) -> Result<(), String> {
-    match bundle_size.parse::<u64>() {
-        Ok(n) => {
-            if n > 0 && n <= 200 {
-                Ok(())
-            } else {
-                Err(format!(
-                    "Bundle size must be at least 1 MB and not greater than 200 MB."
-                ))
-            }
-        }
-        Err(_) => Err(format!("Not a valid bundle size.")),
-    }
-}
-
-fn is_valid_dir(dir_str: String) -> Result<(), String> {
-    match dir_str.parse::<PathBuf>() {
-        Ok(p) => {
-            if p.exists() {
-                if p.is_dir() {
-                    Ok(())
-                } else {
-                    Err(format!("Path is not a directory."))
-                }
-            } else {
-                Err(format!("Path does not exist."))
-            }
-        }
-        Err(_) => Err(format!("Not a valid path.")),
-    }
-}
-
-fn is_valid_file_path(path_str: String) -> Result<(), String> {
-    match path_str.parse::<PathBuf>() {
-        Ok(p) => {
-            if p.exists() {
-                if p.is_file() {
-                    Ok(())
-                } else {
-                    Err(format!("Path is not file."))
-                }
-            } else {
-                Err(format!("Path does not exist."))
-            }
-        }
-        Err(_) => Err(format!("Not a valid path.")),
-    }
-}
-
-// ====================
-// Helpers
-// ====================
-
-fn get_tags_vec<T>(tag_values: Option<Values>) -> Option<Vec<T>>
-where
-    T: FromUtf8Strs<T>,
-{
-    if let Some(tag_strings) = tag_values {
-        let tags = tag_strings
-            .into_iter()
-            .map(|t| {
-                let split: Vec<&str> = t.split(":").collect();
-                T::from_utf8_strs(split[0], split[1])
-            })
-            .flat_map(Result::ok)
-            .collect();
-        Some(tags)
-    } else {
-        None
-    }
-}
-
-fn get_status_code(output: &str) -> StatusCode {
-    match output {
-        "Submitted" => StatusCode::Submitted,
-        "Pending" => StatusCode::Pending,
-        "Confirmed" => StatusCode::Confirmed,
-        "NotFound" => StatusCode::NotFound,
-        _ => StatusCode::NotFound,
-    }
-}
-
-pub trait CleanPaths {
-    fn expand_tilde(&self) -> String;
-    fn add_trailing_slash(&self) -> String;
-}
-
-// This gets applied to all directories to both expand the tilde for the home directory
-// and to make sure that there is a trailing slash.
-impl CleanPaths for &str {
-    fn expand_tilde(&self) -> String {
-        if self.chars().next().unwrap() == '~' {
-            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
-        } else {
-            self.to_string()
-        }
-    }
-    fn add_trailing_slash(&self) -> String {
-        let last_char = self.chars().last().unwrap();
-        if !(last_char == '/' || last_char == '\\') {
-            format!("{}/", self)
-        } else {
-            self.to_string()
-        }
-    }
-}
-
-impl CleanPaths for String {
-    fn expand_tilde(&self) -> String {
-        if self.chars().next().unwrap() == '~' {
-            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
-        } else {
-            self.to_string()
-        }
-    }
-    fn add_trailing_slash(&self) -> String {
-        let last_char = self.chars().last().unwrap();
-        if !(last_char == '/' || last_char == '\\') {
-            format!("{}/", self)
-        } else {
-            self.to_string()
-        }
-    }
-}
-
-// ====================
-// Arguments
-// ====================
-
-fn ar_default_keypair<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("ar_default_keypair")
-        .long("ar-default-keypair")
-        .value_name("AR_DEFAULT_KEYPAIR")
-        .takes_value(false)
-        .requires("with_sol")
-        .help("Uses the default AR keypair to sign data items if funding with SOL.")
-}
-
-fn ar_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("ar_keypair_path")
-        .long("ar-keypair-path")
-        .value_name("AR_KEYPAIR_PATH")
-        .validator(is_valid_file_path)
-        .env("AR_KEYPAIR_PATH")
-        .help("Specify path of keypair file to use for funding transactions.")
-}
-
-fn buffer_arg<'a, 'b>(default: &'a str) -> Arg<'a, 'b> {
-    Arg::with_name("buffer")
-        .long("buffer")
-        .value_name("BUFFER")
-        .takes_value(true)
-        .validator(is_parsable::<usize>)
-        .default_value(default)
-        .help("Specify the maximum number of concurrent network requests.")
-}
-
-fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("bundle_size")
-        .long("bundle-size")
-        .value_name("BUNDLE_SIZE")
-        .takes_value(true)
-        .validator(is_valid_bundle_size)
-        .default_value("10")
-        .help("Specify the bundle size in megabytes.")
-}
-
-fn glob_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
-    Arg::with_name("glob")
-        .value_name("GLOB")
-        .takes_value(true)
-        .required(required)
-        .help(
-            "Specify pattern to match files against. \
-            MUST BE IN QUOTES TO AVOID SHELL EXPANSION.",
-        )
-}
-
-fn id_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("id")
-        .value_name("ID")
-        .takes_value(true)
-        .required(true)
-        .validator(is_parsable::<Base64>)
-        .help("Specify the transaction id.")
-}
-
-fn link_file_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("link_file")
-        .long("link-file")
-        .value_name("LINK_FILE")
-        .required(false)
-        .takes_value(false)
-        .help("Uses file based link instead of id based link.")
-}
-
-fn log_dir_arg_write<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("log_dir")
-        .value_name("LOG_DIR")
-        .validator(is_valid_dir)
-        .takes_value(true)
-        .help("Specify a directory to write status updates to.")
-}
-
-fn log_dir_arg_read<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("log_dir")
-        .required(true)
-        .value_name("LOG_DIR")
-        .validator(is_valid_dir)
-        .takes_value(true)
-        .help("Specify the directory that statuses have been written to.")
-}
-
-fn manifest_path_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("manifest_path")
-        .long("manifest-path")
-        .value_name("MANIFEST_PATH")
-        .required(true)
-        .validator(is_parsable::<PathBuf>)
-        .help("Path of manifest file from which to update NFT metadata files.")
-}
-
-fn max_confirms_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("max_confirms")
-        .long("max-confirms")
-        .value_name("MAX_CONFIRM")
-        .takes_value(true)
-        .help("Specify maximum number of confirmations to filter statuses by.")
-}
-
-fn no_bundle_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("no_bundle")
-        .long("no-bundle")
-        .short("nb")
-        .value_name("NO_BUNDLE")
-        .required(false)
-        .takes_value(false)
-        .help(
-            "Uploads with an individual transaction \
-            for each file without bundling.",
-        )
-}
-
-fn reward_multiplier_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("reward_multiplier")
-        .long("reward-multiplier")
-        .short("rx")
-        .value_name("REWARD_MULT")
-        .default_value("1.0")
-        .validator(is_valid_reward_multiplier)
-        .help("Specify a float between 0.0 and 10.0 to multiply the reward by.")
-}
-
-fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("sol_keypair_path")
-        .long("sol-keypair-path")
-        .value_name("SOL_KEYPAIR_PATH")
-        .validator(is_valid_file_path)
-        .env("SOL_KEYPAIR_PATH")
-        .help("Specify path of keypair file to use for funding transactions.")
-}
-
-fn statuses_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("statuses")
-        .long("statuses")
-        .value_name("STATUSES")
-        .takes_value(true)
-        .multiple(true)
-        .possible_values(&["Submitted", "Pending", "Confirmed", "NotFound"])
-        .help("Specify the status codes to filter by.")
-}
-
-fn status_log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("log_dir")
-        .value_name("LOG_DIR")
-        .takes_value(true)
-        .takes_value(true)
-        .validator(is_valid_dir)
-        .help("Parent status directory that contains `assets/` and `metadata/` sub-folders.")
-}
-
-fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("tags")
-        .long("tags")
-        .value_name("TAGS")
-        .multiple(true)
-        .takes_value(true)
-        .validator(is_valid_tag)
-        .help(
-            "Specify additional tags for uploaded files as \
-        <NAME>:<VALUE>, separated by spaces. Content-Type tag \
-        is inferred automatically so not necessary to \
-        specify. Applied to each uploaded file.",
-        )
-}
-
-fn with_sol_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("with_sol")
-        .long("with-sol")
-        .value_name("WITH_SOL")
-        .required(false)
-        .takes_value(false)
-        .help("Funds transactions with with SOL.")
-}
-
-fn get_app() -> App<'static, 'static> {
-    let app_matches = App::new(crate_name!())
-        .about(crate_description!())
-        .version(crate_version!())
-        .setting(AppSettings::SubcommandRequiredElseHelp)
-        .arg(
-            Arg::with_name("base_url")
-                .long("base-url")
-                .value_name("AR_BASE_URL")
-                .validator(is_parsable::<Url>)
-                .default_value("https://arweave.net/")
-                .env("AR_BASE_URL")
-                .help("Base url for network requests."),
-        )
-        .arg(
-            Arg::with_name("output_format")
-                .long("output")
-                .short("o")
-                .value_name("FORMAT")
-                .global(true)
-                .takes_value(true)
-                .possible_values(&["quiet", "verbose", "json", "json-compact"])
-                .help("Specify output format."),
-        )
-        .subcommand(
-            SubCommand::with_name("balance")
-                .about("Prints the balance of an Arweave wallet.")
-                .arg(
-                    Arg::with_name("wallet_address")
-                        .value_name("WALLET_ADDRESS")
-                        .takes_value(true)
-                        .validator(is_parsable::<Base64>)
-                        .required_unless("ar_keypair_path")
-                        .help(
-                            "Specify the address of the wallet. \
-                            Defaults to <AR_KEYPAIR_PATH>.",
-                        ),
-                )
-                .arg(ar_keypair_path_arg())
-        )
-        .subcommand(
-            SubCommand::with_name("estimate")
-                .about(
-                    "Prints the estimated cost of uploading files.",
-                )
-                .arg(glob_arg(true))
-                .arg(reward_multiplier_arg())
-                .arg(with_sol_arg())
-                .arg(bundle_size_arg())
-                .arg(no_bundle_arg())
-        )
-        .subcommand(
-            SubCommand::with_name("get-status")
-                .about("Prints the status of a transaction.")
-                .arg(id_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("get-transaction")
-                .about("Gets a transaction from the network.")
-                .arg(id_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("list-status")
-                .about("Prints statuses stored in <LOG_DIR>.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg_read().long("log-dir"))
-                .arg(statuses_arg())
-                .arg(max_confirms_arg()),
-        )
-        .subcommand(
-            SubCommand::with_name("pending")
-                .about("Prints count of pending network transactions."),
-        )
-        .subcommand(
-            SubCommand::with_name("status-report")
-                .about("Prints a summary of statuses stored in <LOG_DIR>.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg_read().long("log-dir"))
-        )
-        .subcommand(
-            SubCommand::with_name("update-nft-status")
-                .about("Updates statuses from NFT upload.")
-                .arg(status_log_dir_arg())
-                .arg(buffer_arg("10")),
-        )
-        .subcommand(
-            SubCommand::with_name("update-status")
-                .about("Updates statuses stored in <LOG_DIR> and prints them.")
-                .arg(log_dir_arg_read())
-                .arg(glob_arg(false))
-                .arg(no_bundle_arg())
-                .arg(buffer_arg("10")),
-        )
-        .subcommand(
-            SubCommand::with_name("update-metadata")
-                .about("Updates NFT metadata files with links to uploaded asset files.")
-                .arg(glob_arg(true))
-                .arg(manifest_path_arg())
-                .arg(link_file_arg())
-        )
-        .subcommand(
-            SubCommand::with_name("upload")
-                .about("Uploads files.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg_write().long("log-dir"))
-                .arg(tags_arg())
-                .arg(reward_multiplier_arg())
-                .arg(ar_keypair_path_arg().required_unless("with_sol"))
-                .arg(ar_default_keypair())
-                .arg(with_sol_arg().requires("sol_keypair_path"))
-                .arg(sol_keypair_path_arg())
-                .arg(no_bundle_arg())
-                .arg(buffer_arg("5"))
-                .arg(bundle_size_arg())
-                .group(ArgGroup::with_name("ar_keypair").args(&["ar_keypair_path", "ar_default_keypair"]).required(true))
-                ,
-        )
-        .subcommand(
-            SubCommand::with_name("upload-filter")
-                .about("Re-uploads files that meet filter criteria. Not currently implemented for bundles.")
-                .arg(glob_arg(true))
-                .arg(log_dir_arg_write().long("log-dir").required(true))
-                .arg(reward_multiplier_arg())
-                .arg(statuses_arg())
-                .arg(max_confirms_arg())
-                .arg(ar_keypair_path_arg().required(true))
-        )
-        .subcommand(
-            SubCommand::with_name("upload-manifest")
-                .about("Uploads a manifest for uploaded files. Only currently implemented bundles.")
-                .arg(log_dir_arg_read())
-                .arg(reward_multiplier_arg())
-                .arg(ar_keypair_path_arg().required_unless("with_sol"))
-                .arg(ar_default_keypair())
-                .arg(with_sol_arg().requires("sol_keypair_path"))
-                .arg(sol_keypair_path_arg())
-                .group(ArgGroup::with_name("ar_keypair").args(&["ar_keypair_path", "ar_default_keypair"]).required(true))
-        )
-        .subcommand(
-            SubCommand::with_name("upload-nfts")
-                .about("Uploads a directory with pairs of asset and metadata files.")
-                .arg(glob_arg(true))
-                .arg(reward_multiplier_arg())
-                .arg(ar_keypair_path_arg().required_unless("with_sol"))
-                .arg(ar_default_keypair())
-                .arg(with_sol_arg().requires("sol_keypair_path"))
-                .arg(sol_keypair_path_arg())
-                .arg(buffer_arg("5"))
-                .arg(bundle_size_arg())
-                .arg(link_file_arg())
-                .group(ArgGroup::with_name("ar_keypair").args(&["ar_keypair_path", "ar_default_keypair"]).required(true))
-                ,
-        )
-        .subcommand(
-            SubCommand::with_name("write-metaplex-items")
-                .about("Writes metaplex items file.")
-                .arg(glob_arg(true))
-                .arg(manifest_path_arg())
-                .arg(link_file_arg())
-        );
-    app_matches
-}
-
 #[tokio::main]
 async fn main() -> CommandResult {
     env_logger::init();
@@ -608,6 +90,44 @@ async fn main() -> CommandResult {
             .await
         }
         ("pending", Some(_)) => command_get_pending_count(&Arweave::default()).await,
+        ("re-upload", Some(sub_arg_matches)) => {
+            let arweave = if let Some(ar_keypair_path) = sub_arg_matches.value_of("ar_keypair_path")
+            {
+                Arweave::from_keypair_path(PathBuf::from(ar_keypair_path.expand_tilde()), base_url)
+                    .await
+                    .unwrap()
+            } else {
+                Arweave::default()
+            };
+            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
+            let log_dir = &sub_arg_matches
+                .value_of("log_dir")
+                .unwrap()
+                .expand_tilde()
+                .add_trailing_slash();
+            let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
+
+            let statuses = if let Some(values) = sub_arg_matches.values_of("statuses") {
+                Some(values.map(get_status_code).collect())
+            } else {
+                None
+            };
+
+            let max_confirms = sub_arg_matches.value_of("max_confirms");
+            let output_format = app_matches.value_of("output_format");
+            let buffer = app_matches.value_of("buffer");
+            command_upload_filter(
+                &arweave,
+                glob_str,
+                log_dir,
+                reward_mult,
+                statuses,
+                max_confirms,
+                output_format,
+                buffer,
+            )
+            .await
+        }
         ("status-report", Some(sub_arg_matches)) => {
             let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
             let log_dir = &sub_arg_matches
@@ -769,44 +289,6 @@ async fn main() -> CommandResult {
             )
             .await
         }
-        ("upload-filter", Some(sub_arg_matches)) => {
-            let arweave = if let Some(ar_keypair_path) = sub_arg_matches.value_of("ar_keypair_path")
-            {
-                Arweave::from_keypair_path(PathBuf::from(ar_keypair_path.expand_tilde()), base_url)
-                    .await
-                    .unwrap()
-            } else {
-                Arweave::default()
-            };
-            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
-            let log_dir = &sub_arg_matches
-                .value_of("log_dir")
-                .unwrap()
-                .expand_tilde()
-                .add_trailing_slash();
-            let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
-
-            let statuses = if let Some(values) = sub_arg_matches.values_of("statuses") {
-                Some(values.map(get_status_code).collect())
-            } else {
-                None
-            };
-
-            let max_confirms = sub_arg_matches.value_of("max_confirms");
-            let output_format = app_matches.value_of("output_format");
-            let buffer = app_matches.value_of("buffer");
-            command_upload_filter(
-                &arweave,
-                glob_str,
-                log_dir,
-                reward_mult,
-                statuses,
-                max_confirms,
-                output_format,
-                buffer,
-            )
-            .await
-        }
         ("upload-manifest", Some(sub_arg_matches)) => {
             let arweave = if let Some(ar_keypair_path) = sub_arg_matches.value_of("ar_keypair_path")
             {
@@ -839,6 +321,533 @@ async fn main() -> CommandResult {
                 .await
         }
         _ => unreachable!(),
+    }
+}
+
+fn get_app() -> App<'static, 'static> {
+    let app_matches = App::new(crate_name!())
+        .about(crate_description!())
+        .version(crate_version!())
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .arg(
+            Arg::with_name("base_url")
+                .long("base-url")
+                .value_name("AR_BASE_URL")
+                .validator(is_parsable::<Url>)
+                .default_value("https://arweave.net/")
+                .env("AR_BASE_URL")
+                .help("Base url for network requests."),
+        )
+        .arg(
+            Arg::with_name("output_format")
+                .long("output")
+                .short("o")
+                .value_name("FORMAT")
+                .global(true)
+                .takes_value(true)
+                .possible_values(&["quiet", "verbose", "json", "json-compact"])
+                .help("Specify output format."),
+        )
+        .subcommand(
+            SubCommand::with_name("balance")
+                .about("Prints the balance of an Arweave wallet.")
+                .arg(
+                    Arg::with_name("wallet_address")
+                        .value_name("WALLET_ADDRESS")
+                        .takes_value(true)
+                        .validator(is_parsable::<Base64>)
+                        .required_unless("ar_keypair_path")
+                        .help(
+                            "Specify the address of the wallet. \
+                            Defaults to <AR_KEYPAIR_PATH>.",
+                        ),
+                )
+                .arg(ar_keypair_path_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("estimate")
+                .about("Prints the estimated cost of uploading files.")
+                .arg(glob_arg(true))
+                .arg(reward_multiplier_arg())
+                .arg(with_sol_arg())
+                .arg(bundle_size_arg())
+                .arg(no_bundle_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("get-status")
+                .about("Prints the status of a transaction.")
+                .arg(id_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("get-transaction")
+                .about("Gets a transaction from the network.")
+                .arg(id_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("list-status")
+                .about("Prints statuses.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg_read().long("log-dir"))
+                .arg(statuses_arg())
+                .arg(max_confirms_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("pending").about("Prints count of pending network transactions."),
+        )
+        .subcommand(
+            SubCommand::with_name("status-report")
+                .about("Prints a summary of statuses.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg_read().long("log-dir")),
+        )
+        .subcommand(
+            SubCommand::with_name("update-nft-status")
+                .about("Updates statuses from NFT upload.")
+                .arg(status_log_dir_arg())
+                .arg(buffer_arg("10")),
+        )
+        .subcommand(
+            SubCommand::with_name("update-status")
+                .about("Updates statuses and prints them.")
+                .arg(log_dir_arg_read())
+                .arg(glob_arg(false).long("glob"))
+                .arg(no_bundle_arg().requires("glob"))
+                .arg(buffer_arg("10"))
+                .after_help(
+                    "EXAMPLES:\nTo update bundle statuses written to some/directory/status:\n\n\tarloader update-status some/directory/status \
+                    \n\nTo update individual transaction statuses for files with an extension of *.png written to some/directory/status:\n\n\tarloader update-status some/directory/status --glob \"*.png\" --no-bundle \
+                    \n\nNOTES:\n- Make sure to include quotes around <GLOB>.\n- Make sure <GLOB> matches the files you uploaded, not the json status files.
+                    " ,
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("update-metadata")
+                .about("Updates NFT metadata files with links to uploaded asset files.")
+                .arg(glob_arg(true))
+                .arg(manifest_path_arg())
+                .arg(link_file_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("upload")
+                .about("Uploads files.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg_write().long("log-dir"))
+                .arg(tags_arg())
+                .arg(reward_multiplier_arg())
+                .arg(ar_keypair_path_arg().required_unless("with_sol"))
+                .arg(ar_default_keypair())
+                .arg(with_sol_arg().requires("sol_keypair_path"))
+                .arg(sol_keypair_path_arg())
+                .arg(no_bundle_arg())
+                .arg(buffer_arg("5"))
+                .arg(bundle_size_arg())
+                .group(
+                    ArgGroup::with_name("ar_keypair")
+                        .args(&["ar_keypair_path", "ar_default_keypair"])
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("re-upload")
+                .about("Re-uploads files. Not currently implemented for bundles.")
+                .arg(glob_arg(true))
+                .arg(log_dir_arg_write().long("log-dir").required(true))
+                .arg(reward_multiplier_arg())
+                .arg(statuses_arg())
+                .arg(max_confirms_arg())
+                .arg(ar_keypair_path_arg().required(true)),
+        )
+        .subcommand(
+            SubCommand::with_name("upload-manifest")
+                .about("Uploads a manifest for uploaded files. Only currently implemented bundles.")
+                .arg(log_dir_arg_read())
+                .arg(reward_multiplier_arg())
+                .arg(ar_keypair_path_arg().required_unless("with_sol"))
+                .arg(ar_default_keypair())
+                .arg(with_sol_arg().requires("sol_keypair_path"))
+                .arg(sol_keypair_path_arg())
+                .group(
+                    ArgGroup::with_name("ar_keypair")
+                        .args(&["ar_keypair_path", "ar_default_keypair"])
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("upload-nfts")
+                .about("Uploads a directory with pairs of asset and metadata files.")
+                .arg(glob_arg(true))
+                .arg(reward_multiplier_arg())
+                .arg(ar_keypair_path_arg().required_unless("with_sol"))
+                .arg(ar_default_keypair())
+                .arg(with_sol_arg().requires("sol_keypair_path"))
+                .arg(sol_keypair_path_arg())
+                .arg(buffer_arg("5"))
+                .arg(bundle_size_arg())
+                .arg(link_file_arg())
+                .group(
+                    ArgGroup::with_name("ar_keypair")
+                        .args(&["ar_keypair_path", "ar_default_keypair"])
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("write-metaplex-items")
+                .about("Writes metaplex items to file.")
+                .arg(glob_arg(true))
+                .arg(manifest_path_arg())
+                .arg(link_file_arg()),
+        );
+    app_matches
+}
+
+// ====================
+// Arguments
+// ====================
+
+fn ar_default_keypair<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("ar_default_keypair")
+        .long("ar-default-keypair")
+        .value_name("AR_DEFAULT_KEYPAIR")
+        .takes_value(false)
+        .requires("with_sol")
+        .help("Uses the default AR keypair to sign data items if funding with SOL.")
+}
+
+fn ar_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("ar_keypair_path")
+        .long("ar-keypair-path")
+        .value_name("AR_KEYPAIR_PATH")
+        .validator(is_valid_file_path)
+        .env("AR_KEYPAIR_PATH")
+        .help("Specify path of keypair file to use for funding transactions.")
+}
+
+fn buffer_arg<'a, 'b>(default: &'a str) -> Arg<'a, 'b> {
+    Arg::with_name("buffer")
+        .long("buffer")
+        .value_name("BUFFER")
+        .takes_value(true)
+        .validator(is_parsable::<usize>)
+        .default_value(default)
+        .help("Specify the maximum number of concurrent network requests.")
+}
+
+fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("bundle_size")
+        .long("bundle-size")
+        .value_name("BUNDLE_SIZE")
+        .takes_value(true)
+        .validator(is_valid_bundle_size)
+        .default_value("10")
+        .help("Specify the bundle size in megabytes.")
+}
+
+fn glob_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
+    Arg::with_name("glob")
+        .value_name("GLOB")
+        .takes_value(true)
+        .required(required)
+        .help(
+            "Specify pattern to match files against. \
+            MUST BE IN QUOTES TO AVOID SHELL EXPANSION.",
+        )
+}
+
+fn id_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("id")
+        .value_name("ID")
+        .takes_value(true)
+        .required(true)
+        .validator(is_parsable::<Base64>)
+        .help("Specify the transaction id.")
+}
+
+fn link_file_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("link_file")
+        .long("link-file")
+        .value_name("LINK_FILE")
+        .required(false)
+        .takes_value(false)
+        .help("Uses file based link instead of id based link.")
+}
+
+fn log_dir_arg_write<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("log_dir")
+        .value_name("LOG_DIR")
+        .validator(is_valid_dir)
+        .takes_value(true)
+        .help("Specify a directory to write status updates to.")
+}
+
+fn log_dir_arg_read<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("log_dir")
+        .required(true)
+        .value_name("LOG_DIR")
+        .validator(is_valid_dir)
+        .takes_value(true)
+        .help("Specify the directory that statuses have been written to.")
+}
+
+fn manifest_path_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("manifest_path")
+        .long("manifest-path")
+        .value_name("MANIFEST_PATH")
+        .required(true)
+        .validator(is_parsable::<PathBuf>)
+        .help("Path of manifest file from which to update NFT metadata files.")
+}
+
+fn max_confirms_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("max_confirms")
+        .long("max-confirms")
+        .value_name("MAX_CONFIRM")
+        .takes_value(true)
+        .help("Specify maximum number of confirmations to filter statuses by.")
+}
+
+fn no_bundle_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("no_bundle")
+        .long("no-bundle")
+        .short("nb")
+        .value_name("NO_BUNDLE")
+        .required(false)
+        .takes_value(false)
+        .help("Individual transaction for each file without bundling.")
+}
+
+fn reward_multiplier_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("reward_multiplier")
+        .long("reward-multiplier")
+        .short("rx")
+        .value_name("REWARD_MULT")
+        .default_value("1.0")
+        .validator(is_valid_reward_multiplier)
+        .help("Specify a float between 0.0 and 10.0 to multiply the reward by.")
+}
+
+fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("sol_keypair_path")
+        .long("sol-keypair-path")
+        .value_name("SOL_KEYPAIR_PATH")
+        .validator(is_valid_file_path)
+        .env("SOL_KEYPAIR_PATH")
+        .help("Specify path of keypair file to use for funding transactions.")
+}
+
+fn statuses_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("statuses")
+        .long("statuses")
+        .value_name("STATUSES")
+        .takes_value(true)
+        .multiple(true)
+        .possible_values(&["Submitted", "Pending", "Confirmed", "NotFound"])
+        .help("Specify the status codes to filter by.")
+}
+
+fn status_log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("log_dir")
+        .value_name("LOG_DIR")
+        .takes_value(true)
+        .takes_value(true)
+        .validator(is_valid_dir)
+        .help("Parent status directory that contains `assets/` and `metadata/` sub-folders.")
+}
+
+fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("tags")
+        .long("tags")
+        .value_name("TAGS")
+        .multiple(true)
+        .takes_value(true)
+        .validator(is_valid_tag)
+        .help(
+            "Specify additional tags for uploaded files as \
+        <NAME>:<VALUE>, separated by spaces. Content-Type tag \
+        is inferred automatically so not necessary to \
+        specify. Applied to each uploaded file.",
+        )
+}
+
+fn with_sol_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("with_sol")
+        .long("with-sol")
+        .value_name("WITH_SOL")
+        .required(false)
+        .takes_value(false)
+        .help("Funds transactions with with SOL.")
+}
+
+// ====================
+// Validators
+// ====================
+
+fn is_parsable_generic<U, T>(string: T) -> Result<(), String>
+where
+    T: AsRef<str> + Display,
+    U: FromStr,
+    U::Err: Display,
+{
+    string
+        .as_ref()
+        .parse::<U>()
+        .map(|_| ())
+        .map_err(|err| format!("error parsing '{}': {}", string, err))
+}
+
+pub fn is_parsable<T>(string: String) -> Result<(), String>
+where
+    T: FromStr,
+    T::Err: Display,
+{
+    is_parsable_generic::<T, String>(string)
+}
+
+fn is_valid_tag<T>(tag: T) -> Result<(), String>
+where
+    T: AsRef<str> + Display,
+{
+    let split: Vec<_> = tag.as_ref().split(":").collect();
+    match Tag::<Base64>::from_utf8_strs(split[0], split[1]) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(format!("Not a valid tag.")),
+    }
+}
+
+fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
+    match reward_mult.parse::<f32>() {
+        Ok(n) => {
+            if n > 0. && n <= 10. {
+                Ok(())
+            } else {
+                Err(format!("Multiplier must be a float between 0 and 10."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid multiplier.")),
+    }
+}
+
+fn is_valid_bundle_size(bundle_size: String) -> Result<(), String> {
+    match bundle_size.parse::<u64>() {
+        Ok(n) => {
+            if n > 0 && n <= 200 {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Bundle size must be at least 1 MB and not greater than 200 MB."
+                ))
+            }
+        }
+        Err(_) => Err(format!("Not a valid bundle size.")),
+    }
+}
+
+fn is_valid_dir(dir_str: String) -> Result<(), String> {
+    match dir_str.parse::<PathBuf>() {
+        Ok(p) => {
+            if p.exists() {
+                if p.is_dir() {
+                    Ok(())
+                } else {
+                    Err(format!("Path is not a directory."))
+                }
+            } else {
+                Err(format!("Path does not exist."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid path.")),
+    }
+}
+
+fn is_valid_file_path(path_str: String) -> Result<(), String> {
+    match path_str.parse::<PathBuf>() {
+        Ok(p) => {
+            if p.exists() {
+                if p.is_file() {
+                    Ok(())
+                } else {
+                    Err(format!("Path is not file."))
+                }
+            } else {
+                Err(format!("Path does not exist."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid path.")),
+    }
+}
+
+// ====================
+// Helpers
+// ====================
+
+fn get_tags_vec<T>(tag_values: Option<Values>) -> Option<Vec<T>>
+where
+    T: FromUtf8Strs<T>,
+{
+    if let Some(tag_strings) = tag_values {
+        let tags = tag_strings
+            .into_iter()
+            .map(|t| {
+                let split: Vec<&str> = t.split(":").collect();
+                T::from_utf8_strs(split[0], split[1])
+            })
+            .flat_map(Result::ok)
+            .collect();
+        Some(tags)
+    } else {
+        None
+    }
+}
+
+fn get_status_code(output: &str) -> StatusCode {
+    match output {
+        "Submitted" => StatusCode::Submitted,
+        "Pending" => StatusCode::Pending,
+        "Confirmed" => StatusCode::Confirmed,
+        "NotFound" => StatusCode::NotFound,
+        _ => StatusCode::NotFound,
+    }
+}
+
+pub trait CleanPaths {
+    fn expand_tilde(&self) -> String;
+    fn add_trailing_slash(&self) -> String;
+}
+
+// This gets applied to all directories to both expand the tilde for the home directory
+// and to make sure that there is a trailing slash.
+impl CleanPaths for &str {
+    fn expand_tilde(&self) -> String {
+        if self.chars().next().unwrap() == '~' {
+            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
+        } else {
+            self.to_string()
+        }
+    }
+    fn add_trailing_slash(&self) -> String {
+        let last_char = self.chars().last().unwrap();
+        if !(last_char == '/' || last_char == '\\') {
+            format!("{}/", self)
+        } else {
+            self.to_string()
+        }
+    }
+}
+
+impl CleanPaths for String {
+    fn expand_tilde(&self) -> String {
+        if self.chars().next().unwrap() == '~' {
+            self.replace("~", &dirs_next::home_dir().unwrap().display().to_string())
+        } else {
+            self.to_string()
+        }
+    }
+    fn add_trailing_slash(&self) -> String {
+        let last_char = self.chars().last().unwrap();
+        if !(last_char == '/' || last_char == '\\') {
+            format!("{}/", self)
+        } else {
+            self.to_string()
+        }
     }
 }
 
