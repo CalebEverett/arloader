@@ -411,7 +411,7 @@ fn get_app() -> App<'static, 'static> {
                 .about("Updates statuses and prints them.")
                 .arg(log_dir_arg_read())
                 .arg(glob_arg(false).long("glob"))
-                .arg(no_bundle_arg())
+                .arg(no_bundle_arg().requires("glob"))
                 .arg(buffer_arg("10"))
                 .after_help(
                     "EXAMPLES:\nTo update bundle statuses written to some/directory/status:\n\n\tarloader update-status some/directory/status \
@@ -716,10 +716,10 @@ where
 fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
     match reward_mult.parse::<f32>() {
         Ok(n) => {
-            if n > 0. && n < 10. {
+            if n > 0. && n <= 10. {
                 Ok(())
             } else {
-                Err(format!("Multiplier must be between 0 and 10."))
+                Err(format!("Multiplier must be a float between 0 and 10."))
             }
         }
         Err(_) => Err(format!("Not a valid multiplier.")),
