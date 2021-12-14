@@ -416,7 +416,7 @@ fn get_app() -> App<'static, 'static> {
                 .after_help(
                     "EXAMPLES:\nTo update bundle statuses written to some/directory/status:\n\n\tarloader update-status some/directory/status \
                     \n\nTo update individual transaction statuses for files with an extension of *.png written to some/directory/status:\n\n\tarloader update-status some/directory/status --glob \"*.png\" --no-bundle \
-                    \n\nNOTES:\n- Make sure to include quotes around <GLOB>\n- Make sure <GLOB> matches the files you uploaded, not the json status files.
+                    \n\nNOTES:\n- Make sure to include quotes around <GLOB>.\n- Make sure <GLOB> matches the files you uploaded, not the json status files.
                     " ,
                 ),
         )
