@@ -213,20 +213,25 @@ async fn main() -> CommandResult {
             command_update_nft_statuses(&Arweave::default(), log_dir, &output_format, buffer).await
         }
         ("update-status", Some(sub_arg_matches)) => {
-            let log_dir = &sub_arg_matches
-                .value_of("log_dir")
-                .unwrap()
-                .expand_tilde()
-                .add_trailing_slash();
-            let glob_str = sub_arg_matches.value_of("glob");
+            let log_dir = PathBuf::from(
+                &sub_arg_matches
+                    .value_of("log_dir")
+                    .unwrap()
+                    .expand_tilde()
+                    .add_trailing_slash(),
+            );
             let no_bundle = sub_arg_matches.is_present("no_bundle");
             let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
 
             match no_bundle {
                 true => {
+                    let paths_iter = sub_arg_matches
+                        .values_of("file_paths")
+                        .map(|v| v.into_iter().map(PathBuf::from))
+                        .unwrap();
                     command_update_statuses(
                         &Arweave::default(),
-                        glob_str.unwrap(),
+                        paths_iter,
                         log_dir,
                         &output_format,
                         buffer,
@@ -511,20 +516,20 @@ fn get_app() -> App<'static, 'static> {
             SubCommand::with_name("update-status")
                 .about("Updates statuses and prints them.")
                 .arg(log_dir_arg_read())
-                .arg(glob_arg(false).long("glob").requires("no_bundle"))
-                .arg(no_bundle_arg().requires("glob"))
+                .arg(file_paths_arg().long("file-paths").requires("no_bundle"))
+                .arg(no_bundle_arg().requires("file_paths"))
                 .arg(buffer_arg("10"))
                 .after_help(
                     "EXAMPLES:\nTo update bundle statuses written to some/directory/status:\n\n\tarloader update-status some/directory/status \
-                    \n\nTo update individual transaction statuses for files with an extension of *.png written to some/directory/status:\n\n\tarloader update-status some/directory/status --glob \"*.png\" --no-bundle \
-                    \n\nNOTES:\n- Make sure to include quotes around <GLOB>.\n- Make sure <GLOB> matches the files you uploaded, not the json status files.
+                    \n\nTo update individual transaction statuses for files with an extension of *.png written to some/directory/status:\n\n\tarloader update-status some/directory/status --file-paths *.png --no-bundle \
+                    \n\nNOTES:\n- Make sure to NOT to include quotes around <FILE_PATHS>.\n- Make sure <FILE_PATHS> matches the files you uploaded, not the json status files.
                     " ,
                 ),
         )
         .subcommand(
             SubCommand::with_name("update-metadata")
                 .about("Updates NFT metadata files with links to uploaded asset files.")
-                .arg(glob_arg(true))
+                .arg(file_paths_arg())
                 .arg(manifest_path_arg())
                 .arg(link_file_arg()),
         )

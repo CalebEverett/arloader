@@ -64,7 +64,7 @@ jobs:
           cp tests/fixtures/[0-9].* target/nfts/
           target/${{ matrix.target }}/release/arloader balance
           target/${{ matrix.target }}/release/arloader estimate target/nfts/*.png
-          target/${{ matrix.target }}/release/arloader upload target/nfts/*.png --log-dir nfts/status
+          target/${{ matrix.target }}/release/arloader upload target/nfts/*.png --log-dir target/nfts/status
           target/${{ matrix.target }}/release/arloader list-status target/nfts/status
           target/${{ matrix.target }}/release/arloader update-status target/nfts/status
           target/${{ matrix.target }}/release/arloader upload-manifest target/nfts/status

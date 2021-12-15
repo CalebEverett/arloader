@@ -248,11 +248,11 @@ where
 /// Updates bundle statuses for provided files in provided directory.
 pub async fn command_update_bundle_statuses(
     arweave: &Arweave,
-    log_dir: &str,
+    log_dir: PathBuf,
     output_format: &OutputFormat,
     buffer: usize,
 ) -> CommandResult {
-    let paths_iter = glob(&format!("{}/*.json", log_dir))?
+    let paths_iter = glob(&format!("{}*.json", log_dir.display().to_string()))?
         .filter_map(Result::ok)
         .filter(|p| file_stem_is_valid_txid(p));
 
@@ -268,7 +268,7 @@ pub async fn command_update_bundle_statuses(
     if counter == 0 {
         println!(
             "The <LOG_DIR> you provided, {}, didn't have any statuses in it.",
-            log_dir
+            log_dir.display().to_string()
         );
     } else {
         println!("Updated {} statuses.", counter);
@@ -306,15 +306,15 @@ pub async fn command_update_nft_statuses(
     buffer: usize,
 ) -> CommandResult {
     let log_dir = PathBuf::from(log_dir);
-    let log_dir_assets = log_dir.join("assets/").display().to_string();
-    let log_dir_metadata = log_dir.join("metadata/").display().to_string();
+    let log_dir_assets = log_dir.join("assets/");
+    let log_dir_metadata = log_dir.join("metadata/");
     let asset_manifest_txid = get_manifest_id_from_log_dir(&log_dir_assets);
     let metadata_manifest_txid = get_manifest_id_from_log_dir(&log_dir_metadata);
 
     println!("\n\nUpdating asset bundle statuses...\n");
-    command_update_bundle_statuses(&arweave, &log_dir_assets, output_format, buffer).await?;
+    command_update_bundle_statuses(&arweave, log_dir_assets, output_format, buffer).await?;
     println!("\n\nUpdating metadata bundle statuses...\n");
-    command_update_bundle_statuses(&arweave, &log_dir_assets, output_format, buffer).await?;
+    command_update_bundle_statuses(&arweave, log_dir_metadata, output_format, buffer).await?;
     println!("\n\nUpdating asset manifest status...\n");
     command_get_status(&arweave, &asset_manifest_txid, output_format).await?;
     println!("\n\nUpdating metadata manifest status...\n");
@@ -323,14 +323,16 @@ pub async fn command_update_nft_statuses(
 }
 
 /// Updates statuses for provided files in provided directory.
-pub async fn command_update_statuses(
+pub async fn command_update_statuses<IP>(
     arweave: &Arweave,
-    glob_str: &str,
-    log_dir: &str,
+    paths_iter: IP,
+    log_dir: PathBuf,
     output_format: &OutputFormat,
     buffer: usize,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
     let log_dir = PathBuf::from(log_dir);
 
     let mut stream = update_statuses_stream(arweave, paths_iter, log_dir.clone(), buffer);
@@ -1004,8 +1006,8 @@ pub async fn command_write_metaplex_items(
 }
 
 /// Gets manifest transaction id from first manifest file in a log directory.
-pub fn get_manifest_id_from_log_dir(log_dir: &str) -> String {
-    glob(&format!("{}manifest*.json", &log_dir))
+pub fn get_manifest_id_from_log_dir(log_dir: &PathBuf) -> String {
+    glob(&format!("{}manifest*.json", log_dir.display().to_string()))
         .unwrap()
         .filter_map(Result::ok)
         .nth(0)

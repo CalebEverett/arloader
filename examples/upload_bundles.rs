@@ -38,14 +38,13 @@ async fn main() -> CommandResult {
     let path_chunks = arweave.chunk_file_paths(paths_iter, BUNDLE_SIZE)?;
     let log_dir = temp_dir.path().join("status");
     fs::create_dir(log_dir.clone()).unwrap();
-    let log_dir_str = log_dir.display().to_string();
     let output_format = &OutputFormat::Display;
 
     if sol_keypair_path.is_none() {
         command_upload_bundles(
             &arweave,
             path_chunks,
-            Some(log_dir),
+            Some(log_dir.clone()),
             None,
             REWARD_MULTIPLIER,
             output_format,
@@ -56,7 +55,7 @@ async fn main() -> CommandResult {
         command_upload_bundles_with_sol(
             &arweave,
             path_chunks,
-            Some(log_dir),
+            Some(log_dir.clone()),
             None,
             REWARD_MULTIPLIER,
             output_format,
@@ -65,7 +64,7 @@ async fn main() -> CommandResult {
         )
         .await?;
     }
-    command_update_bundle_statuses(&arweave, &log_dir_str, output_format, 10).await?;
+    command_update_bundle_statuses(&arweave, log_dir, output_format, 10).await?;
     Ok(())
 }
 
