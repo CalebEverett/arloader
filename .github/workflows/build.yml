@@ -69,7 +69,7 @@ jobs:
           target/${{ matrix.target }}/release/arloader update-status target/nfts/status
           target/${{ matrix.target }}/release/arloader upload-manifest target/nfts/status
           target/${{ matrix.target }}/release/arloader upload-nfts target/nfts/*.png
-          target/${{ matrix.target }}/release/arloader upload target/nfts/*.png --log-dir nfts/status --no-bundle
+          target/${{ matrix.target }}/release/arloader upload target/nfts/*.png --log-dir target/nfts/status --no-bundle
           target/${{ matrix.target }}/release/arloader list-status target/nfts/status --file-paths target/nfts/*.png --no-bundle
           target/${{ matrix.target }}/release/arloader status-report target/nfts/status --file-paths target/nfts/*.png --no-bundle
           target/${{ matrix.target }}/release/arloader update-status target/nfts/status --file-paths target/nfts/*.png --no-bundle
