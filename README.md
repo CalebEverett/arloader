@@ -187,7 +187,8 @@ If you're uploading more than one file, you should pretty much always be using b
 
 Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100` to specify a size of 100 MB, for example.
 
-1. To get an estimate of the cost of uploading your files run
+### Estimate Cost
+To get an estimate of the cost of uploading your files run
 
 ```
 arloader estimate <FILE_PATHS>
@@ -195,7 +196,8 @@ arloader estimate <FILE_PATHS>
 
 `<FILE_PATHS>` can be a glob, like `path/to/my/files/*.png`, or one or more files separated by spacees, like `path/to/my/files/2.mp4 path/to/my/files/0.mp path/to/my/files/2.mp`.
 
-2. To upload your files run
+### Upload
+To upload your files run
 
 ```
 arloader upload <FILE_PATHS>
@@ -235,7 +237,8 @@ A status object gets written to a json file named `<TXID>.json` in a newly creat
 }
 ```
 
-3. After uploading your files, you'll want to check on their status to make sure the have been uploaded successfully and that they ultimately are confirmed at least 25 times before you can be absolutely certain they have been permanently uploaded.
+### Check Status
+After uploading your files, you'll want to check on their status to make sure the have been uploaded successfully and that they ultimately are confirmed at least 25 times before you can be absolutely certain they have been permanently uploaded.
 
 ```
 arloader update-status <LOG_DIR>
@@ -258,7 +261,29 @@ bundle txid                                   items      KB  status       confir
  NAP2vTKQdMG_eKyKBYz3876T4yBFl4oYFYqwwwnHbFA       2       3  Confirmed          45
  ```
 
-4. Once you have a sufficient number of confirmations of your files, you may want to create a manifest file, which is used by the Arweave gateways to provide relative paths to your files. In order to do that, you run
+### Re-Upload
+If you find that not all of your transactions have a status of `Confirmed` or that the number of confirmations is below 25 after some period of time, you will want to re-upload your transactions with the following command:
+
+```
+arloader repupload <FILE_PATHS> --log-dir <LOG_DIR> --statuses <STATUSES> --max-confirmations <MAX_CONFIRMATIONS>
+```
+This will first check to make sure that all of the files in `<FILE_PATHS>` are included in the status objects in `<LOG_DIR>`, adding them to the list of files to be reuploaded. Then it will filter the paths in the status objects based on `<STATUSES>` and `<MAX_CONFIRM>`. You can provide multiple statuses and max confirmations will only re-upload transactions with fewer than `<MAX_CONFIRM>` confirmations.
+
+For example, if had uploaded a bunch of jpegs that were in `my/images` and statuses had been logged to `my/images/arloader_hehQJu-RJpo`, if you wanted to re-upload transactions with either a status of `NotFound` or `Pending`, you would run:
+
+```
+arloader reupload my/images/*.jpeg --log-dir my/images/arloader_hehQJu-RJpo --statuses NotFound Pending
+```
+
+If you wanted to reupload anything with less than 25 confirmations, you would run:
+
+```
+arloader reupload my/images/*.jpeg --log-dir my/images/arloader_hehQJu-RJpo --max-confirms 25
+```
+
+
+### Create Manifest
+Once you have a sufficient number of confirmations of your files, you may want to create a manifest file, which is used by the Arweave gateways to provide relative paths to your files. In order to do that, you run
 
 ```
 arloader upload-manifest <LOG_DIR>
@@ -384,7 +409,7 @@ Benchmarks include only processing activity and exclude reading files from disk 
 - [x] Add upload nft project example
 - [x] Point at folder of assets and json and get back links to uploaded metadata
 - [x] Clean up handling of paths
-- [ ] Re upload bundles
+- [x] Re upload bundles
 - [ ] Progress indicators for longer running processes
 - [ ] Output in metaboss format, or include in metaplex cli
 - [ ] Implement bundlr

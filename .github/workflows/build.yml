@@ -105,8 +105,7 @@ jobs:
             LICENSE
       - name: Publish
         uses: actions-rs/cargo@v1
-        # if: startsWith(github.ref, 'refs/tags/')
-        if: false
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           use-cross: false
           command: publish

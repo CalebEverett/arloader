@@ -5,7 +5,8 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Unreleased
+# v0.1.46 (2021-12-13)
+- **added:** added `--reupload` command for bundles. You specify `--file-paths` and `--log-dir` and the command reuploads any files not included in the statuses in `--log-dir` and any files with a status included in `--statuses` or fewer confirmations than `--max-confirms`.
 - **changed:** changed the way file paths are specified from glob strings to file paths. the `--glob` argument has been replaced by `--file-paths`. This new approach has a better user interface and is more robust across operating systems. Instead of avoiding shell expansion by wrapping glob arguments in quotes, the new approach takes advantage of it. It is now possible to specify an individual file path, a list of file paths separated by spaces or a glob pattern that gets expanded by the shell into multiple space separated file paths.
 - **changed:** renamed `--upload-filter` subcommand to `--re-upload`.
 - **changed:** refactored `--update-status` to include a long name for `<GLOB>`, `--glob`, and to make it required with `--no-bundle`.
