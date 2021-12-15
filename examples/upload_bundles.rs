@@ -10,17 +10,17 @@ use url::Url;
 const REWARD_MULTIPLIER: f32 = 2.0;
 const NUM_FILES: usize = 20;
 const FILE_SIZE: usize = 10_000_000;
-const BUNDLE_SIZE: u64 = 100_000_000;
+const BUNDLE_SIZE: u64 = 10_000_000;
 const BUFFER: usize = 5;
 
 #[tokio::main]
 async fn main() -> CommandResult {
-    let ar_keypair_path = env::var("AR_KEYPAIR_PATH").ok();
-    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH").ok();
+    let ar_keypair_path = env::var("AR_KEYPAIR_PATH").ok().map(PathBuf::from);
+    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH").ok().map(PathBuf::from);
 
     let arweave = if let Some(ar_keypair_path) = ar_keypair_path {
         Arweave::from_keypair_path(
-            PathBuf::from(ar_keypair_path),
+            ar_keypair_path,
             Url::from_str("https://arweave.net").unwrap(),
         )
         .await?
@@ -61,11 +61,10 @@ async fn main() -> CommandResult {
             REWARD_MULTIPLIER,
             output_format,
             BUFFER,
-            sol_keypair_path.as_deref().unwrap(),
+            sol_keypair_path.unwrap(),
         )
         .await?;
     }
-
     command_update_bundle_statuses(&arweave, &log_dir_str, output_format, 10).await?;
     Ok(())
 }

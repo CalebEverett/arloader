@@ -7,7 +7,7 @@
 
 Command line application and client for uploading files to [Arweave](https://www.arweave.org/). Arweave stores documents and applications forever.
 
-Upload gigabytes of files with one command specifying a glob pattern to match files against. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel on multiple threads.
+Upload gigabytes of files with one command. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel on multiple threads.
 
 ## Contents
 * [Installation](#installation)
@@ -59,20 +59,20 @@ cargo install arloader
 ```
 
 ### Upload Assets
-If you want to fund transactions with SOL, run the command below where `<GLOB>` matches your asset files.
+If you want to fund transactions with SOL, run the command below where `<FILE_PATHS>` matches your asset files.
 ```
-arloader upload-nfts <GLOB> --with-sol --sol-keypair_path <SOL_KEYPAIR_PATH> --ar-default-keypair
+arloader upload-nfts <FILE_PATHS> --with-sol --sol-keypair_path <SOL_KEYPAIR_PATH> --ar-default-keypair
 ```
 
 For example, if you were uploading mp4 files as your assets and they were in a folder called `path/to/my/assets` and the path to your SOL keypair was `path/to/my/solkeypair.json`, you would enter:
 
 ```
-arloader upload-nfts "path/to/my/assets/*.mp4" --with-sol --sol-keypair_path path/to/my/solkeypair.json --ar-default-keypair
+arloader upload-nfts path/to/my/assets/*.mp4 --with-sol --sol-keypair_path path/to/my/solkeypair.json --ar-default-keypair
 ```
 
 To fund transactions with AR, instead run:
 ```
-arloader upload-nfts <GLOB> --ar-keypair-path <AR_KEYPAIR_PATH>
+arloader upload-nfts <FILE_PATHS> --ar-keypair-path <AR_KEYPAIR_PATH>
 ```
 
 This will first upload your assets, logging statuses to a newly created directory named `arloader_<RANDOM_CHARS>` in the folder where the assets are located.
@@ -118,10 +118,10 @@ Once everything has been uploaded, the links to your uploaded metadata files, to
     },
 ```
 
-If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file with links it that you can copy and paste into your candy machine config by running the command below. `<GLOB>` can match your either your asset or metadata files.
+If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file with links it that you can copy and paste into your candy machine config by running the command below. `<FILE_PATHS>` can match your either your asset or metadata files.
 
 ```
-arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH>
+arloader write-metaplex-items <FILE_PATHS> --manifest-path <MANIFEST_PATH>
 ```
 
 This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to the same directory as `<MANIFEST_PATH>`. As with updating metadata files, Arloader defaults to using the id based link, `https://arweave.net/<BUNDLE_ITEM_ID>`, but 
@@ -185,22 +185,20 @@ Updating metadata manifest status...
 
 If you're uploading more than one file, you should pretty much always be using bundles. Bundles take multiple files and packages them together in a single transaction. This is better than uploading multiple individual files because you only have to wait for one transaction to be confirmed. Once the bundle transaction is confirmed, all of your files will be available. Larger transactions with larger rewards are more attractive to miners, which means a larger bundled transaction is more likely to get written quickly than a bunch of smaller individual ones.
 
-Arloader accepts file glob patterns and defaults to creating a bundle for your files.
-
 Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100` to specify a size of 100 MB, for example.
 
 1. To get an estimate of the cost of uploading your files run
 
 ```
-arloader estimate <GLOB>
+arloader estimate <FILE_PATHS>
 ```
 
-Make sure to include quotes around your glob patterns, otherwise your shell will expand them into a list of files. Arloader expects a glob pattern, not a list of files.
+`<FILE_PATHS>` can be a glob, like `path/to/my/files/*.png`, or one or more files separated by spacees, like `path/to/my/files/2.mp4 path/to/my/files/0.mp path/to/my/files/2.mp`.
 
 2. To upload your files run
 
 ```
-arloader upload <GLOB>
+arloader upload <FILE_PATHS>
 ```
 
 This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 10 MB. The example output below had a bundle size of 5000 bytes.
@@ -215,7 +213,7 @@ bundle txid                                   items      KB  status       confir
  qzQlASZrQXNF9HYIOTPjEZL9uy1U9Ou086kCkQWqld0       2       3  Submitted           0
  ```
 
-A status object gets written to a json file named `<TXID>.json` in a newly created sub directory in the parent folder of the first file to match `<GLOB>`. The folder will be named `arloader_<RAND_CHAR>`. You can specify an existing folder to write statuses to by passing the `--log-dir` argument.
+A status object gets written to a json file named `<TXID>.json` in a newly created sub directory in the parent folder of the first file in `<FILE_PATHS>`. The folder will be named `arloader_<RAND_CHAR>`. You can specify an existing folder to write statuses to by passing the `--log-dir` argument.
 
 ```json
 {
@@ -265,7 +263,7 @@ bundle txid                                   items      KB  status       confir
 ```
 arloader upload-manifest <LOG_DIR>
 ```
-where `<LOG_DIR>` is the directory containing your bundle status json files. This will go through and consolidate the paths from each of the bundles, create a consolidated manifest, upload it to Arweave and then write a file named `manifest_<TXID>.json`to `<LOG_DIR>`. Once the transaction uploading the manifest has been confirmed, you will be able to access your files and both `https://arweave.net/<BUNDLE_ITEM_ID>` and `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`  where `MANIFEST_ID` is the id of the manifest transaction and `FILE_PATH` is the relative path of the file included in the `GLOB` pattern you specified with the `upload` command.
+where `<LOG_DIR>` is the directory containing your bundle status json files. This will go through and consolidate the paths from each of the bundles, create a consolidated manifest, upload it to Arweave and then write a file named `manifest_<TXID>.json`to `<LOG_DIR>`. Once the transaction uploading the manifest has been confirmed, you will be able to access your files and both `https://arweave.net/<BUNDLE_ITEM_ID>` and `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`  where `MANIFEST_ID` is the id of the manifest transaction and `FILE_PATH` is the relative path of the file included with the `upload` command.
 
 ```json
 {
@@ -311,13 +309,13 @@ Arloader usage is pretty much exactly the same as above, with the addition of th
 1. To get an estimate of the cost of uploading your files run
 
 ```
-arloader estimate <GLOB> --with-sol
+arloader estimate <FILE_PATHS> --with-sol
 ```
 
 2. To upload your files run
 
 ```
-arloader upload <GLOB> --with sol --ar-default-keypair
+arloader upload <FILE_PATHS> --with sol --ar-default-keypair
 ```
 
 This will create the same stream of bundles that gets created without using SOL and then goes out to an api to get your transactions signed. Once the SOL payment transaction has gone through, the signature comes back from the api and gets added to your bundle transaction. Then the transaction gets uploaded directly to the [arweave.net](https:://arweave.net) gateway from your computer.

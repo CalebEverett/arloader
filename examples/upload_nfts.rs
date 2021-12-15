@@ -13,12 +13,12 @@ const NUM_NFTS: u32 = 10;
 
 #[tokio::main]
 async fn main() -> CommandResult {
-    let ar_keypair_path = env::var("AR_KEYPAIR_PATH").ok();
-    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH").ok();
+    let ar_keypair_path = env::var("AR_KEYPAIR_PATH").ok().map(PathBuf::from);
+    let sol_keypair_path = env::var("SOL_KEYPAIR_PATH").ok().map(PathBuf::from);
 
     let arweave = if let Some(ar_keypair_path) = ar_keypair_path {
         Arweave::from_keypair_path(
-            PathBuf::from(ar_keypair_path),
+            ar_keypair_path,
             url::Url::from_str("https://arweave.net").unwrap(),
         )
         .await?
@@ -39,11 +39,12 @@ async fn main() -> CommandResult {
         command_upload_nfts(
             &arweave,
             paths_iter,
+            None,
             10_000_000,
             REWARD_MULTIPLIER,
             &OutputFormat::Display,
             5,
-            sol_keypair_path.as_deref(),
+            sol_keypair_path,
             true,
         )
         .await?;
