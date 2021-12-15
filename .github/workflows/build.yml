@@ -61,7 +61,7 @@ jobs:
           curl http://localhost:1984/mint/MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y/100000000000000
           mkdir target/nfts
           mkdir target/nfts/status
-          cp tests/fixtures/[0-9].* nfts/
+          cp tests/fixtures/[0-9].* target/nfts/
           target/${{ matrix.target }}/release/arloader balance
           target/${{ matrix.target }}/release/arloader estimate target/nfts/*.png
           target/${{ matrix.target }}/release/arloader upload target/nfts/*.png --log-dir nfts/status
