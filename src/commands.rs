@@ -3,7 +3,7 @@
 use crate::{
     error::Error,
     file_stem_is_valid_txid,
-    solana::{FLOOR, SOL_AR_BASE_URL},
+    solana::{FLOOR, SOLANA_MAIN_URL, SOL_AR_BASE_URL},
     status::{OutputFormat, StatusCode},
     transaction::{Base64, Tag},
     update_bundle_statuses_stream, update_statuses_stream, upload_bundles_stream,
@@ -11,7 +11,10 @@ use crate::{
     PathsChunk, BLOCK_SIZE, WINSTONS_PER_AR,
 };
 
-use futures::{future::try_join, StreamExt};
+use futures::{
+    future::{try_join, try_join_all},
+    StreamExt,
+};
 use glob::glob;
 use num_traits::cast::ToPrimitive;
 use solana_sdk::signer::keypair;
@@ -25,15 +28,22 @@ use url::Url;
 pub type CommandResult = Result<(), Error>;
 
 /// Gets cost of uploading a list of files.
-pub async fn command_get_cost(
+pub async fn command_files(paths: Option<Vec<PathBuf>>) -> CommandResult {
+    println!("{:?}", paths);
+    Ok(())
+}
+/// Gets cost of uploading a list of files.
+pub async fn command_get_cost<IP>(
     arweave: &Arweave,
-    glob_str: &str,
+    paths_iter: IP,
     reward_mult: f32,
     with_sol: bool,
     bundle_size: u64,
     no_bundle: bool,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
     let (base, incremental) = arweave.get_price_terms(reward_mult).await?;
     let (_, usd_per_ar, usd_per_sol) = arweave.get_price(&1).await?;
 
@@ -84,20 +94,18 @@ pub async fn command_get_cost(
             },
         )
     };
-    if num_files == 0 {
-        println!("No files matched glob.");
-    } else {
-        // get usd cost based on calculated cost
-        let usd_cost = match with_sol {
-            true => (&cost * &usd_per_sol).to_f32().unwrap() / 1e11_f32,
-            false => (&cost * &usd_per_ar).to_f32().unwrap() / 1e14_f32,
-        };
 
-        println!(
-            "The price to upload {} files with {} total bytes in {} transaction(s) is {} {} (${:.4}).",
-            num_files, bytes, num_trans, cost, units, usd_cost
-        );
-    }
+    // get usd cost based on calculated cost
+    let usd_cost = match with_sol {
+        true => (&cost * &usd_per_sol).to_f32().unwrap() / 1e11_f32,
+        false => (&cost * &usd_per_ar).to_f32().unwrap() / 1e14_f32,
+    };
+
+    println!(
+        "The price to upload {} files with {} total bytes in {} transaction(s) is {} {} (${:.4}).",
+        num_files, bytes, num_trans, cost, units, usd_cost
+    );
+
     Ok(())
 }
 
@@ -123,14 +131,17 @@ pub async fn command_get_pending_count(arweave: &Arweave) -> CommandResult {
 }
 
 /// Gets status from the network for the provided transaction id.
-pub async fn command_get_status(arweave: &Arweave, id: &str, output_format: &str) -> CommandResult {
+pub async fn command_get_status(
+    arweave: &Arweave,
+    id: &str,
+    output_format: &OutputFormat,
+) -> CommandResult {
     let id = Base64::from_str(id)?;
-    let output_format = get_output_format(output_format);
     let status = arweave.get_status(&id).await?;
     println!(
         "{}",
         status
-            .header_string(&output_format)
+            .header_string(output_format)
             .split_at(32)
             .1
             .split_at(132)
@@ -149,23 +160,60 @@ pub async fn command_get_transaction(arweave: &Arweave, id: &str) -> CommandResu
 }
 
 /// Lists transaction statuses, filtered by statuses and max confirmations if provided.
-pub async fn command_list_statuses(
+pub async fn command_list_statuses<IP>(
     arweave: &Arweave,
-    glob_str: &str,
+    paths_iter: IP,
     log_dir: &str,
     statuses: Option<Vec<StatusCode>>,
-    max_confirms: Option<&str>,
-    output_format: Option<&str>,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = PathBuf::from(log_dir);
-    let output_format = get_output_format(output_format.unwrap_or(""));
-    let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
+    max_confirms: Option<u64>,
+    output_format: &OutputFormat,
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
+    let log_dir_str = log_dir;
+    let log_dir = PathBuf::from(log_dir_str);
 
+    let all_statuses = arweave.read_statuses(paths_iter, log_dir).await;
+    if let Ok(all_statuses) = all_statuses {
+        let mut counter = 0;
+        for status in arweave
+            .filter_statuses(all_statuses, statuses, max_confirms)?
+            .iter()
+        {
+            if counter == 0 {
+                println!("{}", status.header_string(&output_format));
+            }
+            print!("{}", output_format.formatted_string(status));
+            counter += 1;
+        }
+        if counter == 0 {
+            println!("Didn't find any matching statuses.");
+        } else {
+            println!("Found {} files matching filter criteria.", counter);
+        }
+    } else {
+        println!(
+            "Didn't find statuses for one or more file paths in {}.",
+            log_dir_str
+        );
+    }
+    Ok(())
+}
+
+/// Lists transaction statuses, filtered by statuses and max confirmations if provided.
+pub async fn command_list_bundle_statuses(
+    arweave: &Arweave,
+    log_dir: &str,
+    statuses: Option<Vec<StatusCode>>,
+    max_confirms: Option<u64>,
+    output_format: &OutputFormat,
+) -> CommandResult {
     let mut counter = 0;
+    let all_statuses = arweave.read_bundle_statuses(log_dir).await?;
+
     for status in arweave
-        .filter_statuses(paths_iter, log_dir.clone(), statuses, max_confirms)
-        .await?
+        .filter_statuses(all_statuses, statuses, max_confirms)?
         .iter()
     {
         if counter == 0 {
@@ -175,7 +223,7 @@ pub async fn command_list_statuses(
         counter += 1;
     }
     if counter == 0 {
-        println!("Didn't find match any statuses.");
+        println!("Didn't find any matching statuses.");
     } else {
         println!("Found {} files matching filter criteria.", counter);
     }
@@ -183,18 +231,17 @@ pub async fn command_list_statuses(
 }
 
 /// Prints a count of transactions by status.
-pub async fn command_status_report(
+pub async fn command_status_report<IP>(
     arweave: &Arweave,
-    glob_str: &str,
+    paths_iter: IP,
     log_dir: &str,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
     let log_dir = PathBuf::from(log_dir);
-
     let summary = arweave.status_summary(paths_iter, log_dir).await?;
-
     println!("{}", summary);
-
     Ok(())
 }
 
@@ -202,16 +249,14 @@ pub async fn command_status_report(
 pub async fn command_update_bundle_statuses(
     arweave: &Arweave,
     log_dir: &str,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(&format!("{}/*.json", log_dir))?
         .filter_map(Result::ok)
         .filter(|p| file_stem_is_valid_txid(p));
-    let output_format = get_output_format(output_format.unwrap_or(""));
 
     let mut stream = update_bundle_statuses_stream(arweave, paths_iter, buffer);
-
     let mut counter = 0;
     while let Some(Ok(status)) = stream.next().await {
         if counter == 0 {
@@ -233,22 +278,20 @@ pub async fn command_update_bundle_statuses(
 }
 
 /// Updates NFT metadata files from a manifest file.
-pub async fn command_update_metadata(
+pub async fn command_update_metadata<IP>(
     arweave: &Arweave,
-    glob_str: &str,
-    manifest_str: &str,
+    paths_iter: IP,
+    manifest_path: PathBuf,
     link_file: bool,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
-    let manifest_path = PathBuf::from(manifest_str);
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
+    let paths_vec = paths_iter.collect::<Vec<PathBuf>>();
+    let num_paths: usize = paths_vec.len();
 
     arweave
-        .update_metadata(
-            glob(glob_str)?.filter_map(Result::ok),
-            manifest_path,
-            link_file,
-        )
+        .update_metadata(paths_vec.into_iter(), manifest_path, link_file)
         .await?;
 
     println!("Successfully updated {} metadata files.", num_paths);
@@ -259,7 +302,7 @@ pub async fn command_update_metadata(
 pub async fn command_update_nft_statuses(
     arweave: &Arweave,
     log_dir: &str,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
 ) -> CommandResult {
     let log_dir = PathBuf::from(log_dir);
@@ -273,14 +316,9 @@ pub async fn command_update_nft_statuses(
     println!("\n\nUpdating metadata bundle statuses...\n");
     command_update_bundle_statuses(&arweave, &log_dir_assets, output_format, buffer).await?;
     println!("\n\nUpdating asset manifest status...\n");
-    command_get_status(&arweave, &asset_manifest_txid, output_format.unwrap_or("")).await?;
+    command_get_status(&arweave, &asset_manifest_txid, output_format).await?;
     println!("\n\nUpdating metadata manifest status...\n");
-    command_get_status(
-        &arweave,
-        &metadata_manifest_txid,
-        output_format.unwrap_or(""),
-    )
-    .await?;
+    command_get_status(&arweave, &metadata_manifest_txid, output_format).await?;
     Ok(())
 }
 
@@ -289,19 +327,17 @@ pub async fn command_update_statuses(
     arweave: &Arweave,
     glob_str: &str,
     log_dir: &str,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
 ) -> CommandResult {
     let paths_iter = glob(glob_str)?.filter_map(Result::ok);
     let log_dir = PathBuf::from(log_dir);
-    let output_format = get_output_format(output_format.unwrap_or(""));
 
     let mut stream = update_statuses_stream(arweave, paths_iter, log_dir.clone(), buffer);
-
     let mut counter = 0;
     while let Some(Ok(status)) = stream.next().await {
         if counter == 0 {
-            println!("{}", status.header_string(&output_format));
+            println!("{}", status.header_string(output_format));
         }
         print!("{}", output_format.formatted_string(&status));
         counter += 1;
@@ -316,23 +352,24 @@ pub async fn command_update_statuses(
 }
 
 /// Uploads files to Arweave.
-pub async fn command_upload(
+pub async fn command_upload<IP>(
     arweave: &Arweave,
-    glob_str: &str,
-    log_dir: Option<String>,
-    _tags: Option<Vec<Tag<Base64>>>,
+    paths_iter: IP,
+    log_dir: Option<PathBuf>,
+    tags: Option<Vec<Tag<Base64>>>,
     reward_mult: f32,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = log_dir.map(|s| PathBuf::from(s));
-    let output_format = get_output_format(output_format.unwrap_or(""));
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
     let price_terms = arweave.get_price_terms(reward_mult).await?;
 
     let mut stream = upload_files_stream(
         arweave,
         paths_iter,
+        tags,
         log_dir.clone(),
         None,
         price_terms,
@@ -357,13 +394,12 @@ pub async fn command_upload(
     }
 
     if counter == 0 {
-        println!("The pattern \"{}\" didn't match any files.", glob_str);
+        println!("<FILE_PATHS> didn't match any files.");
     } else {
         println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" \"{}\"` to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" --file-paths <FILE_PATHS>` to confirm transaction(s).",
             counter,
             &log_dir.unwrap_or(PathBuf::from("")).display(),
-            glob_str,
         );
     }
 
@@ -373,30 +409,23 @@ pub async fn command_upload(
 /// Uploads bundles created from provided glob to Arweave.
 pub async fn command_upload_bundles(
     arweave: &Arweave,
-    glob_str: &str,
-    log_dir: Option<String>,
+    path_chunks: Vec<PathsChunk>,
+    log_dir: Option<PathBuf>,
     tags: Option<Vec<Tag<String>>>,
-    bundle_size: u64,
     reward_mult: f32,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
 ) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
-
     if path_chunks.len() == 0 {
-        println!("The pattern \"{}\" didn't match any files.", glob_str);
+        println!("<FILE_PATHS> didn't match any files.");
         return Ok(());
     } else {
-        let output_format = get_output_format(output_format.unwrap_or(""));
         let tags = tags.unwrap_or(Vec::new());
         let price_terms = arweave.get_price_terms(reward_mult).await?;
         let log_dir = if let Some(log_dir) = log_dir {
-            PathBuf::from(log_dir)
+            log_dir
         } else {
-            let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
-            let file_path = paths_iter.next().unwrap();
-            let parent_dir = file_path.parent().unwrap();
+            let parent_dir = path_chunks[0].0[0].parent().unwrap();
             arweave.create_log_dir(parent_dir).await?
         };
 
@@ -451,35 +480,27 @@ pub async fn command_upload_bundles(
 /// Uploads bundles created from provided glob to Arweave, paying with SOL.
 pub async fn command_upload_bundles_with_sol(
     arweave: &Arweave,
-    glob_str: &str,
-    log_dir: Option<String>,
+    path_chunks: Vec<PathsChunk>,
+    log_dir: Option<PathBuf>,
     tags: Option<Vec<Tag<String>>>,
-    bundle_size: u64,
     reward_mult: f32,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
     sol_keypair_path: &str,
 ) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
-
     if path_chunks.len() == 0 {
-        println!("The pattern \"{}\" didn't match any files.", glob_str);
+        println!("<FILE_PATHS> didn't match any files.");
         return Ok(());
     } else {
-        let output_format = get_output_format(output_format.unwrap_or(""));
         let tags = tags.unwrap_or(Vec::new());
         let price_terms = arweave.get_price_terms(reward_mult).await?;
         let log_dir = if let Some(log_dir) = log_dir {
-            PathBuf::from(log_dir)
+            log_dir
         } else {
-            let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
-            let file_path = paths_iter.next().unwrap();
-            let parent_dir = file_path.parent().unwrap();
+            let parent_dir = &path_chunks[0].0[0].parent().unwrap();
             arweave.create_log_dir(parent_dir).await?
         };
-        println!("{:?}", log_dir);
-        let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
+        let solana_url = SOLANA_MAIN_URL.parse::<Url>()?;
         let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
         let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
 
@@ -540,33 +561,35 @@ pub async fn command_upload_bundles_with_sol(
 }
 
 /// Re-uploads files from status and max confirmations criteria.
-pub async fn command_upload_filter(
+pub async fn command_reupload<IP>(
     arweave: &Arweave,
-    glob_str: &str,
     log_dir: &str,
+    paths_iter: IP,
+    tags: Option<Vec<Tag<Base64>>>,
     reward_mult: f32,
     statuses: Option<Vec<StatusCode>>,
-    max_confirms: Option<&str>,
-    output_format: Option<&str>,
-    buffer: Option<&str>,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
+    max_confirms: Option<u64>,
+    output_format: OutputFormat,
+    buffer: usize,
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
     let log_dir = PathBuf::from(log_dir);
-    let output_format = get_output_format(output_format.unwrap_or(""));
-    let max_confirms = max_confirms.map(|m| m.parse::<u64>().unwrap());
-    let buffer = buffer.map(|b| b.parse::<usize>().unwrap()).unwrap_or(1);
     let price_terms = arweave.get_price_terms(reward_mult).await?;
+
+    let all_statuses = arweave.read_statuses(paths_iter, log_dir.clone()).await?;
 
     // Should be refactored to be included in the stream.
     let filtered_paths_iter = arweave
-        .filter_statuses(paths_iter, log_dir.clone(), statuses, max_confirms)
-        .await?
+        .filter_statuses(all_statuses, statuses, max_confirms)?
         .into_iter()
         .filter_map(|f| f.file_path);
 
     let mut stream = upload_files_stream(
         arweave,
         filtered_paths_iter,
+        tags,
         Some(log_dir.clone()),
         None,
         price_terms,
@@ -585,9 +608,122 @@ pub async fn command_upload_filter(
         println!("Didn't find any matching statuses.");
     } else {
         println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" --log-dir {} to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" --file_paths <FILE_PATHS>` to confirm transaction(s).",
             counter,
-            glob_str,
+            &log_dir.display()
+        );
+    }
+    Ok(())
+}
+
+/// Re-uploads files from status and max confirmations criteria.
+///
+/// Collects file paths from bundle statuses to be re-uploaded based on filter criteria,
+/// remove existing bundle statuses, creates and uploads new bundle transactions, writes
+/// new bundles statuses.
+pub async fn command_reupload_bundles(
+    arweave: &Arweave,
+    log_dir: &str,
+    tags: Option<Vec<Tag<String>>>,
+    bundle_size: u64,
+    reward_mult: f32,
+    statuses: Option<Vec<StatusCode>>,
+    max_confirms: Option<u64>,
+    output_format: OutputFormat,
+    buffer: usize,
+) -> CommandResult {
+    let log_dir_str = log_dir;
+    let all_statuses = arweave.read_bundle_statuses(log_dir_str).await?;
+    let filtered_statuses = arweave.filter_statuses(all_statuses, statuses, max_confirms)?;
+    let log_dir = PathBuf::from(log_dir_str);
+    let mut bundle_status_paths = Vec::new();
+
+    let paths_iter = filtered_statuses
+        .iter()
+        .map(|s| {
+            bundle_status_paths.push(log_dir.join(s.id.to_string()).with_extension("json"));
+            s.file_paths
+                .as_object()
+                .unwrap()
+                .into_iter()
+                .map(|(k, _v)| PathBuf::from(k))
+        })
+        .flatten();
+
+    let path_chunks = arweave.chunk_file_paths(paths_iter, bundle_size)?;
+    try_join_all(bundle_status_paths.iter().map(fs::remove_file)).await?;
+
+    command_upload_bundles(
+        &arweave,
+        path_chunks,
+        Some(log_dir),
+        tags,
+        reward_mult,
+        &output_format,
+        buffer,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Re-uploads files from status and max confirmations criteria.
+pub async fn command_reupload_with_sol<IP>(
+    arweave: &Arweave,
+    log_dir: &str,
+    paths_iter: IP,
+    tags: Option<Vec<Tag<Base64>>>,
+    reward_mult: f32,
+    statuses: Option<Vec<StatusCode>>,
+    max_confirms: Option<u64>,
+    sol_keypair_path: &str,
+    output_format: OutputFormat,
+    buffer: usize,
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
+    let log_dir = PathBuf::from(log_dir);
+    let price_terms = arweave.get_price_terms(reward_mult).await?;
+
+    let all_statuses = arweave.read_statuses(paths_iter, log_dir.clone()).await?;
+
+    // Should be refactored to be included in the stream.
+    let filtered_paths_iter = arweave
+        .filter_statuses(all_statuses, statuses, max_confirms)?
+        .into_iter()
+        .filter_map(|f| f.file_path);
+
+    let from_keypair = keypair::read_keypair_file(sol_keypair_path).unwrap();
+    let solana_url = SOLANA_MAIN_URL.parse::<Url>()?;
+    let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
+
+    let mut stream = upload_files_with_sol_stream(
+        arweave,
+        filtered_paths_iter,
+        tags,
+        Some(log_dir.clone()),
+        None,
+        price_terms,
+        solana_url,
+        sol_ar_url,
+        &from_keypair,
+        buffer,
+    );
+
+    let mut counter = 0;
+    while let Some(Ok(status)) = stream.next().await {
+        if counter == 0 {
+            println!("{}", status.header_string(&output_format));
+        }
+        print!("{}", output_format.formatted_string(&status));
+        counter += 1;
+    }
+    if counter == 0 {
+        println!("Didn't find any matching statuses.");
+    } else {
+        println!(
+            "Uploaded {} files. Run `arloader update-status \"{}\" --file_paths <FILE_PATHS>` to confirm transaction(s).",
+            counter,
             &log_dir.display()
         );
     }
@@ -595,149 +731,145 @@ pub async fn command_upload_filter(
 }
 
 /// Uploads folder of nft assets and metadata, updating metadata with links to uploaded assets.
-pub async fn command_upload_nfts(
+pub async fn command_upload_nfts<IP>(
     arweave: &Arweave,
-    glob_str: &str,
+    paths_iter: IP,
     bundle_size: u64,
     reward_mult: f32,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
     sol_keypair_path: Option<&str>,
     link_file: bool,
-) -> CommandResult {
-    let mut paths_iter = glob(glob_str)?.filter_map(Result::ok);
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
+    let paths_vec: Vec<PathBuf> = paths_iter.collect();
+    let path_chunks = arweave.chunk_file_paths(paths_vec.clone().into_iter(), bundle_size)?;
+    let metadata_paths_iter = paths_vec
+        .clone()
+        .into_iter()
+        .map(|p| p.with_extension("json"));
+    let metadata_path_chunks = arweave.chunk_file_paths(metadata_paths_iter, bundle_size)?;
 
-    if let Some(p) = paths_iter.next() {
-        if p.is_dir() {
-            println!(
-                "Provided <GLOB>, \"{}\", is a directory. It must match your asset files, `*.<EXT>`, e.g. Remember to enclose it in quotes.",
-                glob_str
-            );
-            return Ok(());
-        }
+    let parent_dir = path_chunks[0].0[0].parent().unwrap();
+    let log_dir = arweave.create_log_dir(parent_dir).await?;
+    let log_dir_assets = log_dir.join("assets/");
+    let log_dir_metadata = log_dir.join("metadata/");
+    let log_dir_metadata_string = log_dir_metadata.display().to_string();
 
-        let parent_dir = p.parent().unwrap();
-        let log_dir = arweave.create_log_dir(parent_dir).await?;
-        let log_dir_assets = log_dir.join("assets/");
-        let log_dir_metadata = log_dir.join("metadata/");
-        let metadata_glob_str = format!("{}/*.json", parent_dir.display().to_string());
+    try_join(
+        fs::create_dir_all(&log_dir_assets),
+        fs::create_dir_all(&log_dir_metadata),
+    )
+    .await?;
 
-        try_join(
-            fs::create_dir_all(&log_dir_assets),
-            fs::create_dir_all(&log_dir_metadata),
-        )
-        .await?;
-
-        let log_dir_assets = log_dir_assets.display().to_string();
-        let log_dir_metadata = log_dir_metadata.display().to_string();
-
-        // Upload images
-        println!("\n\nUploading assets...\n");
-        if let Some(sol_keypair_path) = sol_keypair_path.clone() {
-            command_upload_bundles_with_sol(
-                &arweave,
-                glob_str,
-                Some(log_dir_assets.clone()),
-                None,
-                bundle_size,
-                reward_mult,
-                output_format,
-                buffer,
-                &sol_keypair_path,
-            )
-            .await?;
-        } else {
-            command_upload_bundles(
-                &arweave,
-                glob_str,
-                Some(log_dir_assets.clone()),
-                None,
-                bundle_size,
-                reward_mult,
-                None,
-                buffer,
-            )
-            .await?;
-        }
-
-        // Upload manifest
-        println!("\n\nUploading manifest for images...\n");
-        command_upload_manifest(
+    // Upload images
+    println!("\n\nUploading assets...\n");
+    if let Some(sol_keypair_path) = sol_keypair_path.clone() {
+        command_upload_bundles_with_sol(
             &arweave,
-            &log_dir_assets,
+            path_chunks,
+            Some(log_dir_assets.clone()),
+            None,
             reward_mult,
-            sol_keypair_path.map(|s| s.to_string()),
+            output_format,
+            buffer,
+            &sol_keypair_path,
         )
         .await?;
-
-        let asset_manifest_str = glob(&format!("{}manifest*.json", &log_dir_assets))
-            .unwrap()
-            .filter_map(Result::ok)
-            .nth(0)
-            .unwrap()
-            .display()
-            .to_string();
-
-        // Update metadata with links to uploaded images.
-        println!("\n\nUpdating metadata with links from manifest...\n");
-        command_update_metadata(&arweave, glob_str, &asset_manifest_str, link_file).await?;
-
-        // Upload metadata.
-        println!("\n\nUploading updated metadata files...\n");
-        if let Some(sol_keypair_path) = sol_keypair_path.clone() {
-            command_upload_bundles_with_sol(
-                &arweave,
-                &metadata_glob_str,
-                Some(log_dir_metadata.clone()),
-                None,
-                bundle_size,
-                reward_mult,
-                output_format,
-                buffer,
-                &sol_keypair_path,
-            )
-            .await?;
-        } else {
-            command_upload_bundles(
-                &arweave,
-                &metadata_glob_str,
-                Some(log_dir_metadata.clone()),
-                None,
-                bundle_size,
-                reward_mult,
-                output_format,
-                buffer,
-            )
-            .await?;
-        }
-
-        println!("\n\nUploading manifest for metadata...\n");
-        command_upload_manifest(
-            &arweave,
-            &log_dir_metadata,
-            reward_mult,
-            sol_keypair_path.map(|s| s.to_string()),
-        )
-        .await?;
-        let metadata_manifest_path = glob(&format!("{}/manifest*.json", &log_dir_metadata))
-            .unwrap()
-            .filter_map(Result::ok)
-            .nth(0)
-            .unwrap();
-
-        println!(
-            "\n\nUpload complete! Links to your uploaded metadata files can be found in `{}`",
-            metadata_manifest_path.display().to_string()
-        );
-
-        println!(
-            "Run `arloader update-nft-status \"{}\"` to confirm all transactions.",
-            log_dir.display().to_string()
-        );
     } else {
-        println!("The pattern \"{}\" didn't match any files.", glob_str);
+        command_upload_bundles(
+            &arweave,
+            path_chunks,
+            Some(log_dir_assets.clone()),
+            None,
+            reward_mult,
+            output_format,
+            buffer,
+        )
+        .await?;
     }
 
+    // Upload manifest
+    println!("\n\nUploading manifest for images...\n");
+    command_upload_manifest(
+        &arweave,
+        &log_dir_assets.display().to_string(),
+        reward_mult,
+        sol_keypair_path.map(|s| s.to_string()),
+    )
+    .await?;
+
+    let asset_manifest_path = glob(&format!(
+        "{}manifest*.json",
+        &log_dir_assets.display().to_string()
+    ))
+    .unwrap()
+    .filter_map(Result::ok)
+    .nth(0)
+    .unwrap();
+
+    // Update metadata with links to uploaded images.
+    println!("\n\nUpdating metadata with links from manifest...\n");
+    command_update_metadata(
+        &arweave,
+        paths_vec.clone().into_iter(),
+        asset_manifest_path,
+        link_file,
+    )
+    .await?;
+
+    // Upload metadata.
+    println!("\n\nUploading updated metadata files...\n");
+    if let Some(sol_keypair_path) = sol_keypair_path.clone() {
+        command_upload_bundles_with_sol(
+            &arweave,
+            metadata_path_chunks,
+            Some(log_dir_metadata.clone()),
+            None,
+            reward_mult,
+            output_format,
+            buffer,
+            &sol_keypair_path,
+        )
+        .await?;
+    } else {
+        command_upload_bundles(
+            &arweave,
+            metadata_path_chunks,
+            Some(log_dir_metadata.clone()),
+            None,
+            reward_mult,
+            output_format,
+            buffer,
+        )
+        .await?;
+    }
+
+    println!("\n\nUploading manifest for metadata...\n");
+    command_upload_manifest(
+        &arweave,
+        &log_dir_metadata_string,
+        reward_mult,
+        sol_keypair_path.map(|s| s.to_string()),
+    )
+    .await?;
+    let metadata_manifest_path = glob(&format!("{}manifest*.json", &log_dir_metadata_string))
+        .unwrap()
+        .filter_map(Result::ok)
+        .nth(0)
+        .unwrap();
+
+    println!(
+        "\n\nUpload complete! Links to your uploaded metadata files can be found in `{}`",
+        metadata_manifest_path.display().to_string()
+    );
+
+    println!(
+        "Run `arloader update-nft-status \"{}\"` to confirm all transactions.",
+        log_dir.display().to_string()
+    );
     Ok(())
 }
 
@@ -748,7 +880,7 @@ pub async fn command_upload_manifest(
     reward_mult: f32,
     sol_keypair_path: Option<String>,
 ) -> CommandResult {
-    let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
+    let solana_url = SOLANA_MAIN_URL.parse::<Url>()?;
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = sol_keypair_path.map(|s| keypair::read_keypair_file(s).unwrap());
 
@@ -768,20 +900,20 @@ pub async fn command_upload_manifest(
 }
 
 /// Uploads files to Arweave, paying with SOL.
-pub async fn command_upload_with_sol(
+pub async fn command_upload_with_sol<IP>(
     arweave: &Arweave,
-    glob_str: &str,
-    log_dir: Option<String>,
-    _tags: Option<Vec<Tag<Base64>>>,
+    paths_iter: IP,
+    log_dir: Option<PathBuf>,
+    tags: Option<Vec<Tag<Base64>>>,
     reward_mult: f32,
     sol_keypair_path: &str,
-    output_format: Option<&str>,
+    output_format: &OutputFormat,
     buffer: usize,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let log_dir = log_dir.map(|s| PathBuf::from(s));
-    let output_format = get_output_format(output_format.unwrap_or(""));
-    let solana_url = "https://api.mainnet-beta.solana.com/".parse::<Url>()?;
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
+    let solana_url = SOLANA_MAIN_URL.parse::<Url>()?;
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
     let from_keypair = keypair::read_keypair_file(sol_keypair_path)?;
 
@@ -790,6 +922,7 @@ pub async fn command_upload_with_sol(
     let mut stream = upload_files_with_sol_stream(
         arweave,
         paths_iter,
+        tags,
         log_dir.clone(),
         None,
         price_terms,
@@ -817,13 +950,12 @@ pub async fn command_upload_with_sol(
     }
 
     if counter == 0 {
-        println!("The pattern \"{}\" didn't match any files.", glob_str);
+        println!("<FILE_PATHS> didn't match any files.");
     } else {
         println!(
-            "Uploaded {} files. Run `arloader update-status \"{}\" \"{}\"` to confirm transaction(s).",
+            "Uploaded {} files. Run `arloader update-status \"{}\" --file-paths <FILE_PATHS>` to confirm transaction(s).",
             counter,
             &log_dir.unwrap_or(PathBuf::from("")).display(),
-            glob_str,
         );
     }
 
@@ -890,17 +1022,6 @@ pub async fn command_write_metaplex_items(
         metaplex_items_path.display().to_string()
     );
     Ok(())
-}
-
-/// Maps cli string argument to output format.
-pub fn get_output_format(output: &str) -> OutputFormat {
-    match output {
-        "quiet" => OutputFormat::DisplayQuiet,
-        "verbose" => OutputFormat::DisplayVerbose,
-        "json" => OutputFormat::Json,
-        "json_compact" => OutputFormat::JsonCompact,
-        _ => OutputFormat::Display,
-    }
 }
 
 /// Gets manifest transaction id from first manifest file in a log directory.

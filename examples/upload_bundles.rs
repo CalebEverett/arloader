@@ -1,4 +1,4 @@
-use arloader::{commands::*, error::Error, Arweave};
+use arloader::{commands::*, error::Error, status::OutputFormat, Arweave};
 use rand::Rng;
 use rayon::prelude::*;
 use std::env;
@@ -34,39 +34,39 @@ async fn main() -> CommandResult {
 
     let ext = "bin";
     let temp_dir = files_setup(FILE_SIZE, NUM_FILES, ext)?;
+    let paths_iter = (0..NUM_FILES).map(|i| temp_dir.path().join(format!("{}.bin", i)));
+    let path_chunks = arweave.chunk_file_paths(paths_iter, BUNDLE_SIZE)?;
     let log_dir = temp_dir.path().join("status");
     fs::create_dir(log_dir.clone()).unwrap();
-    let glob_str = format!("{}/*.{}", temp_dir.path().display().to_string(), ext);
     let log_dir_str = log_dir.display().to_string();
+    let output_format = &OutputFormat::Display;
 
     if sol_keypair_path.is_none() {
         command_upload_bundles(
             &arweave,
-            &glob_str,
-            Some(log_dir_str.clone()),
+            path_chunks,
+            Some(log_dir),
             None,
-            BUNDLE_SIZE,
             REWARD_MULTIPLIER,
-            None,
+            output_format,
             BUFFER,
         )
         .await?;
     } else {
         command_upload_bundles_with_sol(
             &arweave,
-            &glob_str,
-            Some(log_dir_str.clone()),
+            path_chunks,
+            Some(log_dir),
             None,
-            BUNDLE_SIZE,
             REWARD_MULTIPLIER,
-            None,
+            output_format,
             BUFFER,
             sol_keypair_path.as_deref().unwrap(),
         )
         .await?;
     }
 
-    command_update_bundle_statuses(&arweave, &log_dir_str, None, 10).await?;
+    command_update_bundle_statuses(&arweave, &log_dir_str, output_format, 10).await?;
     Ok(())
 }
 

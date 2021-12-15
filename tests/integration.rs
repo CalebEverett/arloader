@@ -237,15 +237,13 @@ async fn test_filter_statuses() -> Result<(), Error> {
 
     // There should be 5 StatusCode::Pending.
     let paths_iter = glob("tests/fixtures/[0-4].png")?.filter_map(Result::ok);
-    let pending = arweave
-        .filter_statuses(
-            paths_iter,
-            log_dir.clone(),
-            // Some(vec![StatusCode::Pending]),
-            None,
-            None,
-        )
-        .await?;
+    let all_statuses = arweave.read_statuses(paths_iter, log_dir.clone()).await?;
+    let pending = arweave.filter_statuses(
+        all_statuses,
+        // Some(vec![StatusCode::Pending]),
+        None,
+        None,
+    )?;
     println!("{:?}", pending);
     assert_eq!(pending.len(), 5);
 
@@ -256,14 +254,9 @@ async fn test_filter_statuses() -> Result<(), Error> {
     let paths_iter = glob("tests/fixtures/[0-4]*.png")?.filter_map(Result::ok);
     let _updated_statuses = arweave.update_statuses(paths_iter, log_dir.clone()).await?;
     let paths_iter = glob("tests/fixtures/[0-4].png")?.filter_map(Result::ok);
-    let confirmed = arweave
-        .filter_statuses(
-            paths_iter,
-            log_dir.clone(),
-            Some(vec![StatusCode::Confirmed]),
-            None,
-        )
-        .await?;
+    let all_statuses = arweave.read_statuses(paths_iter, log_dir.clone()).await?;
+    let confirmed =
+        arweave.filter_statuses(all_statuses, Some(vec![StatusCode::Confirmed]), None)?;
     assert_eq!(confirmed.len(), 5);
     println!("{:?}", confirmed);
 
@@ -302,14 +295,9 @@ async fn test_filter_statuses() -> Result<(), Error> {
 
     // With five not found
     let paths_iter = glob("tests/fixtures/[0-9].png")?.filter_map(Result::ok);
-    let not_found = arweave
-        .filter_statuses(
-            paths_iter,
-            log_dir.clone(),
-            Some(vec![StatusCode::NotFound]),
-            None,
-        )
-        .await?;
+    let all_statuses = arweave.read_statuses(paths_iter, log_dir.clone()).await?;
+    let not_found =
+        arweave.filter_statuses(all_statuses, Some(vec![StatusCode::NotFound]), None)?;
     assert_eq!(not_found.len(), 5);
 
     // Now if we upload transactions for the not found statuses and mine we should have ten confirmed transactions.
@@ -325,14 +313,9 @@ async fn test_filter_statuses() -> Result<(), Error> {
     assert_eq!(updated_statuses.len(), 10);
 
     let paths_iter = glob("tests/fixtures/[0-9].png")?.filter_map(Result::ok);
-    let confirmed = arweave
-        .filter_statuses(
-            paths_iter,
-            log_dir.clone(),
-            Some(vec![StatusCode::Confirmed]),
-            None,
-        )
-        .await?;
+    let all_statuses = arweave.read_statuses(paths_iter, log_dir.clone()).await?;
+    let confirmed =
+        arweave.filter_statuses(all_statuses, Some(vec![StatusCode::Confirmed]), None)?;
     assert_eq!(confirmed.len(), 10);
     Ok(())
 }
@@ -356,7 +339,7 @@ async fn test_upload_files_stream() -> Result<(), Error> {
     let mut _tags_iter = Some(iter::repeat(Some(Vec::<Tag<Base64>>::new())));
     _tags_iter = None;
 
-    let mut stream = upload_files_stream(&arweave, paths_iter, None, None, (0, 0), 3);
+    let mut stream = upload_files_stream(&arweave, paths_iter, None, None, None, (0, 0), 3);
 
     let output_format = OutputFormat::JsonCompact;
 

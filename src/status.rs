@@ -39,6 +39,13 @@ impl std::fmt::Display for StatusCode {
         }
     }
 }
+pub struct FilterElements<'a> {
+    pub raw_status: &'a Option<RawStatus>,
+    pub status: &'a StatusCode,
+}
+pub trait Filterable {
+    fn get_filter_elements(&self) -> FilterElements;
+}
 
 /// Data structure for tracking transaction statuses.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -82,6 +89,15 @@ impl Status {
                 )
             }
             _ => format!("{}", ""),
+        }
+    }
+}
+
+impl Filterable for Status {
+    fn get_filter_elements(&self) -> FilterElements {
+        FilterElements {
+            raw_status: &self.raw_status,
+            status: &self.status,
         }
     }
 }
@@ -193,6 +209,15 @@ impl BundleStatus {
                 )
             }
             _ => format!("{}", ""),
+        }
+    }
+}
+
+impl Filterable for BundleStatus {
+    fn get_filter_elements(&self) -> FilterElements {
+        FilterElements {
+            raw_status: &self.raw_status,
+            status: &self.status,
         }
     }
 }

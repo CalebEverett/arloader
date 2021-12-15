@@ -116,7 +116,7 @@ use bundle::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
 use solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR};
-use status::{BundleStatus, Status, StatusCode};
+use status::{BundleStatus, Filterable, Status, StatusCode};
 use transaction::{Base64, Chunk, FromUtf8Strs, Tag, ToItems, Transaction};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -238,6 +238,7 @@ pub fn upload_transaction_chunks_stream<'a>(
 pub fn upload_files_stream<'a, IP>(
     arweave: &'a Arweave,
     paths_iter: IP,
+    tags: Option<Vec<Tag<Base64>>>,
     log_dir: Option<PathBuf>,
     last_tx: Option<Base64>,
     price_terms: (u64, u64),
@@ -248,7 +249,13 @@ where
 {
     stream::iter(paths_iter)
         .map(move |p| {
-            arweave.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), price_terms)
+            arweave.upload_file_from_path(
+                p,
+                log_dir.clone(),
+                tags.clone(),
+                last_tx.clone(),
+                price_terms,
+            )
         })
         .buffer_unordered(buffer)
 }
@@ -257,6 +264,7 @@ where
 pub fn upload_files_with_sol_stream<'a, IP>(
     arweave: &'a Arweave,
     paths_iter: IP,
+    tags: Option<Vec<Tag<Base64>>>,
     log_dir: Option<PathBuf>,
     last_tx: Option<Base64>,
     price_terms: (u64, u64),
@@ -273,7 +281,7 @@ where
             arweave.upload_file_from_path_with_sol(
                 p,
                 log_dir.clone(),
-                None,
+                tags.clone(),
                 last_tx.clone(),
                 price_terms,
                 solana_url.clone(),
@@ -1148,35 +1156,38 @@ impl Arweave {
     /// assumes there are zero confirms. This is designed to be used to
     /// determine whether all files have a confirmed status and to collect the
     /// paths of the files that need to be re-uploaded.
-    pub async fn filter_statuses<IP>(
+    pub fn filter_statuses<S>(
         &self,
-        paths_iter: IP,
-        log_dir: PathBuf,
+        all_statuses: Vec<S>,
         statuses: Option<Vec<StatusCode>>,
         max_confirms: Option<u64>,
-    ) -> Result<Vec<Status>, Error>
+    ) -> Result<Vec<S>, Error>
     where
-        IP: Iterator<Item = PathBuf> + Send,
+        S: Filterable,
     {
-        let all_statuses = self.read_statuses(paths_iter, log_dir).await?;
+        // let all_statuses = self.read_statuses(paths_iter, log_dir).await?;
 
         let filtered = if let Some(statuses) = statuses {
             if let Some(max_confirms) = max_confirms {
                 all_statuses
                     .into_iter()
                     .filter(|s| {
+                        let s = s.get_filter_elements();
                         let confirms = if let Some(raw_status) = &s.raw_status {
                             raw_status.number_of_confirmations
                         } else {
                             0
                         };
-                        (&statuses.iter().any(|c| c == &s.status)) & (confirms <= max_confirms)
+                        (&statuses.iter().any(|c| c == s.status)) & (confirms <= max_confirms)
                     })
                     .collect()
             } else {
                 all_statuses
                     .into_iter()
-                    .filter(|s| statuses.iter().any(|c| c == &s.status))
+                    .filter(|s| {
+                        let s = s.get_filter_elements();
+                        statuses.iter().any(|c| c == s.status)
+                    })
                     .collect()
             }
         } else {
@@ -1184,6 +1195,7 @@ impl Arweave {
                 all_statuses
                     .into_iter()
                     .filter(|s| {
+                        let s = s.get_filter_elements();
                         let confirms = if let Some(raw_status) = &s.raw_status {
                             raw_status.number_of_confirmations
                         } else {
@@ -1237,10 +1249,10 @@ impl Arweave {
     }
 
     // Reads statuses from a list of paths.
-    pub async fn read_bundle_statuses<IP>(&self, paths_iter: IP) -> Result<Vec<BundleStatus>, Error>
-    where
-        IP: Iterator<Item = PathBuf> + Send,
-    {
+    pub async fn read_bundle_statuses(&self, log_dir: &str) -> Result<Vec<BundleStatus>, Error> {
+        let paths_iter = glob(&format!("{}*.json", log_dir))?
+            .filter_map(Result::ok)
+            .filter(|p| file_stem_is_valid_txid(p));
         try_join_all(paths_iter.map(|p| self.read_bundle_status(p))).await
     }
 
@@ -1485,16 +1497,7 @@ impl Arweave {
             return Ok(format!("No bundle statuses found in {}", log_dir));
         };
 
-        let statuses = try_join_all(
-            paths
-                .iter()
-                .filter(|p| file_stem_is_valid_txid(p))
-                .map(|p| fs::read_to_string(p)),
-        )
-        .await?
-        .iter()
-        .map(|s| serde_json::from_str::<BundleStatus>(s).unwrap())
-        .collect();
+        let statuses = self.read_bundle_statuses(log_dir).await?;
 
         let manifest = self.create_manifest_from_bundle_statuses(statuses)?;
         let num_files = manifest["paths"].as_object().unwrap().keys().len();

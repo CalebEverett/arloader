@@ -13,6 +13,12 @@ use std::str::FromStr;
 /// Solana address to which SOL payments are made.
 pub const SOL_AR_PUBKEY: &str = "6AaM5L2SeA7ciwDNaYLhKqQzsDVaQM9CRqXVDdWPeAQ9";
 
+/// Solana main net uri used to get recent blockhash and wallet balance.
+pub const SOLANA_MAIN_URL: &str = "https://api.mainnet-beta.solana.com/";
+
+/// Solana dev net uri used to get recent blockhash and wallet balance.
+pub const SOLANA_DEV_URL: &str = "https://api.devnet.solana.com";
+
 /// Uri of Solana payment api.
 pub const SOL_AR_BASE_URL: &str = "https://arloader.io/";
 
@@ -185,15 +191,13 @@ pub struct SigResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        create_sol_transaction, get_recent_blockhash, get_sol_wallet_balance, request_airdrop,
-    };
+    use super::*;
     use crate::error::Error;
     use solana_sdk::signer::keypair::{self, Keypair};
 
     #[tokio::test]
     async fn test_get_recent_blockhash() -> Result<(), Error> {
-        let base_url = "https://api.devnet.solana.com".parse::<url::Url>().unwrap();
+        let base_url = SOLANA_DEV_URL.parse::<url::Url>().unwrap();
 
         let result = get_recent_blockhash(base_url).await?;
         println!("{}", result);
@@ -202,7 +206,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_sol_transaction() -> Result<(), Error> {
-        let base_url = "https://api.devnet.solana.com".parse::<url::Url>().unwrap();
+        let base_url = SOLANA_DEV_URL.parse::<url::Url>().unwrap();
         let keypair = keypair::read_keypair_file("tests/fixtures/solana_test.json")?;
         request_airdrop(base_url.clone(), &keypair).await?;
 
@@ -213,7 +217,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_sol_wallet_balance() -> Result<(), Error> {
-        let base_url = "https://api.devnet.solana.com".parse::<url::Url>().unwrap();
+        let base_url = SOLANA_DEV_URL.parse::<url::Url>().unwrap();
         let keypair = Keypair::new();
 
         let balance = get_sol_wallet_balance(base_url, &keypair).await?;

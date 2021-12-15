@@ -59,18 +59,20 @@ jobs:
       - name: Commands
         run: |
           curl http://localhost:1984/mint/MlV6DeOtRmakDOf6vgOBlif795tcWimgyPsYYNQ8q1Y/100000000000000
-          mkdir nfts
-          mkdir nfts/status
+          mkdir target/nfts
+          mkdir target/nfts/status
           cp tests/fixtures/[0-9].* nfts/
           target/${{ matrix.target }}/release/arloader balance
-          target/${{ matrix.target }}/release/arloader estimate "nfts/*.png"
-          target/${{ matrix.target }}/release/arloader upload "nfts/*.png" --log-dir nfts/status
-          target/${{ matrix.target }}/release/arloader update-status nfts/status
-          target/${{ matrix.target }}/release/arloader upload-manifest nfts/status
-          target/${{ matrix.target }}/release/arloader upload-nfts "nfts/*.png"
-          target/${{ matrix.target }}/release/arloader upload "nfts/*.png" --log-dir nfts/status --no-bundle
-          target/${{ matrix.target }}/release/arloader update-status nfts/status --glob "nfts/*.png" --no-bundle
-          rm -rf nfts
+          target/${{ matrix.target }}/release/arloader estimate target/nfts/*.png
+          target/${{ matrix.target }}/release/arloader upload target/nfts/*.png --log-dir nfts/status
+          target/${{ matrix.target }}/release/arloader list-status target/nfts/status
+          target/${{ matrix.target }}/release/arloader update-status target/nfts/status
+          target/${{ matrix.target }}/release/arloader upload-manifest target/nfts/status
+          target/${{ matrix.target }}/release/arloader upload-nfts target/nfts/*.png
+          target/${{ matrix.target }}/release/arloader upload target/nfts/*.png --log-dir nfts/status --no-bundle
+          target/${{ matrix.target }}/release/arloader list-status target/nfts/status --file-paths target/nfts/*.png --no-bundle
+          target/${{ matrix.target }}/release/arloader status-report target/nfts/status --file-paths target/nfts/*.png --no-bundle
+          target/${{ matrix.target }}/release/arloader update-status target/nfts/status --file-paths target/nfts/*.png --no-bundle
       - name: Paths
         id: paths
         shell: bash
