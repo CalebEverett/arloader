@@ -1611,11 +1611,15 @@ impl Arweave {
                         path_object["id"].as_str().unwrap()
                     )
                 };
-                self.update_metadata_file(
-                    p.with_extension("json"),
-                    path_object["files"].as_array().unwrap().clone(),
-                    image_link,
-                )
+                let files_array = if image_link_file {
+                    path_object["files"].as_array().unwrap().clone()
+                } else {
+                    vec![json!(format!(
+                        "https://arweave.net/{}",
+                        path_object["id"].as_str().unwrap()
+                    ))]
+                };
+                self.update_metadata_file(p.with_extension("json"), files_array, image_link)
             }))
             .await?;
             Ok(())
