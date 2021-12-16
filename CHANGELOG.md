@@ -5,8 +5,9 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Unreleased
+# v0.1.48 (2021-12-15)
 - **added:** added examples to cli `--help`.
+- **removed:** remove Windows build.
 
 # v0.1.46 (2021-12-15)
 - **added:** added `--reupload` command for bundles. You specify `--file-paths` and `--log-dir` and the command reuploads any files not included in the statuses in `--log-dir` and any files with a status included in `--statuses` or fewer confirmations than `--max-confirms`.

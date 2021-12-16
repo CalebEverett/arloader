@@ -614,21 +614,6 @@ fn get_app() -> App<'static, 'static> {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("upload-one")
-                .about("Uploads a single file and prints a link.")
-                .arg(tags_arg())
-                .arg(reward_multiplier_arg())
-                .arg(ar_keypair_path_arg().required_unless("with_sol"))
-                .arg(ar_default_keypair())
-                .arg(with_sol_arg().requires("sol_keypair_path"))
-                .arg(sol_keypair_path_arg())
-                .group(
-                    ArgGroup::with_name("ar_keypair")
-                        .args(&["ar_keypair_path", "ar_default_keypair"])
-                        .required(true),
-                ),
-        )
-        .subcommand(
             SubCommand::with_name("write-metaplex-items")
                 .about("Writes metaplex items to file.")
                 .arg(glob_arg(true))
