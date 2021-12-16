@@ -126,8 +126,8 @@ jobs:
           - target: x86_64-apple-darwin
             host_os: macos-latest
 
-          - target: x86_64-pc-windows-msvc
-            host_os: windows-latest
+          # - target: x86_64-pc-windows-msvc
+          #   host_os: windows-latest
 
     steps:
       - if: contains(matrix.host_os, 'ubuntu')

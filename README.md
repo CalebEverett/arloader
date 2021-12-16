@@ -24,7 +24,7 @@ Upload gigabytes of files with one command. Files are read and posted to [arweav
 
 ## Installation
 
-1. The easiest way to use arloader is to download the binary for your system (Linux, Mac or Windows) from the [releases on github](https://github.com/CalebEverett/arloader/releases).
+1. The easiest way to use arloader is to download the binary for your system (Linux or Mac) from the [releases on github](https://github.com/CalebEverett/arloader/releases).
 
 You can also install from [crates.io](https://crates.io) once you have [rust installed](https://www.rust-lang.org/tools/install) with the nightly toolchain.
 
@@ -410,10 +410,13 @@ Benchmarks include only processing activity and exclude reading files from disk 
 - [x] Point at folder of assets and json and get back links to uploaded metadata
 - [x] Clean up handling of paths
 - [x] Re upload bundles
+- [ ] Add super simple single upload, return link
 - [ ] Progress indicators for longer running processes
 - [ ] Output in metaboss format, or include in metaplex cli
 - [ ] Implement bundlr
 - [ ] Async benchmarking, including reading files from disk
 - [ ] Bundlr benchmarking
+- [ ] Report on missing files in `list-status` and `update-status` commands
+- [ ] Include duration in completion output.
 
 
