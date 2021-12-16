@@ -453,7 +453,13 @@ fn get_app() -> App<'static, 'static> {
                 .arg(reward_multiplier_arg())
                 .arg(with_sol_arg())
                 .arg(bundle_size_arg())
-                .arg(no_bundle_arg()),
+                .arg(no_bundle_arg())
+                .after_help(
+                    "EXAMPLES:\nTo get an estimate of the cost in AR and USD to upload all the pngs in some/directory:\n\n\tarloader estimate some/directory/*.png \
+                    \n\nTo get an estimate of the cost in SOL and USD to upload all the pngs in some/directory:\n\n\tarloader estimate some/directory/*.png --with-sol \
+                    \n\nNOTES:\n- Estimates assume the default bundle size of 10 MB. Pass the `--bundle-size` arg to change the bundle size.
+                    " ,
+                ),
         )
         .subcommand(
             SubCommand::with_name("get-status")
@@ -472,7 +478,15 @@ fn get_app() -> App<'static, 'static> {
                 .arg(file_paths_arg().long("file-paths").requires("no_bundle"))
                 .arg(no_bundle_arg().requires("file_paths"))
                 .arg(statuses_arg())
-                .arg(max_confirms_arg()),
+                .arg(max_confirms_arg())
+                .after_help(
+                    "EXAMPLES:\nTo list bundle statuses written to where/my/files/at/status:\n\n\tarloader list-status where/my/files/at/status \
+                    \n\nTo list individual transaction statuses written to where/my/files/at/status for pngs uploaded from where/my/files/at:\n\n\tarloader list-status where/my/files/at/status --file-paths where/my/files/at/*.png --no-bundle \
+                    \n\nTo list bundle statuses written to where/my/files/at/status that have a status of NotFound or Pending:\n\n\tarloader list-status where/my/files/at/status --statuses NotFound Pending \
+                    \n\nTo list individual transaction statuses written to where/my/files/at/status for pngs uploaded from where/my/files/at that have fewer than 25 confirmations:\n\n\tarloader list-status where/my/files/at/status --file-paths where/my/files/at/*.png --max-confirms 25 --no-bundle \
+                    \n\nNOTES:\n- Make sure NOT to include quotes around <FILE_PATHS>.\n- Make sure <FILE_PATHS> matches the files you uploaded, not the json status files.\n- The primary reason for NotFound is insufficient reward. Try setting a higher <REWARD_MULT>.
+                    ",
+                ),
         )
         .subcommand(
             SubCommand::with_name("pending").about("Prints count of pending network transactions."),
@@ -497,14 +511,25 @@ fn get_app() -> App<'static, 'static> {
                     ArgGroup::with_name("ar_keypair")
                         .args(&["ar_keypair_path", "ar_default_keypair"])
                         .required(true),
+                ).after_help(
+                    "EXAMPLES:\nTo re-upload pngs previously uploaded from where/my/files/at in bundles with statuses written to where/my/files/at/status with a status of NotFound using an AR keypair with a path of path/to/my/ar_keypair.json:\n\n\tarloader reupload where/my/files/at/*.png --log-dir where/my/files/at/status --statuses NotFound --ar_keypair path path/to/my/ar_keypair.json\
+                    \n\nTo re-upload pngs previously uploaded from where/my/files/at as individual transactions with statuses with fewer than 25 confirmations previously written to where/my/files/at/status using a SOL keypair with a path of path/to/my/sol_keypair.json and the default AR keypair:\n\n\tarloader reupload where/my/files/at/*.png --log-dir where/my/files/at/status --max-confirms 25 --no-bundle --with-sol --sol-keypair_path path/to/my/sol_keypair.json --ar-default-keypair\
+                    \n\nTo re-upload pngs previously uploaded from where/my/files/at in bundles with statuses written to where/my/files/at/status with statuses of NotFound and Pending with a new bundle size of 100 MB and a reward multiplier of 3.0 using at AR keypair with the path the AR_KEYPAIR_PATH environment variable:\n\n\tarloader reupload where/my/files/at/*.png --log-dir where/my/files/at/status --statuses NotFound Pending --bundle-size 100 --reward-multiplier 3\
+                    \n\nNOTES:\n- Also uploads any files in <FILE_PATHS> not included in statuses.\n- Make sure NOT to include quotes around <FILE_PATHS>.\n- Make sure <FILE_PATHS> matches the files you uploaded, not the json status files.\n- Add paths to your keypair files to the AR_KEYPAIR_PATH and SOL_KEYPAIR_PATH environment variables instead of providing them as arguments.
+                    ",
                 ),
         )
         .subcommand(
             SubCommand::with_name("status-report")
                 .about("Prints a summary of statuses.")
-                .arg(log_dir_arg_read())
+                .arg(log_dir_arg_read().required(true))
                 .arg(file_paths_arg().long("file-paths").requires("no_bundle"))
-                .arg(no_bundle_arg().requires("file_paths")),
+                .arg(no_bundle_arg().requires("file_paths"))
+                .after_help(
+                    "EXAMPLES:\nTo print a report of the individual transaction statuses previously written to some/directory/status for pngs previously uploaded from where/my/files/at:\n\n\tarloader status-report some/directory/status --file-paths where/my/files/at/*.png --no-bundle \
+                    \n\nNOTES:\n- Not yet implemented for bundle transactions.\n- Make sure <FILE_PATHS> matches the files you uploaded, not the json status files.
+                    " ,
+                ),
         )
         .subcommand(
             SubCommand::with_name("update-nft-status")
@@ -582,6 +607,21 @@ fn get_app() -> App<'static, 'static> {
                 .arg(buffer_arg("5"))
                 .arg(bundle_size_arg())
                 .arg(link_file_arg())
+                .group(
+                    ArgGroup::with_name("ar_keypair")
+                        .args(&["ar_keypair_path", "ar_default_keypair"])
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("upload-one")
+                .about("Uploads a single file and prints a link.")
+                .arg(tags_arg())
+                .arg(reward_multiplier_arg())
+                .arg(ar_keypair_path_arg().required_unless("with_sol"))
+                .arg(ar_default_keypair())
+                .arg(with_sol_arg().requires("sol_keypair_path"))
+                .arg(sol_keypair_path_arg())
                 .group(
                     ArgGroup::with_name("ar_keypair")
                         .args(&["ar_keypair_path", "ar_default_keypair"])
@@ -731,7 +771,7 @@ fn reward_multiplier_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("REWARD_MULT")
         .default_value("1.0")
         .validator(is_valid_reward_multiplier)
-        .help("Specify a float between 0.0 and 10.0 to multiply the reward by.")
+        .help("Specify a factor between 0.0 and 10.0 to increase the reward by.")
 }
 
 fn sol_keypair_path_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -757,7 +797,7 @@ fn status_log_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("log_dir")
         .value_name("LOG_DIR")
         .takes_value(true)
-        .takes_value(true)
+        .required(true)
         .validator(is_valid_dir)
         .help("Parent status directory that contains `assets/` and `metadata/` sub-folders.")
 }

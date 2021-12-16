@@ -2,7 +2,7 @@ use arloader::{commands::*, error::Error, status::OutputFormat, Arweave};
 use rand::Rng;
 use rayon::prelude::*;
 use std::env;
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{fs, path::PathBuf, str::FromStr, time::Instant};
 use tempdir::TempDir;
 use url::Url;
 
@@ -10,7 +10,7 @@ use url::Url;
 const REWARD_MULTIPLIER: f32 = 2.0;
 const NUM_FILES: usize = 20;
 const FILE_SIZE: usize = 10_000_000;
-const BUNDLE_SIZE: u64 = 10_000_000;
+const BUNDLE_SIZE: u64 = 200_000_000;
 const BUFFER: usize = 5;
 
 #[tokio::main]
@@ -36,10 +36,11 @@ async fn main() -> CommandResult {
     let temp_dir = files_setup(FILE_SIZE, NUM_FILES, ext)?;
     let paths_iter = (0..NUM_FILES).map(|i| temp_dir.path().join(format!("{}.bin", i)));
     let path_chunks = arweave.chunk_file_paths(paths_iter, BUNDLE_SIZE)?;
-    let log_dir = temp_dir.path().join("status");
+    let log_dir = temp_dir.path().join("status/");
     fs::create_dir(log_dir.clone()).unwrap();
     let output_format = &OutputFormat::Display;
 
+    let start = Instant::now();
     if sol_keypair_path.is_none() {
         command_upload_bundles(
             &arweave,
@@ -64,6 +65,14 @@ async fn main() -> CommandResult {
         )
         .await?;
     }
+
+    let duration = start.elapsed();
+
+    println!(
+        "\n\nUpload completed in: {:?}\n\nUpdating statuses..\n\n",
+        duration
+    );
+
     command_update_bundle_statuses(&arweave, log_dir, output_format, 10).await?;
     Ok(())
 }
