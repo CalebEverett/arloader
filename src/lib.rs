@@ -312,13 +312,13 @@ where
 //=========================
 
 #[derive(Serialize, Deserialize, Debug)]
-struct OraclePrice {
+pub struct OraclePrice {
     pub arweave: OraclePricePair,
     pub solana: OraclePricePair,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct OraclePricePair {
+pub struct OraclePricePair {
     pub usd: f32,
 }
 
@@ -954,7 +954,7 @@ impl Arweave {
     ) -> Result<(Transaction, SigResponse), Error> {
         let lamports = std::cmp::max(&transaction.reward * 0, FLOOR);
 
-        let sol_tx = create_sol_transaction(solana_url, from_keypair, lamports).await?;
+        let mut sol_tx = create_sol_transaction(solana_url.clone(), from_keypair, lamports).await?;
         let mut resp = get_sol_ar_signature(
             sol_ar_url.clone(),
             transaction.to_deep_hash_item()?,
@@ -976,6 +976,8 @@ impl Arweave {
                     );
                     retries += 1;
                     sleep(Duration::from_millis(300)).await;
+                    sol_tx =
+                        create_sol_transaction(solana_url.clone(), from_keypair, lamports).await?;
                     resp = get_sol_ar_signature(
                         sol_ar_url.clone(),
                         transaction.to_deep_hash_item()?,

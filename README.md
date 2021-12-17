@@ -17,6 +17,7 @@ Upload gigabytes of files with one command. Files are read and posted to [arweav
 * [Reward Multiplier](#reward-multiplier)
 * [Usage without Bundles](#usage-without-bundles)
 * [Benchmarks](#benchmarks)
+* [Pricing Comparison](#pricing-comparison)
 * [Roadmap](#roadmap)
 
 ## Discounted Usage with SOL
@@ -400,6 +401,22 @@ Benchmarks include only processing activity and exclude reading files from disk 
 | Total | Sum of the time required to create data items, bundle and transaction in seconds.|
 | Per 1,000 | Extrapolation of total to 1,000 files.|
 
+## Pricing Comparison
+
+The table below compares the cost to upload 256 MB of files to Arweave as individual files versus in a single bundle and includes a comparison to the bundlr network as well. This was run on 2021-12-17. You can run `cargo run --example pricing` to print a table with current prices.
+
+```
+Price in USD to upload 256 MB of files of various sizes in KB ($48.33 USD per AR):
+
+file size | num files | arweave | bundlr | arweave total | bundlr total | arweave bundle
+-----------------------------------------------------------------------------------------
+        1      262144    0.0019   0.0000        508.3164         5.1784           1.9616
+       32        8192    0.0019   0.0003         15.8849         2.5892           1.9616
+      256        1024    0.0019   0.0025          1.9856         2.5892           1.9616
+     1024         256    0.0077   0.0101          1.9676         2.5892           1.9616
+     4096          64    0.0307   0.0405          1.9631         2.5892           1.9616
+    16384          16    0.1226   0.1618          1.9620         2.5892           1.9616
+```
 
 ## Roadmap
 
