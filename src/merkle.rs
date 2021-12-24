@@ -83,24 +83,21 @@ impl Helpers<usize> for usize {
     }
 }
 
-fn get_chunk_size(data_len: usize) -> usize {
-    if data_len <= MAX_CHUNK_SIZE {
-        data_len
-    } else {
-        let num_chunks = data_len / MAX_CHUNK_SIZE + (data_len % MAX_CHUNK_SIZE != 0) as usize;
-        data_len / num_chunks + (data_len % num_chunks != 0) as usize
-    }
-}
-
 /// Generates data chunks from which the calculation of root id starts.
 pub fn generate_leaves(data: Vec<u8>, crypto: &Provider) -> Result<Vec<Node>, Error> {
     let mut data_chunks: Vec<&[u8]> = data.chunks(MAX_CHUNK_SIZE).collect();
+
+    #[allow(unused_assignments)]
     let mut last_two = Vec::new();
 
     if data_chunks.len() > 1 && data_chunks.last().unwrap().len() < MIN_CHUNK_SIZE {
         last_two = data_chunks.split_off(data_chunks.len() - 2).concat();
         let chunk_size = last_two.len() / 2 + (last_two.len() % 2 != 0) as usize;
         data_chunks.append(&mut last_two.chunks(chunk_size).collect::<Vec<&[u8]>>());
+    }
+
+    if data_chunks.last().unwrap().len() == MAX_CHUNK_SIZE {
+        data_chunks.push(&[]);
     }
 
     let mut leaves = Vec::<Node>::new();
@@ -140,16 +137,6 @@ pub fn hash_branch(left: Node, right: Node, crypto: &Provider) -> Result<Node, E
 
 /// Builds one layer of branch nodes from a layer of child nodes.
 pub fn build_layer<'a>(nodes: Vec<Node>, crypto: &Provider) -> Result<Vec<Node>, Error> {
-    let mut layer = Vec::<Node>::with_capacity(&nodes.len() / 2);
-    let mut nodes_iter = nodes.into_iter();
-    while let (Some(left), Some(right)) = (nodes_iter.next(), nodes_iter.next()) {
-        layer.push(hash_branch(left, right, &crypto).unwrap());
-    }
-    Ok(layer)
-}
-
-/// Builds one layer of branch nodes from a layer of child nodes.
-pub fn build_layer_2<'a>(nodes: Vec<Node>, crypto: &Provider) -> Result<Vec<Node>, Error> {
     let mut layer = Vec::<Node>::with_capacity(nodes.len() / 2 + (nodes.len() % 2 != 0) as usize);
     let mut nodes_iter = nodes.into_iter();
     while let Some(left) = nodes_iter.next() {
@@ -165,7 +152,7 @@ pub fn build_layer_2<'a>(nodes: Vec<Node>, crypto: &Provider) -> Result<Vec<Node
 /// Builds all layers from leaves up to single root node.
 pub fn generate_data_root(mut nodes: Vec<Node>, crypto: &Provider) -> Result<Node, Error> {
     while nodes.len() > 1 {
-        nodes = build_layer_2(nodes, &crypto)?;
+        nodes = build_layer(nodes, &crypto)?;
     }
     let root = nodes.pop().unwrap();
     Ok(root)
@@ -280,17 +267,9 @@ pub fn validate_chunk(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::transaction::Base64;
+    use std::{path::PathBuf, str::FromStr};
     use tokio::fs;
-
-    #[test]
-    fn test_get_chunk_size() -> () {
-        assert_eq!(get_chunk_size(MIN_CHUNK_SIZE), MIN_CHUNK_SIZE);
-        assert_eq!(get_chunk_size(MAX_CHUNK_SIZE), MAX_CHUNK_SIZE);
-        assert_eq!(get_chunk_size(MAX_CHUNK_SIZE * 4), MAX_CHUNK_SIZE);
-        assert_eq!(get_chunk_size(MAX_CHUNK_SIZE + 1), 131073);
-        assert_eq!(get_chunk_size(1049784), 209957);
-    }
 
     #[tokio::test]
     async fn test_generate_leaves() -> Result<(), Error> {
@@ -374,143 +353,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_data_root() -> Result<(), Error> {
-        let crypto = Provider::from_keypair_path(PathBuf::from(
-            "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
-        ))
-        .await?;
+    async fn test_generate_data_root_even_chunks() -> Result<(), Error> {
+        let crypto = Provider::default();
         let data = fs::read("tests/fixtures/1mb.bin").await?;
+        // root id as calculate by arweave-js
+        let root_actual = Base64::from_str("o1tTTjbC7hIZN6KbUUYjlkQoDl2k8VXNuBDcGIs52Hc")?;
         let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
         let root = generate_data_root(leaves, &crypto)?;
-        assert_eq!(
-            root.id,
-            [
-                80, 80, 69, 118, 15, 123, 97, 51, 235, 63, 130, 216, 210, 76, 201, 220, 236, 7, 49,
-                169, 83, 37, 80, 107, 186, 166, 114, 203, 209, 56, 127, 13,
-            ]
-        );
+        assert_eq!(root.id, root_actual.0.as_ref());
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_generate_data_root_one_chunk() -> Result<(), Error> {
-        let crypto = Provider::from_keypair_path(PathBuf::from(
-            "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
-        ))
-        .await?;
-        let data = fs::read("tests/fixtures/1mb.bin").await?;
-        let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
-        let root = generate_data_root(leaves, &crypto)?;
-        assert_eq!(
-            root.id,
-            [
-                80, 80, 69, 118, 15, 123, 97, 51, 235, 63, 130, 216, 210, 76, 201, 220, 236, 7, 49,
-                169, 83, 37, 80, 107, 186, 166, 114, 203, 209, 56, 127, 13,
-            ]
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_generate_proofs() -> Result<(), Error> {
-        let crypto = Provider::from_keypair_path(PathBuf::from(
-            "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
-        ))
-        .await?;
-        let data = fs::read("tests/fixtures/1mb.bin").await?;
+    async fn test_generate_proof() -> Result<(), Error> {
+        let crypto = Provider::default();
+        let proof_actual = Base64::from_str("7EAC9FsACQRwe4oIzu7Mza9KjgWKT4toYxDYGjWrCdp0QgsrYS6AueMJ_rM6ZEGslGqjUekzD3WSe7B5_fwipgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAnH6dASdQCigcL43lp0QclqBaSncF4TspuvxoFbn2L18EXpQrP1wkbwdIjSSWQQRt_F31yNvxtc09KkPFtzMKAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAIHiHU9QwOImFzjqSlfxkJJCtSbAox6TbbFhQvlEapSgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAA")?;
+        let data = fs::read("tests/fixtures/rebar3").await?;
         let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
         let root = generate_data_root(leaves, &crypto)?;
 
         let proofs = resolve_proofs(root, None)?;
         assert_eq!(
-            proofs,
-            vec![
-                Proof {
-                    offset: 262143,
-                    proof: vec![
-                        50, 116, 51, 211, 72, 86, 49, 84, 45, 220, 75, 153, 44, 133, 213, 88, 58,
-                        246, 8, 202, 100, 249, 227, 0, 10, 177, 116, 187, 113, 95, 41, 10, 119, 13,
-                        144, 53, 9, 45, 125, 241, 131, 57, 212, 158, 95, 206, 105, 115, 140, 212,
-                        17, 23, 115, 169, 161, 158, 153, 149, 218, 162, 104, 142, 196, 29, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 8, 0, 0, 141, 126, 47, 91, 10, 25, 183, 143, 217, 39, 240, 188, 236, 97,
-                        89, 124, 249, 124, 168, 186, 135, 247, 16, 248, 154, 100, 81, 108, 28, 156,
-                        152, 156, 116, 162, 15, 141, 57, 10, 17, 205, 78, 2, 213, 56, 154, 61, 223,
-                        174, 73, 226, 192, 82, 70, 39, 237, 145, 89, 66, 199, 123, 31, 23, 88, 38,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 4, 0, 0, 230, 109, 212, 174, 212, 28, 88, 210, 62, 6, 202, 239,
-                        18, 88, 65, 18, 49, 13, 5, 41, 138, 129, 207, 143, 110, 56, 113, 12, 150,
-                        223, 137, 174, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0,
-                    ],
-                },
-                Proof {
-                    offset: 524287,
-                    proof: vec![
-                        50, 116, 51, 211, 72, 86, 49, 84, 45, 220, 75, 153, 44, 133, 213, 88, 58,
-                        246, 8, 202, 100, 249, 227, 0, 10, 177, 116, 187, 113, 95, 41, 10, 119, 13,
-                        144, 53, 9, 45, 125, 241, 131, 57, 212, 158, 95, 206, 105, 115, 140, 212,
-                        17, 23, 115, 169, 161, 158, 153, 149, 218, 162, 104, 142, 196, 29, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 8, 0, 0, 141, 126, 47, 91, 10, 25, 183, 143, 217, 39, 240, 188, 236, 97,
-                        89, 124, 249, 124, 168, 186, 135, 247, 16, 248, 154, 100, 81, 108, 28, 156,
-                        152, 156, 116, 162, 15, 141, 57, 10, 17, 205, 78, 2, 213, 56, 154, 61, 223,
-                        174, 73, 226, 192, 82, 70, 39, 237, 145, 89, 66, 199, 123, 31, 23, 88, 38,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 4, 0, 0, 49, 180, 221, 222, 226, 186, 75, 140, 193, 105, 70,
-                        238, 149, 178, 153, 32, 144, 208, 63, 136, 223, 103, 186, 4, 109, 24, 64,
-                        127, 20, 38, 98, 56, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0,
-                    ],
-                },
-                Proof {
-                    offset: 786431,
-                    proof: vec![
-                        50, 116, 51, 211, 72, 86, 49, 84, 45, 220, 75, 153, 44, 133, 213, 88, 58,
-                        246, 8, 202, 100, 249, 227, 0, 10, 177, 116, 187, 113, 95, 41, 10, 119, 13,
-                        144, 53, 9, 45, 125, 241, 131, 57, 212, 158, 95, 206, 105, 115, 140, 212,
-                        17, 23, 115, 169, 161, 158, 153, 149, 218, 162, 104, 142, 196, 29, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 8, 0, 0, 184, 200, 34, 207, 230, 129, 160, 91, 89, 41, 88, 49, 206, 83,
-                        214, 37, 73, 186, 9, 26, 183, 92, 145, 187, 130, 156, 175, 142, 173, 186,
-                        68, 121, 134, 230, 103, 186, 33, 99, 44, 211, 13, 30, 4, 8, 118, 27, 175,
-                        31, 253, 126, 114, 237, 95, 159, 103, 107, 39, 34, 85, 210, 115, 233, 28,
-                        12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 12, 0, 0, 185, 69, 99, 13, 191, 69, 39, 118, 239, 167, 31,
-                        90, 244, 65, 38, 2, 232, 200, 221, 155, 198, 115, 245, 16, 124, 111, 87,
-                        90, 140, 66, 53, 152, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0,
-                    ],
-                },
-                Proof {
-                    offset: 1048575,
-                    proof: vec![
-                        50, 116, 51, 211, 72, 86, 49, 84, 45, 220, 75, 153, 44, 133, 213, 88, 58,
-                        246, 8, 202, 100, 249, 227, 0, 10, 177, 116, 187, 113, 95, 41, 10, 119, 13,
-                        144, 53, 9, 45, 125, 241, 131, 57, 212, 158, 95, 206, 105, 115, 140, 212,
-                        17, 23, 115, 169, 161, 158, 153, 149, 218, 162, 104, 142, 196, 29, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 8, 0, 0, 184, 200, 34, 207, 230, 129, 160, 91, 89, 41, 88, 49, 206, 83,
-                        214, 37, 73, 186, 9, 26, 183, 92, 145, 187, 130, 156, 175, 142, 173, 186,
-                        68, 121, 134, 230, 103, 186, 33, 99, 44, 211, 13, 30, 4, 8, 118, 27, 175,
-                        31, 253, 126, 114, 237, 95, 159, 103, 107, 39, 34, 85, 210, 115, 233, 28,
-                        12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 12, 0, 0, 50, 32, 92, 251, 142, 102, 91, 172, 106, 78, 179,
-                        155, 43, 216, 139, 97, 1, 94, 246, 106, 215, 17, 178, 4, 158, 174, 150,
-                        127, 37, 219, 39, 191, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0,
-                    ],
-                },
-            ]
+            proofs[0],
+            Proof {
+                offset: 262143,
+                proof: proof_actual.0,
+            },
         );
         Ok(())
     }
     #[tokio::test]
     async fn test_validate_chunks() -> Result<(), Error> {
-        let crypto = Provider::from_keypair_path(PathBuf::from(
-            "tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
-        ))
-        .await?;
+        let crypto = Provider::default();
         let data = fs::read("tests/fixtures/1mb.bin").await?;
         let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
         let root = generate_data_root(leaves.clone(), &crypto)?;
@@ -522,7 +396,62 @@ mod tests {
         for (chunk, proof) in leaves.into_iter().zip(proofs.into_iter()) {
             assert_eq!((), validate_chunk(root_id.clone(), chunk, proof, &crypto)?);
         }
+        Ok(())
+    }
 
+    #[tokio::test]
+    async fn test_valid_root() -> Result<(), Error> {
+        let crypto = Provider::default();
+        let data_root_actual = Base64::from_str("t-GCOnjPWxdox950JsrFMu3nzOE4RktXpMcIlkqSUTw")?;
+        let data = fs::read("tests/fixtures/rebar3").await?;
+        let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
+        let root = generate_data_root(leaves.clone(), &crypto)?;
+        assert_eq!(root.id.to_vec(), data_root_actual.0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_valid_root_even_chunks() -> Result<(), Error> {
+        let crypto = Provider::default();
+        let data = fs::read("tests/fixtures/1mb.bin").await?;
+        // root id as calculate by arweave-js
+        let root_actual = Base64::from_str("o1tTTjbC7hIZN6KbUUYjlkQoDl2k8VXNuBDcGIs52Hc")?;
+        let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
+        let root = generate_data_root(leaves, &crypto)?;
+        assert_eq!(root.id, root_actual.0.as_ref());
+        Ok(())
+    }
+
+    #[test]
+    fn test_valid_root_small_last_chunk() -> Result<(), Error> {
+        let crypto = Provider::default();
+        let data = vec![0; 256 * 1024 + 1];
+        // root id as calculate by arweave-js
+        let root_actual = Base64::from_str("br1Vtl3TS_NGWdHmYqBh3-MxrlckoluHCZGmUZk-dJc")?;
+        let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
+        let root = generate_data_root(leaves, &crypto)?;
+        println!("{}", Base64(root.id.to_vec()));
+        assert_eq!(root.id, root_actual.0.as_ref());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_even_chunks() -> Result<(), Error> {
+        let crypto = Provider::default();
+        let data = fs::read("tests/fixtures/1mb.bin").await?;
+        let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
+        println!("{:?}", leaves[4]);
+        assert_eq!(leaves.len(), 5);
+        Ok(())
+    }
+
+    #[test]
+    fn test_small_last_chunk() -> Result<(), Error> {
+        let crypto = Provider::default();
+        let data = vec![0; 256 * 1024 + 1];
+        let leaves: Vec<Node> = generate_leaves(data, &crypto)?;
+        assert_eq!(131073, leaves[0].max_byte_range);
+        assert_eq!(131072, leaves[1].max_byte_range - leaves[1].min_byte_range);
         Ok(())
     }
 }

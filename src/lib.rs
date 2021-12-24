@@ -839,10 +839,17 @@ impl Arweave {
     }
 
     pub fn merklize(&self, data: Vec<u8>) -> Result<Transaction, Error> {
-        let chunks = generate_leaves(data.clone(), &self.crypto)?;
+        let mut chunks = generate_leaves(data.clone(), &self.crypto)?;
         let root = generate_data_root(chunks.clone(), &self.crypto)?;
         let data_root = Base64(root.id.clone().into_iter().collect());
-        let proofs = resolve_proofs(root, None)?;
+        let mut proofs = resolve_proofs(root, None)?;
+
+        // Discard the last chunk & proof if it's zero length.
+        let last_chunk = chunks.last().unwrap();
+        if last_chunk.max_byte_range == last_chunk.min_byte_range {
+            chunks.pop();
+            proofs.pop();
+        }
 
         Ok(Transaction {
             format: 2,
