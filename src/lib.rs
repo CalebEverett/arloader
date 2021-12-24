@@ -688,7 +688,7 @@ impl Arweave {
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        let (id, reward) = if paths_chunk.1 > 10_000_000 {
+        let (id, reward) = if paths_chunk.1 > MAX_TX_DATA {
             self.post_transaction_chunks(signed_transaction, buffer)
                 .await?
         } else {
@@ -736,7 +736,7 @@ impl Arweave {
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = if paths_chunk.1 > 10000000 {
+        let (id, reward) = if paths_chunk.1 > MAX_TX_DATA {
             self.post_transaction_chunks(signed_transaction, chunks_buffer)
                 .await?
         } else {
