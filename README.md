@@ -9,6 +9,9 @@ Command line application and client for uploading files to [Arweave](https://www
 
 Upload gigabytes of files with one command. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel on multiple threads.
 
+## Potential Issue with Transactions Uploaded Prior to Version 1.51
+ The way aloader was formatting transactions for upload was not entirely compatible with the Arweave protocol prior to version 1.51. For upload transactions bigger than 256 KB it is possible that even though your transactions are visible and are showing more than 25 confirmations that they may not be written to the Arweave blockchain. If you would like assistance determining whether your transactions may be been impacted, please open an issue and I will be happy to help, including paying for any necessary re-uploading.
+
 ## Contents
 * [Installation](#installation)
 * [NFT Usage](#nft-usage)

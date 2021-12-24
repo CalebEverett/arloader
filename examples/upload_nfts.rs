@@ -9,7 +9,7 @@ use std::{env, fs, path::PathBuf, str::FromStr};
 
 // For smaller sample sizes, you may have to increase this to have the transactions mined.
 const REWARD_MULTIPLIER: f32 = 2.0;
-const NUM_NFTS: u32 = 10;
+const NUM_NFTS: u32 = 42;
 
 #[tokio::main]
 async fn main() -> CommandResult {
@@ -32,7 +32,7 @@ async fn main() -> CommandResult {
 
     // Generate images and metadata.
     println!("\n\nCreating images...\n");
-    let temp_dir = files_setup(NUM_NFTS, 600, 44, "Arloader NFT", 56.0)?;
+    let temp_dir = files_setup(NUM_NFTS, 600, 44, "Arloader NFT", 52.0)?;
     let paths_iter = (0..NUM_NFTS).map(|i| temp_dir.join(format!("{}.png", i)));
 
     if true {
