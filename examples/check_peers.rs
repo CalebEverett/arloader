@@ -3,7 +3,7 @@ use reqwest;
 
 #[tokio::main]
 async fn main() {
-    let txid = "6xQuIcQeMjWJcaQwbOgQ9IChfWaE-GovndvllwAzxX0";
+    let txid = "4Mh_VQSTvL_jD-PrP7aUzrOkJ2zmXbYJhvfxnn-ojk0";
 
     let peers = reqwest::get("https://arweave.net/peers")
         .await
@@ -32,7 +32,11 @@ async fn main() {
                 let headers = resp.headers().clone();
                 headers.get("content-length");
                 {
-                    println!("{:?}", headers.get("content-length"));
+                    println!(
+                        "{}: {:?}",
+                        resp.url(),
+                        headers.get("content-length").unwrap()
+                    );
                 }
             }
         }
