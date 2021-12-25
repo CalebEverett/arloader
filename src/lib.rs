@@ -688,7 +688,7 @@ impl Arweave {
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        let (id, reward) = if paths_chunk.1 > 10_000_000 {
+        let (id, reward) = if paths_chunk.1 > MAX_TX_DATA {
             self.post_transaction_chunks(signed_transaction, buffer)
                 .await?
         } else {
@@ -736,7 +736,7 @@ impl Arweave {
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = if paths_chunk.1 > 10000000 {
+        let (id, reward) = if paths_chunk.1 > MAX_TX_DATA {
             self.post_transaction_chunks(signed_transaction, chunks_buffer)
                 .await?
         } else {
@@ -839,10 +839,17 @@ impl Arweave {
     }
 
     pub fn merklize(&self, data: Vec<u8>) -> Result<Transaction, Error> {
-        let chunks = generate_leaves(data.clone(), &self.crypto)?;
+        let mut chunks = generate_leaves(data.clone(), &self.crypto)?;
         let root = generate_data_root(chunks.clone(), &self.crypto)?;
         let data_root = Base64(root.id.clone().into_iter().collect());
-        let proofs = resolve_proofs(root, None)?;
+        let mut proofs = resolve_proofs(root, None)?;
+
+        // Discard the last chunk & proof if it's zero length.
+        let last_chunk = chunks.last().unwrap();
+        if last_chunk.max_byte_range == last_chunk.min_byte_range {
+            chunks.pop();
+            proofs.pop();
+        }
 
         Ok(Transaction {
             format: 2,
