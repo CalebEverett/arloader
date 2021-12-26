@@ -5,7 +5,7 @@ use std::str::FromStr;
 #[tokio::main]
 async fn main() -> CommandResult {
     let arweave = Arweave::default();
-    let id = Base64::from_str("DLNz9g2J8cdrLzF-uBI7CQ5K4l2rq0-SeXwvizxJL5U")?;
+    let id = Base64::from_str("1ZZ36S7S4WsxhQnub5mKo6N_lNHPwumHNqgkz4dNqFk")?;
     let downloaded_transaction = arweave.get_transaction(&id).await?;
     println!(
         "Downloaded:\ntxid: {}\ndata_root: {}",

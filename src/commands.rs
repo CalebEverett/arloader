@@ -779,6 +779,7 @@ where
         &log_dir_assets.display().to_string(),
         reward_mult,
         sol_keypair_path.clone().map(|s| s.display().to_string()),
+        buffer,
     )
     .await?;
 
@@ -834,6 +835,7 @@ where
         &log_dir_metadata_string,
         reward_mult,
         sol_keypair_path.map(|s| s.display().to_string()),
+        buffer,
     )
     .await?;
     let metadata_manifest_path = glob(&format!("{}manifest*.json", &log_dir_metadata_string))
@@ -860,6 +862,7 @@ pub async fn command_upload_manifest(
     log_dir: &str,
     reward_mult: f32,
     sol_keypair_path: Option<String>,
+    buffer: usize,
 ) -> CommandResult {
     let solana_url = SOLANA_MAIN_URL.parse::<Url>()?;
     let sol_ar_url = SOL_AR_BASE_URL.parse::<Url>()?.join("sol")?;
@@ -873,6 +876,7 @@ pub async fn command_upload_manifest(
             solana_url,
             sol_ar_url,
             from_keypair,
+            buffer,
         )
         .await?;
 
@@ -907,10 +911,10 @@ where
         log_dir.clone(),
         None,
         price_terms,
+        buffer,
         solana_url,
         sol_ar_url,
         &from_keypair,
-        buffer,
     );
 
     let mut counter = 0;

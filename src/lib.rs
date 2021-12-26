@@ -128,11 +128,7 @@ pub const WINSTONS_PER_AR: u64 = 1_000_000_000_000;
 pub const BLOCK_SIZE: u64 = 1024 * 256;
 
 /// Maximum data size to send to `tx/` endpoint. Sent to `chunk/` endpoint above this.
-pub const MAX_TX_DATA: u64 = 10_000_000;
-
-/// Multiplier applied to the buffer argument from the cli to determine the maximum number
-/// of simultaneous request to the `chunk/ endpoint`.
-pub const CHUNKS_BUFFER_FACTOR: usize = 20;
+pub const MAX_TX_DATA: u64 = 0;
 
 /// Number of times to retry posting chunks if not successful.
 pub const CHUNKS_RETRIES: u16 = 10;
@@ -154,23 +150,11 @@ pub fn upload_bundles_stream<'a>(
     price_terms: (u64, u64),
     buffer: usize,
 ) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a {
-    let bundle_size = paths_chunks[0].1;
-    let (bundles_buffer, chunks_buffer) = if bundle_size > MAX_TX_DATA {
-        (1, buffer * CHUNKS_BUFFER_FACTOR)
-    } else {
-        (buffer, 1)
-    };
-
     stream::iter(paths_chunks)
         .map(move |p| {
-            arweave.post_bundle_transaction_from_file_paths(
-                p,
-                tags.clone(),
-                price_terms,
-                chunks_buffer,
-            )
+            arweave.post_bundle_transaction_from_file_paths(p, tags.clone(), price_terms, buffer)
         })
-        .buffer_unordered(bundles_buffer)
+        .buffer_unordered(1)
 }
 
 /// Queries network and updates locally stored [`BundleStatus`] structs.
@@ -198,26 +182,19 @@ pub fn upload_bundles_stream_with_sol<'a>(
     sol_ar_url: Url,
     from_keypair: &'a Keypair,
 ) -> impl Stream<Item = Result<BundleStatus, Error>> + 'a {
-    let bundle_size = paths_chunks[0].1;
-    let (bundles_buffer, chunks_buffer) = if bundle_size > MAX_TX_DATA {
-        (1, buffer * CHUNKS_BUFFER_FACTOR)
-    } else {
-        (buffer, 1)
-    };
-
     stream::iter(paths_chunks)
         .map(move |p| {
             arweave.post_bundle_transaction_from_file_paths_with_sol(
                 p,
                 tags.clone(),
                 price_terms,
-                chunks_buffer,
+                buffer,
                 solana_url.clone(),
                 sol_ar_url.clone(),
                 from_keypair,
             )
         })
-        .buffer_unordered(bundles_buffer)
+        .buffer_unordered(1)
 }
 
 /// Uploads a stream of chunks from [`Vec<Chunk>`]s.
@@ -255,9 +232,10 @@ where
                 tags.clone(),
                 last_tx.clone(),
                 price_terms,
+                buffer,
             )
         })
-        .buffer_unordered(buffer)
+        .buffer_unordered(1)
 }
 
 /// Uploads files matching glob pattern, returning a stream of [`Status`] structs, paying with SOL.
@@ -268,10 +246,10 @@ pub fn upload_files_with_sol_stream<'a, IP>(
     log_dir: Option<PathBuf>,
     last_tx: Option<Base64>,
     price_terms: (u64, u64),
+    buffer: usize,
     solana_url: Url,
     sol_ar_url: Url,
     from_keypair: &'a Keypair,
-    buffer: usize,
 ) -> impl Stream<Item = Result<Status, Error>> + 'a
 where
     IP: Iterator<Item = PathBuf> + Send + Sync + 'a,
@@ -284,12 +262,13 @@ where
                 tags.clone(),
                 last_tx.clone(),
                 price_terms,
+                buffer,
                 solana_url.clone(),
                 sol_ar_url.clone(),
                 from_keypair,
             )
         })
-        .buffer_unordered(buffer)
+        .buffer_unordered(1)
 }
 
 /// Queries network and updates locally stored [`Status`] structs.
@@ -688,12 +667,9 @@ impl Arweave {
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        let (id, reward) = if paths_chunk.1 > MAX_TX_DATA {
-            self.post_transaction_chunks(signed_transaction, buffer)
-                .await?
-        } else {
-            self.post_transaction(&signed_transaction).await?
-        };
+        let (id, reward) = self
+            .post_transaction_chunks(signed_transaction, buffer)
+            .await?;
 
         let status = BundleStatus {
             id,
@@ -736,12 +712,9 @@ impl Arweave {
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = if paths_chunk.1 > MAX_TX_DATA {
-            self.post_transaction_chunks(signed_transaction, chunks_buffer)
-                .await?
-        } else {
-            self.post_transaction(&signed_transaction).await?
-        };
+        let (id, reward) = self
+            .post_transaction_chunks(signed_transaction, chunks_buffer)
+            .await?;
 
         let status = BundleStatus {
             id,
@@ -1015,6 +988,7 @@ impl Arweave {
         mut additional_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
+        chunks_buffer: usize,
     ) -> Result<Status, Error> {
         let mut auto_content_tag = true;
         let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
@@ -1042,7 +1016,9 @@ impl Arweave {
             )
             .await?;
         let signed_transaction = self.sign_transaction(transaction)?;
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        let (id, reward) = self
+            .post_transaction_chunks(signed_transaction, chunks_buffer)
+            .await?;
 
         let status = Status {
             id,
@@ -1065,6 +1041,7 @@ impl Arweave {
         mut additional_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
+        chunks_buffer: usize,
         solana_url: Url,
         sol_ar_url: Url,
         from_keypair: &Keypair,
@@ -1099,7 +1076,9 @@ impl Arweave {
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        let (id, reward) = self
+            .post_transaction_chunks(signed_transaction, chunks_buffer)
+            .await?;
 
         let mut status = Status {
             file_path: Some(file_path),
@@ -1127,6 +1106,7 @@ impl Arweave {
         tags_iter: Option<IT>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
+        chunks_buffer: usize,
     ) -> Result<Vec<Status>, Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
@@ -1134,11 +1114,25 @@ impl Arweave {
     {
         let statuses = if let Some(tags_iter) = tags_iter {
             try_join_all(paths_iter.zip(tags_iter).map(|(p, t)| {
-                self.upload_file_from_path(p, log_dir.clone(), t, last_tx.clone(), price_terms)
+                self.upload_file_from_path(
+                    p,
+                    log_dir.clone(),
+                    t,
+                    last_tx.clone(),
+                    price_terms,
+                    chunks_buffer,
+                )
             }))
         } else {
             try_join_all(paths_iter.map(|p| {
-                self.upload_file_from_path(p, log_dir.clone(), None, last_tx.clone(), price_terms)
+                self.upload_file_from_path(
+                    p,
+                    log_dir.clone(),
+                    None,
+                    last_tx.clone(),
+                    price_terms,
+                    chunks_buffer,
+                )
             }))
         }
         .await?;
@@ -1490,6 +1484,7 @@ impl Arweave {
         solana_url: Url,
         sol_ar_url: Url,
         from_keypair: Option<Keypair>,
+        buffer: usize,
     ) -> Result<String, Error> {
         let paths: Vec<PathBuf> = glob(&format!("{}*.json", log_dir.clone()))?
             .filter_map(Result::ok)
@@ -1517,7 +1512,9 @@ impl Arweave {
             self.sign_transaction(transaction)?
         };
 
-        let (id, _) = self.post_transaction(&signed_transaction).await?;
+        let (id, _) = self
+            .post_transaction_chunks(signed_transaction, buffer)
+            .await?;
 
         self.write_manifest(manifest, id.to_string(), PathBuf::from(log_dir))
             .await?;

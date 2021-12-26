@@ -148,7 +148,7 @@ you can use the file based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`
 
 Before you create your tokens, make sure that all of your transactions have been confirmed at least 25 times. Run the command below where `<LOG_DIR>` refers to the automatically created directory in your assets folder that begins with `arloader_`.
 
-The primary reason for transactions having a status of `NotFound` is that they were rejected by miners for not having a big enough reward. See [Reward Multiplier](#reward-multiplier) for instructions on increasing the reward by passing the optional `--reward-multiplier` argument.
+The primary reason for transactions having a status of `NotFound` is that they were rejected by miners for not having a big enough reward. See [Reward Multiplier](#reward-multiplier) for instructions on increasing the reward by passing the optional `--reward-multiplier` argument. It is also possible to have a status of `NotFound` the reward being too large.
 
 ```
 arloader update-nft-status <LOG_DIR>
@@ -187,9 +187,11 @@ Updating metadata manifest status...
 
 ## General Usage
 
-If you're uploading more than one file, you should pretty much always be using bundles. Bundles take multiple files and packages them together in a single transaction. This is better than uploading multiple individual files because you only have to wait for one transaction to be confirmed. Once the bundle transaction is confirmed, all of your files will be available. Larger transactions with larger rewards are more attractive to miners, which means a larger bundled transaction is more likely to get written quickly than a bunch of smaller individual ones.
+Unless your individual files are bigger than 100MB, you should pretty much always be using bundles. Bundles take multiple files and packages them together in a single transaction. This is better than uploading multiple individual files because you only have to wait for one transaction to be confirmed. Once the bundle transaction is confirmed, all of your files will be available. Larger transactions with larger rewards are more attractive to miners, which means a larger bundled transaction is more likely to get written quickly than a bunch of smaller individual ones.
 
-Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100` to specify a size of 100 MB, for example.
+Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). The default bundle size is 100 MB, but Arloader supports bundle sizes up to 200 MB by passing the `--bundle-size` argument - `--bundle-size 200` to specify a size of 200 MB, for example.
+
+To upload large files individually, you can pass the `--no-bundle` flag to the the `upload` command.
 
 ### Estimate Cost
 To get an estimate of the cost of uploading your files run
@@ -207,7 +209,7 @@ To upload your files run
 arloader upload <FILE_PATHS>
 ```
 
-This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 10 MB. The example output below had a bundle size of 5000 bytes.
+This kicks off the process of uploading a stream of bundles created from your files.
 
 ```
 bundle txid                                   items      KB  status       confirms

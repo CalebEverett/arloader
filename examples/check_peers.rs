@@ -3,7 +3,7 @@ use reqwest;
 
 #[tokio::main]
 async fn main() {
-    let txid = "4Mh_VQSTvL_jD-PrP7aUzrOkJ2zmXbYJhvfxnn-ojk0";
+    let txid = "5-KCj5tvMkkP6MnXgGhViMaQ_1caJpt0yREYuk6Vh6E";
 
     let peers = reqwest::get("https://arweave.net/peers")
         .await

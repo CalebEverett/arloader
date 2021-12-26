@@ -388,8 +388,9 @@ async fn main() -> CommandResult {
             let sol_key_pair_path = sub_arg_matches
                 .value_of("sol_keypair_path")
                 .map(|s| s.expand_tilde());
+            let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
 
-            command_upload_manifest(&arweave, log_dir, reward_mult, sol_key_pair_path).await
+            command_upload_manifest(&arweave, log_dir, reward_mult, sol_key_pair_path, buffer).await
         }
         ("write-metaplex-items", Some(sub_arg_matches)) => {
             let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
@@ -505,7 +506,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(ar_default_keypair())
                 .arg(with_sol_arg().requires("sol_keypair_path"))
                 .arg(sol_keypair_path_arg())
-                .arg(buffer_arg("5"))
+                .arg(buffer_arg("100"))
                 .arg(bundle_size_arg())
                 .group(
                     ArgGroup::with_name("ar_keypair")
@@ -570,7 +571,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(ar_default_keypair())
                 .arg(with_sol_arg().requires("sol_keypair_path"))
                 .arg(sol_keypair_path_arg())
-                .arg(buffer_arg("5"))
+                .arg(buffer_arg("100"))
                 .arg(bundle_size_arg())
                 .group(
                     ArgGroup::with_name("ar_keypair")
@@ -604,7 +605,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(ar_default_keypair())
                 .arg(with_sol_arg().requires("sol_keypair_path"))
                 .arg(sol_keypair_path_arg())
-                .arg(buffer_arg("5"))
+                .arg(buffer_arg("100"))
                 .arg(bundle_size_arg())
                 .arg(link_file_arg())
                 .group(
