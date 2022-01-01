@@ -1578,7 +1578,14 @@ impl Arweave {
         let metadata = metadata.as_object_mut().unwrap();
         let _ = metadata.insert("image".to_string(), Value::String(image_link));
 
-        let properties = metadata["properties"].as_object_mut().unwrap();
+        let properties = match metadata["properties"].as_object_mut()  {
+            Some(properties) => properties,
+            None => {
+                let properties = json!({});
+                let _ = metadata.insert("properties".to_string(), properties);
+                metadata["properties"].as_object_mut().unwrap()
+            }
+        };
         let _ = properties.insert("files".to_string(), Value::Array(files_array));
         // let _ = metadata.insert("properties".to_string(), Value::Object(properties.clone()));
 
