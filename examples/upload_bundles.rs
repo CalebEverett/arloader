@@ -11,7 +11,7 @@ const REWARD_MULTIPLIER: f32 = 2.0;
 const NUM_FILES: usize = 10;
 const FILE_SIZE: usize = 10_000_000;
 const BUNDLE_SIZE: u64 = 200_000_000;
-const BUFFER: usize = 5;
+const BUFFER: usize = 100;
 
 #[tokio::main]
 async fn main() -> CommandResult {

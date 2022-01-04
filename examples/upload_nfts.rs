@@ -43,7 +43,7 @@ async fn main() -> CommandResult {
             10_000_000,
             REWARD_MULTIPLIER,
             &OutputFormat::Display,
-            5,
+            100,
             sol_keypair_path,
             true,
         )
