@@ -65,13 +65,13 @@ cargo install arloader
 ### Upload Assets
 If you want to fund transactions with SOL, run the command below where `<FILE_PATHS>` matches your asset files.
 ```
-arloader upload-nfts <FILE_PATHS> --with-sol --sol-keypair_path <SOL_KEYPAIR_PATH> --ar-default-keypair
+arloader upload-nfts <FILE_PATHS> --with-sol --sol-keypair-path <SOL_KEYPAIR_PATH> --ar-default-keypair
 ```
 
 For example, if you were uploading mp4 files as your assets and they were in a folder called `path/to/my/assets` and the path to your SOL keypair was `path/to/my/solkeypair.json`, you would enter:
 
 ```
-arloader upload-nfts path/to/my/assets/*.mp4 --with-sol --sol-keypair_path path/to/my/solkeypair.json --ar-default-keypair
+arloader upload-nfts path/to/my/assets/*.mp4 --with-sol --sol-keypair-path path/to/my/solkeypair.json --ar-default-keypair
 ```
 
 To fund transactions with AR, instead run:
