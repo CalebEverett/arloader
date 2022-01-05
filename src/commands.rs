@@ -16,6 +16,7 @@ use futures::{
     StreamExt,
 };
 use glob::glob;
+use indicatif::ProgressBar;
 use num_traits::cast::ToPrimitive;
 use solana_sdk::signer::keypair;
 use std::{path::PathBuf, str::FromStr};
