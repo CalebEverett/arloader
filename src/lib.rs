@@ -115,7 +115,7 @@ pub mod utils;
 use bundle::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
-use solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR};
+use solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR, RATE};
 use status::{BundleStatus, Filterable, Status, StatusCode};
 use transaction::{Base64, Chunk, FromUtf8Strs, Tag, ToItems, Transaction};
 
@@ -932,7 +932,7 @@ impl Arweave {
         sol_ar_url: Url,
         from_keypair: &Keypair,
     ) -> Result<(Transaction, SigResponse), Error> {
-        let lamports = std::cmp::max(&transaction.reward * 0, FLOOR);
+        let lamports = std::cmp::max(&transaction.reward / RATE, FLOOR);
 
         let mut sol_tx = create_sol_transaction(solana_url.clone(), from_keypair, lamports).await?;
         let mut resp = get_sol_ar_signature(
@@ -1575,7 +1575,13 @@ impl Arweave {
         let metadata = metadata.as_object_mut().unwrap();
         let _ = metadata.insert("image".to_string(), Value::String(image_link));
 
-        let properties = metadata["properties"].as_object_mut().unwrap();
+        let properties = match metadata["properties"].as_object_mut() {
+            Some(p) => p,
+            None => {
+                let _ = metadata.insert("properties".to_string(), json!({}));
+                metadata["properties"].as_object_mut().unwrap()
+            }
+        };
         let _ = properties.insert("files".to_string(), Value::Array(files_array));
         // let _ = metadata.insert("properties".to_string(), Value::Object(properties.clone()));
 
@@ -1656,31 +1662,32 @@ impl Arweave {
 
             let metadata = try_join_all(paths_iter.map(|p| self.read_metadata_file(p))).await?;
 
-            let items =
-                metadata
-                    .iter()
-                    .enumerate()
-                    .fold(serde_json::Map::new(), |mut m, (i, meta)| {
-                        let name = meta["metadata"]["name"].as_str().unwrap();
-                        let file_path = meta["file_path"].as_str().unwrap();
-                        let id = manifest
-                            .get(file_path)
-                            .unwrap()
-                            .get("id")
-                            .unwrap()
-                            .as_str()
-                            .unwrap();
-                        let link = if link_file {
-                            format!("https://arweave.net/{}/{}", manifest_id, file_path)
-                        } else {
-                            format!("https://arweave.net/{}", id)
-                        };
-                        m.insert(
-                            i.to_string(),
-                            json!({"name": name, "link": link, "onChain": false}),
-                        );
-                        m
-                    });
+            let items = metadata.iter().fold(serde_json::Map::new(), |mut m, meta| {
+                let name = meta["metadata"]["name"].as_str().unwrap();
+                let file_path = meta["file_path"].as_str().unwrap();
+                let id = manifest
+                    .get(file_path)
+                    .unwrap()
+                    .get("id")
+                    .unwrap()
+                    .as_str()
+                    .unwrap();
+                let link = if link_file {
+                    format!("https://arweave.net/{}/{}", manifest_id, file_path)
+                } else {
+                    format!("https://arweave.net/{}", id)
+                };
+                m.insert(
+                    PathBuf::from(file_path)
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                    json!({"name": name, "link": link, "onChain": false}),
+                );
+                m
+            });
 
             let manifest_items_path = manifest_path
                 .parent()

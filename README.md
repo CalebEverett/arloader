@@ -9,9 +9,6 @@ Command line application and client for uploading files to [Arweave](https://www
 
 Upload gigabytes of files with one command. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel on multiple threads.
 
-## Potential Issue with Transactions Uploaded Prior to Version 1.51
-The way arloader was formatting transactions for upload was not entirely compatible with the Arweave protocol prior to version 1.51. For transactions bigger than 256 KB it is possible that even though your transactions are visible and are showing more than 25 confirmations that they were not written to the Arweave blockchain. If you would like assistance determining whether your transactions were impacted, please open an issue and I will be happy to help, including paying for any necessary re-uploading.
-
 ## Contents
 * [Installation](#installation)
 * [NFT Usage](#nft-usage)
@@ -22,9 +19,7 @@ The way arloader was formatting transactions for upload was not entirely compati
 * [Benchmarks](#benchmarks)
 * [Pricing Comparison](#pricing-comparison)
 * [Roadmap](#roadmap)
-
-## Discounted Usage with SOL
- Usage with SOL is currently essentially free. The cost per transaction is 10,000 lamports (~$0.002) and includes the Solana network fee of 5,000 lamports.
+* [Transactions Prior to v0.1.51](#potential-issue-with-transactions-uploaded-prior-to-version-0.1.51)
 
 ## Installation
 
@@ -65,13 +60,13 @@ cargo install arloader
 ### Upload Assets
 If you want to fund transactions with SOL, run the command below where `<FILE_PATHS>` matches your asset files.
 ```
-arloader upload-nfts <FILE_PATHS> --with-sol --sol-keypair_path <SOL_KEYPAIR_PATH> --ar-default-keypair
+arloader upload-nfts <FILE_PATHS> --with-sol --sol-keypair-path <SOL_KEYPAIR_PATH> --ar-default-keypair
 ```
 
 For example, if you were uploading mp4 files as your assets and they were in a folder called `path/to/my/assets` and the path to your SOL keypair was `path/to/my/solkeypair.json`, you would enter:
 
 ```
-arloader upload-nfts path/to/my/assets/*.mp4 --with-sol --sol-keypair_path path/to/my/solkeypair.json --ar-default-keypair
+arloader upload-nfts path/to/my/assets/*.mp4 --with-sol --sol-keypair-path path/to/my/solkeypair.json --ar-default-keypair
 ```
 
 To fund transactions with AR, instead run:
@@ -441,4 +436,5 @@ file size | num files | arweave | bundlr | arweave total | bundlr total | arweav
 - [ ] Report on missing files in `list-status` and `update-status` commands
 - [ ] Include duration in completion output.
 
-
+## Potential Issue with Transactions Uploaded Prior to Version 0.1.51
+The way arloader was formatting transactions for upload was not entirely compatible with the Arweave protocol prior to version 1.51. For transactions bigger than 256 KB it is possible that even though your transactions are visible and are showing more than 25 confirmations that they were not written to the Arweave blockchain. If you would like assistance determining whether your transactions were impacted, please open an issue and I will be happy to help, including paying for any necessary re-uploading.

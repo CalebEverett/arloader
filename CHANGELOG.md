@@ -5,8 +5,12 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# v0.1.52 (2021-12-26)
+# v0.1.53 (2022-01-06)
 - **changed:** all uploads are now routed through the `chunk/` endpoint instead of those less than 10 MB going to the `tx/` endpoint in order to reduced the latency between uploading files and being able to confirm that their data has been permanently written to the Arweave blockchain. All buffering is now done at the individual file chunk level, which means that individual files are now uploaded serially, which is slow. However, this also means that it is now possible to upload individual files greater than 10 MB and smaller files should be uploaded in bundles instead of individually.
+
+# v0.1.52 (2022-01-04)
+- **changed:** Update fees to floor of 10,000 lamports and rate of 2500 winstons per lamport.
+- **changed:** Fixed write-metaplex-items command.
 
 # v0.1.51 (2021-12-23)
 - **changed:** change chunking for calculating data roots.
