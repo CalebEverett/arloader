@@ -47,6 +47,7 @@ async fn write_data() {
               "arloader/0.1.48",
               "arloader/0.1.49",
               "arloader/0.1.50",
+              "arloader/0.1.51",
             ]
           },
           # {
@@ -79,7 +80,12 @@ async fn write_data() {
                   bundledIn {
                     id
                   }
-                  
+                  fee {
+                    winston
+                  }
+                  quantity {
+                    winston
+                  }
                 }
             }
         }
@@ -96,14 +102,24 @@ async fn write_data() {
         .await
         .unwrap();
 
+    fn get_record(value: &Value) -> Value {
+        let obj = value.as_object().unwrap();
+        json!({
+          "cursor": obj["cursor"],
+          "id": obj["node"]["id"],
+          "bundled_in": obj["node"]["bundledIn"],
+          "owner": obj["node"]["owner"]["address"],
+          "data_size": u64::from_str(obj["node"]["data"]["size"].as_str().unwrap()).unwrap(),
+          "fee": u64::from_str(obj["node"]["fee"]["winston"].as_str().unwrap()).unwrap(),
+          "quantity": u64::from_str(obj["node"]["quantity"]["winston"].as_str().unwrap()).unwrap()
+        })
+    }
+
     let mut transactions: Vec<Value> = resp.as_object().unwrap()["data"]["transactions"]["edges"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|v| {
-            let obj = v.as_object().unwrap();
-            json!({"cursor": obj["cursor"], "id": obj["node"]["id"], "bundled_in": obj["node"]["bundledIn"], "owner": obj["node"]["owner"]["address"], "data_size": u64::from_str(obj["node"]["data"]["size"].as_str().unwrap()).unwrap()})
-        })
+        .map(get_record)
         .collect();
 
     while transactions.len() > 0 {
@@ -125,10 +141,7 @@ async fn write_data() {
             .as_array()
             .unwrap()
             .iter()
-            .map(|v| {
-                let obj = v.as_object().unwrap();
-                json!({"cursor": obj["cursor"], "id": obj["node"]["id"], "bundled_in": obj["node"]["bundledIn"], "owner": obj["node"]["owner"]["address"], "data_size": u64::from_str(obj["node"]["data"]["size"].as_str().unwrap()).unwrap()})
-            })
+            .map(get_record)
             .collect();
         println!("{:?}", values.len());
     }
@@ -139,7 +152,7 @@ async fn write_data() {
 
 #[tokio::main]
 async fn main() {
-    if std::path::PathBuf::from("data.json").exists() {
+    if !std::path::PathBuf::from("data.json").exists() {
         write_data().await;
     }
     let data = fs::read_to_string("data.json").await.unwrap();
@@ -151,7 +164,9 @@ async fn main() {
         .into_iter()
         .fold(HashMap::new(), |mut map, t| {
             let obj = t.as_object().unwrap();
-            *map.entry(obj["owner"].as_str().unwrap()).or_insert(0) += 1;
+            *map.entry(obj["owner"].as_str().unwrap())
+                .or_insert(obj["data_size"].as_u64().unwrap() / 1_000_000) +=
+                obj["data_size"].as_u64().unwrap() / 1_000_000;
             map
         });
 

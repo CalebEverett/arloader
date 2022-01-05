@@ -21,9 +21,6 @@ Upload gigabytes of files with one command. Files are read and posted to [arweav
 * [Roadmap](#roadmap)
 * [Transactions Prior to v0.1.51](#potential-issue-with-transactions-uploaded-prior-to-version-0.1.51)
 
-## Discounted Usage with SOL
- Usage with SOL is currently essentially free. The cost per transaction is 10,000 lamports (~$0.002) and includes the Solana network fee of 5,000 lamports.
-
 ## Installation
 
 1. The easiest way to use arloader is to download the binary for your system (Linux or Mac) from the [releases on github](https://github.com/CalebEverett/arloader/releases).
