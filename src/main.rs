@@ -392,13 +392,17 @@ async fn main() -> CommandResult {
             command_upload_manifest(&arweave, log_dir, reward_mult, sol_key_pair_path).await
         }
         ("write-metaplex-items", Some(sub_arg_matches)) => {
-            let glob_str = &sub_arg_matches.value_of("glob").unwrap().expand_tilde();
-            let manifest_str = &sub_arg_matches
+            let paths_iter = sub_arg_matches
+                .values_of("file_paths")
+                .map(|v| v.into_iter().map(PathBuf::from))
+                .unwrap();
+            let manifest_path = sub_arg_matches
                 .value_of("manifest_path")
-                .unwrap()
-                .expand_tilde();
+                .map(|s| s.expand_tilde())
+                .map(PathBuf::from)
+                .unwrap();
             let link_file = sub_arg_matches.is_present("link_file");
-            command_write_metaplex_items(&Arweave::default(), glob_str, manifest_str, link_file)
+            command_write_metaplex_items(&Arweave::default(), paths_iter, manifest_path, link_file)
                 .await
         }
         _ => unreachable!(),
@@ -547,7 +551,7 @@ fn get_app() -> App<'static, 'static> {
                 .after_help(
                     "EXAMPLES:\nTo update bundle statuses written to some/directory/status:\n\n\tarloader update-status some/directory/status \
                     \n\nTo update individual transaction statuses for files with an extension of *.png written to some/directory/status:\n\n\tarloader update-status some/directory/status --file-paths *.png --no-bundle \
-                    \n\nNOTES:\n- Make sure to NOT to include quotes around <FILE_PATHS>.\n- Make sure <FILE_PATHS> matches the files you uploaded, not the json status files.
+                    \n\nNOTES:\n- Make sure NOT to include quotes around <FILE_PATHS>.\n- Make sure <FILE_PATHS> matches the files you uploaded, not the json status files.
                     " ,
                 ),
         )
@@ -616,9 +620,14 @@ fn get_app() -> App<'static, 'static> {
         .subcommand(
             SubCommand::with_name("write-metaplex-items")
                 .about("Writes metaplex items to file.")
-                .arg(glob_arg(true))
+                .arg(file_paths_arg().required(true))
                 .arg(manifest_path_arg())
-                .arg(link_file_arg()),
+                .arg(link_file_arg())
+                .after_help(
+                    "EXAMPLES:\nTo write the metaplex items json file for metadata json files in the current directory with a manifest path of arloader_I-D4AkMq4rs/metadata/manifest__k5SQMAVPxhS-GAsbZbbTV9469qZj7oH-_SM3H45nTk.json:\n\n\tarloader write-metaplex-items *.json --manifest_path arloader_I-D4AkMq4rs/metadata/manifest__k5SQMAVPxhS-GAsbZbbTV9469qZj7oH-_SM3H45nTk.json \
+                    \n\nNOTES:\n- Make sure NOT to include quotes around <FILE_PATHS>.\n- Make sure <FILE_PATHS> matches your json metadata files, not your asset files.
+                    " ,
+                ),
         );
     app_matches
 }
@@ -665,16 +674,6 @@ fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Specify the bundle size in megabytes.")
 }
 
-fn glob_arg<'a, 'b>(required: bool) -> Arg<'a, 'b> {
-    Arg::with_name("glob")
-        .value_name("GLOB")
-        .takes_value(true)
-        .required(required)
-        .help(
-            "Specify pattern to match files against. \
-            MUST BE IN QUOTES TO AVOID SHELL EXPANSION.",
-        )
-}
 fn file_paths_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("file_paths")
         .value_name("FILE_PATHS")

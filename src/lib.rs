@@ -1659,31 +1659,32 @@ impl Arweave {
 
             let metadata = try_join_all(paths_iter.map(|p| self.read_metadata_file(p))).await?;
 
-            let items =
-                metadata
-                    .iter()
-                    .enumerate()
-                    .fold(serde_json::Map::new(), |mut m, (i, meta)| {
-                        let name = meta["metadata"]["name"].as_str().unwrap();
-                        let file_path = meta["file_path"].as_str().unwrap();
-                        let id = manifest
-                            .get(file_path)
-                            .unwrap()
-                            .get("id")
-                            .unwrap()
-                            .as_str()
-                            .unwrap();
-                        let link = if link_file {
-                            format!("https://arweave.net/{}/{}", manifest_id, file_path)
-                        } else {
-                            format!("https://arweave.net/{}", id)
-                        };
-                        m.insert(
-                            i.to_string(),
-                            json!({"name": name, "link": link, "onChain": false}),
-                        );
-                        m
-                    });
+            let items = metadata.iter().fold(serde_json::Map::new(), |mut m, meta| {
+                let name = meta["metadata"]["name"].as_str().unwrap();
+                let file_path = meta["file_path"].as_str().unwrap();
+                let id = manifest
+                    .get(file_path)
+                    .unwrap()
+                    .get("id")
+                    .unwrap()
+                    .as_str()
+                    .unwrap();
+                let link = if link_file {
+                    format!("https://arweave.net/{}/{}", manifest_id, file_path)
+                } else {
+                    format!("https://arweave.net/{}", id)
+                };
+                m.insert(
+                    PathBuf::from(file_path)
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                    json!({"name": name, "link": link, "onChain": false}),
+                );
+                m
+            });
 
             let manifest_items_path = manifest_path
                 .parent()

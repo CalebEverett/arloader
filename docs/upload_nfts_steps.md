@@ -27,25 +27,25 @@ To start with, include both your assets and your metadata files in the same dire
 ├── 5.png
 ```
 
-Also create directories where you can log the statuses of your asset and metadata uploads. arloader will use these to provide updates on confirmation statuses and to write files with links to your uploaded files. The example below assumes that `status/assets/` and `status/metadata/` have been created in advance.
-
 See [Token Metadata Standard](https://docs.metaplex.com/nft-standard) for details on the standard metadata format.
 
 ### Upload Assets
 
 ```
-arloader upload "*.png" --log-dir "status/asset/"
+arloader upload *.png
 ```
+
+This will upload your assets, logging statuses to a newly created directory named `arloader_<RANDOM_CHARS>` in the folder where the assets are located if you don't specify a directory to log to with `--log-dir`.
 
 At this point, you can also go ahead and create and upload a manifest file. A manifest is a special file that Arweave will use to access your files by their names relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either link. You'll also be able to use this file to automatically update your metadata files to include links to your uploaded asset files. 
 
 ```
-arloader upload-manifest --log-dir "status/assets/" --reward-multiplier 2
+arloader upload-manifest arloader_<RANDOM_CHARS> --reward-multiplier 2
 ```
 
 Since this is a small transaction and you want to make sure it goes through, it's a good idea to increase the reward.
 
-A version of the manifest named `manifest_<TXID>.json` will be written in the `status/assets/` directory.
+A version of the manifest named `manifest_<TXID>.json` will be written in the `arloader_<RANDOM_CHARS>` directory.
 
 ```json
 {
@@ -83,7 +83,7 @@ A version of the manifest named `manifest_<TXID>.json` will be written in the `s
 You can proceed with updating your metadata files, but just make sure that you've gotten 25 confirmations on everything - your assets, metadata and manifest files before you create your NFTs. You can check the number of confirmations by running:
 
 ```
-arloader update-status --log-dir "status/asset/"
+arloader update-status arloader_<RANDOM_CHARS>
 ```
 
 Also check your manifest confirmations by running:
@@ -95,7 +95,7 @@ arloader get-status <MANIFEST_ID>
 If your metadata files have the same stem as your asset files and an extension of `json`, you can update the `image` and `files` keys from the newly created manifest file with the command below.
 
 ```
-arloader update-metadata "*.png" --manifest-path <MANIFEST_PATH>
+arloader update-metadata --manifest-path <MANIFEST_PATH>
 ```
 
 arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `update-metadata` command.
@@ -105,19 +105,19 @@ arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) 
 Now that your metadata files include links to your uploaded assets, you're ready to upload your metadata files.
 
 ```
-arloader upload "*.json" --log-dir "status/metadata/"
+arloader upload *.json
 ```
 
 Go ahead and create and upload a separate manifest for your metadata files as well.
 
 ```
-arloader upload-manifest --log-dir "status/metadata/"
+arloader upload-manifest arloader_<RANDOM_CHARS> --reward-multiplier 2
 ```
 
 Same thing as with your asset files, before creating your NFTs, you make sure that each of your metadata upload transactions has been confirmed at least 25 times.
 
 ```
-arloader update-status --log-dir "status/metadata/"
+arloader update-status arloader_<RANDOM_CHARS>
 ```
 
 And for your metadata manifest:
@@ -128,16 +128,16 @@ arloader get-status <MANIFEST_ID>
 
 ### Get Links to Uploaded Metadata
 
-Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in `status/metadata/` and use the included links to create your NFTs!
+Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in the log directory for you metadata files and use the included links to create your NFTs!
 
 If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links you can copy
-and paste into your candy machine config by running the command below where `<GLOB>` is a pattern that will match your metadata files (something `*.json`).
+and paste into your candy machine config by running the command below where `<FILE_PATHS>` is either a list of the paths of your metadata files or a a pattern that will match your metadata files (something `*.json`).
 
 ```
-arloader write-metaplex-items <GLOB> --manifest-path <MANIFEST_PATH> --log-dir <LOG_DIR>
+arloader write-metaplex-items <FILE_PATHS> --manifest-path <MANIFEST_PATH>
 ```
 
-This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to `<LOG_DIR>` with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
+This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to the same directory as the manifest file with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
 you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`), by passing the `--link-file` flag.
 
 ```json
