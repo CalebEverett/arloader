@@ -977,29 +977,21 @@ pub async fn command_wallet_balance(
 }
 
 /// Writes metaplex link items used to create NFTs with candy machine program.
-pub async fn command_write_metaplex_items(
+pub async fn command_write_metaplex_items<IP>(
     arweave: &Arweave,
-    glob_str: &str,
-    manifest_str: &str,
+    paths_iter: IP,
+    manifest_path: PathBuf,
     link_file: bool,
-) -> CommandResult {
-    let paths_iter = glob(glob_str)?.filter_map(Result::ok);
-    let num_paths: usize = paths_iter.collect::<Vec<PathBuf>>().len();
-    let manifest_path = PathBuf::from(manifest_str);
-
+) -> CommandResult
+where
+    IP: Iterator<Item = PathBuf> + Send + Sync,
+{
     let metaplex_items_path = arweave
-        .write_metaplex_items(
-            glob(glob_str)?
-                .filter_map(Result::ok)
-                .map(|p| p.with_extension("json")),
-            manifest_path,
-            link_file,
-        )
+        .write_metaplex_items(paths_iter, manifest_path, link_file)
         .await?;
 
     println!(
-        "Successfully wrote metaplex items for {} metadata files to {}",
-        num_paths,
+        "Successfully wrote metaplex items for metadata files to {}.",
         metaplex_items_path.display().to_string()
     );
     Ok(())
