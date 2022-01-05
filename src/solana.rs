@@ -22,8 +22,11 @@ pub const SOLANA_DEV_URL: &str = "https://api.devnet.solana.com";
 /// Uri of Solana payment api.
 pub const SOL_AR_BASE_URL: &str = "https://arloader.io/";
 
+/// Winstons per lamports exchange rate for calculating SOL payment amounts.
+pub const RATE: u64 = 2500;
+
 /// Minimum SOL transaction amount.
-pub const FLOOR: u64 = 5000;
+pub const FLOOR: u64 = 10000;
 
 /// Returns recent blockhash neeed to create transaction.
 pub async fn get_recent_blockhash(base_url: url::Url) -> Result<Hash, Error> {

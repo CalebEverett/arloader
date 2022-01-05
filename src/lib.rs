@@ -115,7 +115,7 @@ pub mod utils;
 use bundle::DataItem;
 use error::Error;
 use merkle::{generate_data_root, generate_leaves, resolve_proofs};
-use solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR};
+use solana::{create_sol_transaction, get_sol_ar_signature, SigResponse, FLOOR, RATE};
 use status::{BundleStatus, Filterable, Status, StatusCode};
 use transaction::{Base64, Chunk, FromUtf8Strs, Tag, ToItems, Transaction};
 
@@ -959,7 +959,7 @@ impl Arweave {
         sol_ar_url: Url,
         from_keypair: &Keypair,
     ) -> Result<(Transaction, SigResponse), Error> {
-        let lamports = std::cmp::max(&transaction.reward * 0, FLOOR);
+        let lamports = std::cmp::max(&transaction.reward / RATE, FLOOR);
 
         let mut sol_tx = create_sol_transaction(solana_url.clone(), from_keypair, lamports).await?;
         let mut resp = get_sol_ar_signature(
@@ -1578,7 +1578,7 @@ impl Arweave {
         let metadata = metadata.as_object_mut().unwrap();
         let _ = metadata.insert("image".to_string(), Value::String(image_link));
 
-        let properties = match metadata["properties"].as_object_mut()  {
+        let properties = match metadata["properties"].as_object_mut() {
             Some(p) => p,
             None => {
                 let _ = metadata.insert("properties".to_string(), json!({}));
