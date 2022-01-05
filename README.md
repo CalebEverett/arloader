@@ -9,9 +9,6 @@ Command line application and client for uploading files to [Arweave](https://www
 
 Upload gigabytes of files with one command. Files are read and posted to [arweave.net](https://arweave.net) asynchronously with computationally intensive bundle preparation performed in parallel on multiple threads.
 
-## Potential Issue with Transactions Uploaded Prior to Version 1.51
-The way arloader was formatting transactions for upload was not entirely compatible with the Arweave protocol prior to version 1.51. For transactions bigger than 256 KB it is possible that even though your transactions are visible and are showing more than 25 confirmations that they were not written to the Arweave blockchain. If you would like assistance determining whether your transactions were impacted, please open an issue and I will be happy to help, including paying for any necessary re-uploading.
-
 ## Contents
 * [Installation](#installation)
 * [NFT Usage](#nft-usage)
@@ -22,6 +19,7 @@ The way arloader was formatting transactions for upload was not entirely compati
 * [Benchmarks](#benchmarks)
 * [Pricing Comparison](#pricing-comparison)
 * [Roadmap](#roadmap)
+* [Transactions Prior to v0.1.51](#potential-issue-with-transactions-uploaded-prior-to-version-0.1.51)
 
 ## Discounted Usage with SOL
  Usage with SOL is currently essentially free. The cost per transaction is 10,000 lamports (~$0.002) and includes the Solana network fee of 5,000 lamports.
@@ -439,4 +437,5 @@ file size | num files | arweave | bundlr | arweave total | bundlr total | arweav
 - [ ] Report on missing files in `list-status` and `update-status` commands
 - [ ] Include duration in completion output.
 
-
+## Potential Issue with Transactions Uploaded Prior to Version 0.1.51
+The way arloader was formatting transactions for upload was not entirely compatible with the Arweave protocol prior to version 1.51. For transactions bigger than 256 KB it is possible that even though your transactions are visible and are showing more than 25 confirmations that they were not written to the Arweave blockchain. If you would like assistance determining whether your transactions were impacted, please open an issue and I will be happy to help, including paying for any necessary re-uploading.
