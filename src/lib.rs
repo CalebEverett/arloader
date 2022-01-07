@@ -212,30 +212,21 @@ pub fn upload_transaction_chunks_stream<'a>(
 }
 
 /// Uploads files matching glob pattern, returning a stream of [`Status`] structs.
-pub fn upload_files_stream<'a, IP>(
+pub fn process_files_stream<'a, IP>(
     arweave: &'a Arweave,
     paths_iter: IP,
     tags: Option<Vec<Tag<Base64>>>,
-    log_dir: Option<PathBuf>,
     last_tx: Option<Base64>,
     price_terms: (u64, u64),
-    buffer: usize,
-) -> impl Stream<Item = Result<Status, Error>> + 'a
+) -> impl Stream<Item = Result<(Transaction, PathBuf), Error>> + 'a
 where
     IP: Iterator<Item = PathBuf> + Send + Sync + 'a,
 {
     stream::iter(paths_iter)
         .map(move |p| {
-            arweave.upload_file_from_path(
-                p,
-                log_dir.clone(),
-                tags.clone(),
-                last_tx.clone(),
-                price_terms,
-                buffer,
-            )
+            arweave.create_transaction_from_file_path(p, tags.clone(), last_tx.clone(), price_terms)
         })
-        .buffer_unordered(1)
+        .buffer_unordered(3)
 }
 
 /// Uploads files matching glob pattern, returning a stream of [`Status`] structs, paying with SOL.
@@ -815,8 +806,10 @@ impl Arweave {
         other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
-    ) -> Result<Transaction, Error> {
-        let (data, tags) = self.get_data_from_file_path(file_path, other_tags).await?;
+    ) -> Result<(Transaction, PathBuf), Error> {
+        let (data, tags) = self
+            .get_data_from_file_path(file_path.clone(), other_tags)
+            .await?;
 
         let content_type = tags
             .iter()
@@ -833,7 +826,7 @@ impl Arweave {
 
         transaction.content_type = content_type;
 
-        Ok(transaction)
+        Ok((transaction, file_path))
     }
 
     pub fn merklize(&self, data: Vec<u8>) -> Result<Transaction, Error> {
@@ -1012,9 +1005,35 @@ impl Arweave {
         price_terms: (u64, u64),
         chunks_buffer: usize,
     ) -> Result<Status, Error> {
-        let transaction = self
-            .create_transaction_from_file_path(file_path.clone(), other_tags, last_tx, price_terms)
+        let (transaction, file_path) = self
+            .create_transaction_from_file_path(file_path, other_tags, last_tx, price_terms)
             .await?;
+        let signed_transaction = self.sign_transaction(transaction)?;
+
+        let status = Status {
+            id: signed_transaction.id.clone(),
+            reward: signed_transaction.reward,
+            file_path: Some(file_path),
+            content_type: signed_transaction.content_type.clone(),
+            ..Default::default()
+        };
+
+        self.post_transaction_chunks(signed_transaction, chunks_buffer)
+            .await?;
+
+        if let Some(log_dir) = log_dir {
+            self.write_status(status.clone(), log_dir, None).await?;
+        }
+        Ok(status)
+    }
+
+    pub async fn upload_transaction_with_file_path(
+        &self,
+        file_path: PathBuf,
+        log_dir: Option<PathBuf>,
+        transaction: Transaction,
+        chunks_buffer: usize,
+    ) -> Result<Status, Error> {
         let signed_transaction = self.sign_transaction(transaction)?;
 
         let status = Status {
@@ -1046,8 +1065,8 @@ impl Arweave {
         sol_ar_url: Url,
         from_keypair: &Keypair,
     ) -> Result<Status, Error> {
-        let transaction = self
-            .create_transaction_from_file_path(file_path.clone(), other_tags, last_tx, price_terms)
+        let (transaction, file_path) = self
+            .create_transaction_from_file_path(file_path, other_tags, last_tx, price_terms)
             .await?;
 
         let (signed_transaction, sig_response): (Transaction, SigResponse) = self
@@ -1709,7 +1728,7 @@ mod tests {
         let file_path = PathBuf::from("tests/fixtures/0.png");
         let last_tx = Base64::from_str("LCwsLCwsLA")?;
         let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
-        let transaction = arweave
+        let (transaction, _) = arweave
             .create_transaction_from_file_path(file_path, Some(other_tags), Some(last_tx), (0, 0))
             .await?;
 
@@ -1732,7 +1751,7 @@ mod tests {
         let file_path = PathBuf::from("tests/fixtures/0.png");
         let last_tx = Base64::from_str("LCwsLCwsLA")?;
         let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
-        let transaction = arweave
+        let (transaction, _) = arweave
             .create_transaction_from_file_path(
                 file_path.clone(),
                 Some(other_tags),

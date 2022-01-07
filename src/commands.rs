@@ -2,13 +2,13 @@
 
 use crate::{
     error::Error,
-    file_stem_is_valid_txid,
+    file_stem_is_valid_txid, process_files_stream,
     solana::{FLOOR, RATE, SOLANA_MAIN_URL, SOL_AR_BASE_URL},
     status::{OutputFormat, StatusCode},
     transaction::{Base64, Tag},
     update_bundle_statuses_stream, update_statuses_stream, upload_bundles_stream,
-    upload_bundles_stream_with_sol, upload_files_stream, upload_files_with_sol_stream, Arweave,
-    PathsChunk, BLOCK_SIZE, WINSTONS_PER_AR,
+    upload_bundles_stream_with_sol, upload_files_with_sol_stream, Arweave, PathsChunk, BLOCK_SIZE,
+    WINSTONS_PER_AR,
 };
 
 use futures::{
@@ -368,22 +368,24 @@ pub async fn command_upload<IP>(
 where
     IP: Iterator<Item = PathBuf> + Send + Sync,
 {
+    let paths: Vec<PathBuf> = paths_iter.collect();
     let price_terms = arweave.get_price_terms(reward_mult).await?;
+    let bar = ProgressBar::new(paths.len() as u64);
 
-    let mut stream = upload_files_stream(
-        arweave,
-        paths_iter,
-        tags,
-        log_dir.clone(),
-        None,
-        price_terms,
-        buffer,
-    );
+    let mut stream = process_files_stream(arweave, paths.into_iter(), tags, None, price_terms);
 
     let mut counter = 0;
     while let Some(result) = stream.next().await {
         match result {
-            Ok(status) => {
+            Ok((transaction, file_path)) => {
+                let status = arweave
+                    .upload_transaction_with_file_path(
+                        file_path,
+                        log_dir.clone(),
+                        transaction,
+                        buffer,
+                    )
+                    .await?;
                 if counter == 0 {
                     if let Some(log_dir) = &log_dir {
                         println!("Logging statuses to {}", &log_dir.display());
@@ -392,10 +394,12 @@ where
                 }
                 print!("{}", output_format.formatted_string(&status));
                 counter += 1;
+                bar.inc(1);
             }
             Err(e) => println!("{:#?}", e),
         }
     }
+    bar.finish();
 
     if counter == 0 {
         println!("<FILE_PATHS> didn't match any files.");

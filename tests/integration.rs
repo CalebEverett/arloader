@@ -1,10 +1,10 @@
 use arloader::{
     crypto::Provider,
     error::Error,
+    process_files_stream,
     solana::SOL_AR_BASE_URL,
     status::{OutputFormat, Status, StatusCode},
     transaction::{Base64, Tag},
-    upload_files_stream,
     utils::TempDir,
     Arweave,
 };
@@ -54,7 +54,7 @@ async fn test_post_transaction() -> Result<(), Error> {
 
     airdrop(&arweave).await?;
     let file_path = PathBuf::from("tests/fixtures/0.png");
-    let transaction = arweave
+    let (transaction, _) = arweave
         .create_transaction_from_file_path(file_path, None, None, (0, 0))
         .await?;
 
@@ -299,7 +299,7 @@ async fn test_filter_statuses() -> Result<(), Error> {
     let _ = try_join_all(
         transactions
             .into_iter()
-            .map(|t| arweave.sign_transaction(t))
+            .map(|(t, _)| arweave.sign_transaction(t))
             .filter_map(Result::ok)
             .zip(glob("tests/fixtures/[5-9]*.png")?.filter_map(Result::ok))
             .map(|(s, p)| {
@@ -375,12 +375,15 @@ async fn test_upload_files_stream() -> Result<(), Error> {
     let mut _tags_iter = Some(iter::repeat(Some(Vec::<Tag<Base64>>::new())));
     _tags_iter = None;
 
-    let mut stream = upload_files_stream(&arweave, paths_iter, None, None, None, (0, 0), 3);
+    let mut stream = process_files_stream(&arweave, paths_iter, None, None, (0, 0));
 
     let output_format = OutputFormat::JsonCompact;
 
     let mut counter = 0;
-    while let Some(Ok(status)) = stream.next().await {
+    while let Some(Ok((transaction, file_path))) = stream.next().await {
+        let status = arweave
+            .upload_transaction_with_file_path(file_path, None, transaction, 100)
+            .await?;
         if counter == 0 {
             println!("{}", status.header_string(&output_format));
         }
