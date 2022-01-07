@@ -502,13 +502,13 @@ impl Arweave {
             .await?;
 
         let (bundle, manifest_object) = self.create_bundle_from_data_items(data_items)?;
-        let other_tags = Some(vec![
+        let other_tags = vec![
             Tag::<Base64>::from_utf8_strs("Bundle-Format", "binary")?,
             Tag::<Base64>::from_utf8_strs("Bundle-Version", "2.0.0")?,
-        ]);
+        ];
 
         let transaction = self
-            .create_transaction(bundle, other_tags, None, price_terms, true)
+            .create_transaction(bundle, other_tags, None, price_terms)
             .await?;
 
         Ok((transaction, manifest_object))
@@ -656,29 +656,28 @@ impl Arweave {
             .await?;
 
         let (bundle, manifest) = self.create_bundle_from_data_items(data_items)?;
-        let other_tags = Some(vec![
+        let other_tags = vec![
             Tag::<Base64>::from_utf8_strs("Bundle-Format", "binary")?,
             Tag::<Base64>::from_utf8_strs("Bundle-Version", "2.0.0")?,
-        ]);
+        ];
 
         let transaction = self
-            .create_transaction(bundle, other_tags, None, price_terms, true)
+            .create_transaction(bundle, other_tags, None, price_terms)
             .await?;
 
         let signed_transaction = self.sign_transaction(transaction)?;
 
-        let (id, reward) = self
-            .post_transaction_chunks(signed_transaction, buffer)
-            .await?;
-
         let status = BundleStatus {
-            id,
-            reward,
+            id: signed_transaction.id.clone(),
+            reward: signed_transaction.reward,
             number_of_files,
             data_size: paths_chunk.1,
             file_paths: manifest["paths"].clone(),
             ..Default::default()
         };
+
+        self.post_transaction_chunks(signed_transaction, buffer)
+            .await?;
 
         Ok(status)
     }
@@ -699,32 +698,31 @@ impl Arweave {
             .await?;
 
         let (bundle, manifest) = self.create_bundle_from_data_items(data_items)?;
-        let other_tags = Some(vec![
+        let other_tags = vec![
             Tag::<Base64>::from_utf8_strs("Bundle-Format", "binary")?,
             Tag::<Base64>::from_utf8_strs("Bundle-Version", "2.0.0")?,
-        ]);
+        ];
 
         let transaction = self
-            .create_transaction(bundle, other_tags, None, price_terms, true)
+            .create_transaction(bundle, other_tags, None, price_terms)
             .await?;
 
         let (signed_transaction, sig_response): (Transaction, SigResponse) = self
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = self
-            .post_transaction_chunks(signed_transaction, chunks_buffer)
-            .await?;
-
         let status = BundleStatus {
-            id,
-            reward,
+            id: signed_transaction.id.clone(),
+            reward: signed_transaction.reward,
             number_of_files,
             data_size: paths_chunk.1,
             file_paths: manifest["paths"].clone(),
             sol_sig: Some(sig_response),
             ..Default::default()
         };
+
+        self.post_transaction_chunks(signed_transaction, chunks_buffer)
+            .await?;
 
         Ok(status)
     }
@@ -748,35 +746,12 @@ impl Arweave {
     pub async fn create_transaction(
         &self,
         data: Vec<u8>,
-        other_tags: Option<Vec<Tag<Base64>>>,
+        tags: Vec<Tag<Base64>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
-        auto_content_tag: bool,
     ) -> Result<Transaction, Error> {
         let mut transaction = self.merklize(data)?;
         transaction.owner = self.crypto.keypair_modulus()?;
-
-        let mut tags = vec![Tag::<Base64>::from_utf8_strs(
-            "User-Agent",
-            &format!("arloader/{}", VERSION),
-        )?];
-
-        // Get content type from [magic numbers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)
-        // and include additional tags if any.
-        if auto_content_tag {
-            let content_type = if let Some(kind) = infer::get(&transaction.data.0) {
-                kind.mime_type()
-            } else {
-                "application/octet-stream"
-            };
-
-            tags.push(Tag::<Base64>::from_utf8_strs("Content-Type", content_type)?)
-        }
-
-        // Add other tags if provided.
-        if let Some(other_tags) = other_tags {
-            tags.extend(other_tags);
-        }
         transaction.tags = tags;
 
         // Fetch and set last_tx if not provided (primarily for testing).
@@ -798,17 +773,67 @@ impl Arweave {
         Ok(transaction)
     }
 
+    pub async fn get_data_from_file_path(
+        &self,
+        file_path: PathBuf,
+        other_tags: Option<Vec<Tag<Base64>>>,
+    ) -> Result<(Vec<u8>, Vec<Tag<Base64>>), Error> {
+        let data = fs::read(file_path.clone()).await?;
+
+        // Add content-type tag if not already included in other_tags, first trying from
+        // file extension and then from data magic numbers.
+        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
+        let version_tag =
+            Tag::<Base64>::from_utf8_strs("User-Agent", &format!("arloader/{}", VERSION))?;
+        let mut tags = other_tags.unwrap_or(Vec::new());
+        tags.push(version_tag);
+
+        if !tags
+            .iter()
+            .any(|t| t.name.to_utf8_string().unwrap() == "Content-Type")
+        {
+            if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
+                let content_tag: Tag<Base64> =
+                    Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
+                tags.push(content_tag);
+            } else {
+                let content_type = if let Some(kind) = infer::get(&data) {
+                    kind.mime_type()
+                } else {
+                    "application/octet-stream"
+                };
+                tags.push(Tag::<Base64>::from_utf8_strs("Content-Type", content_type)?)
+            }
+        };
+
+        Ok((data, tags))
+    }
+
     pub async fn create_transaction_from_file_path(
         &self,
         file_path: PathBuf,
         other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
-        auto_content_tag: bool,
     ) -> Result<Transaction, Error> {
-        let data = fs::read(file_path).await?;
-        self.create_transaction(data, other_tags, last_tx, price_terms, auto_content_tag)
-            .await
+        let (data, tags) = self.get_data_from_file_path(file_path, other_tags).await?;
+
+        let content_type = tags
+            .iter()
+            .filter(|t| t.name.to_utf8_string().unwrap() == "Content-Type")
+            .collect::<Vec<&Tag<Base64>>>()
+            .first()
+            .unwrap()
+            .value
+            .to_string();
+
+        let mut transaction = self
+            .create_transaction(data, tags, last_tx, price_terms)
+            .await?;
+
+        transaction.content_type = content_type;
+
+        Ok(transaction)
     }
 
     pub fn merklize(&self, data: Vec<u8>) -> Result<Transaction, Error> {
@@ -868,10 +893,7 @@ impl Arweave {
         resp
     }
 
-    pub async fn post_transaction(
-        &self,
-        signed_transaction: &Transaction,
-    ) -> Result<(Base64, u64), Error> {
+    pub async fn post_transaction(&self, signed_transaction: &Transaction) -> Result<(), Error> {
         if signed_transaction.id.0.is_empty() {
             return Err(error::Error::UnsignedTransaction.into());
         }
@@ -888,20 +910,20 @@ impl Arweave {
         debug!("post_transaction {:?}", &resp);
         assert_eq!(resp.status().as_u16(), 200);
 
-        Ok((signed_transaction.id.clone(), signed_transaction.reward))
+        Ok(())
     }
 
     pub async fn post_transaction_chunks(
         &self,
         signed_transaction: Transaction,
         chunks_buffer: usize,
-    ) -> Result<(Base64, u64), Error> {
+    ) -> Result<(), Error> {
         if signed_transaction.id.0.is_empty() {
             return Err(error::Error::UnsignedTransaction.into());
         }
 
         let transaction_with_no_data = signed_transaction.clone_with_no_data()?;
-        let (id, reward) = self.post_transaction(&transaction_with_no_data).await?;
+        self.post_transaction(&transaction_with_no_data).await?;
 
         let results: Vec<Result<usize, Error>> =
             upload_transaction_chunks_stream(&self, signed_transaction, chunks_buffer)
@@ -910,7 +932,7 @@ impl Arweave {
 
         results.into_iter().collect::<Result<Vec<usize>, Error>>()?;
 
-        Ok((id, reward))
+        Ok(())
     }
 
     /// Gets deep hash, signs and sets signature and id.
@@ -985,48 +1007,26 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         log_dir: Option<PathBuf>,
-        mut additional_tags: Option<Vec<Tag<Base64>>>,
+        other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
         chunks_buffer: usize,
     ) -> Result<Status, Error> {
-        let mut auto_content_tag = true;
-        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
-
-        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
-            status_content_type = content_type.to_string();
-            auto_content_tag = false;
-            let content_tag: Tag<Base64> =
-                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
-            if let Some(mut tags) = additional_tags {
-                tags.push(content_tag);
-                additional_tags = Some(tags);
-            } else {
-                additional_tags = Some(vec![content_tag]);
-            }
-        }
-
         let transaction = self
-            .create_transaction_from_file_path(
-                file_path.clone(),
-                additional_tags,
-                last_tx,
-                price_terms,
-                auto_content_tag,
-            )
+            .create_transaction_from_file_path(file_path.clone(), other_tags, last_tx, price_terms)
             .await?;
         let signed_transaction = self.sign_transaction(transaction)?;
-        let (id, reward) = self
-            .post_transaction_chunks(signed_transaction, chunks_buffer)
-            .await?;
 
         let status = Status {
-            id,
-            reward,
+            id: signed_transaction.id.clone(),
+            reward: signed_transaction.reward,
             file_path: Some(file_path),
-            content_type: status_content_type,
+            content_type: signed_transaction.content_type.clone(),
             ..Default::default()
         };
+
+        self.post_transaction_chunks(signed_transaction, chunks_buffer)
+            .await?;
 
         if let Some(log_dir) = log_dir {
             self.write_status(status.clone(), log_dir, None).await?;
@@ -1038,7 +1038,7 @@ impl Arweave {
         &self,
         file_path: PathBuf,
         log_dir: Option<PathBuf>,
-        mut additional_tags: Option<Vec<Tag<Base64>>>,
+        other_tags: Option<Vec<Tag<Base64>>>,
         last_tx: Option<Base64>,
         price_terms: (u64, u64),
         chunks_buffer: usize,
@@ -1046,47 +1046,24 @@ impl Arweave {
         sol_ar_url: Url,
         from_keypair: &Keypair,
     ) -> Result<Status, Error> {
-        let mut auto_content_tag = true;
-        let mut status_content_type = mime_guess::mime::OCTET_STREAM.to_string();
-
-        if let Some(content_type) = mime_guess::from_path(file_path.clone()).first() {
-            status_content_type = content_type.to_string();
-            auto_content_tag = false;
-            let content_tag: Tag<Base64> =
-                Tag::from_utf8_strs("Content-Type", &content_type.to_string())?;
-            if let Some(mut tags) = additional_tags {
-                tags.push(content_tag);
-                additional_tags = Some(tags);
-            } else {
-                additional_tags = Some(vec![content_tag]);
-            }
-        }
-
         let transaction = self
-            .create_transaction_from_file_path(
-                file_path.clone(),
-                additional_tags,
-                last_tx,
-                price_terms,
-                auto_content_tag,
-            )
+            .create_transaction_from_file_path(file_path.clone(), other_tags, last_tx, price_terms)
             .await?;
 
         let (signed_transaction, sig_response): (Transaction, SigResponse) = self
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = self
-            .post_transaction_chunks(signed_transaction, chunks_buffer)
-            .await?;
-
         let mut status = Status {
+            id: signed_transaction.id.clone(),
+            reward: signed_transaction.reward,
             file_path: Some(file_path),
-            content_type: status_content_type,
-            id,
-            reward,
+            content_type: signed_transaction.content_type.clone(),
             ..Default::default()
         };
+
+        self.post_transaction_chunks(signed_transaction, chunks_buffer)
+            .await?;
 
         if let Some(log_dir) = log_dir {
             status.sol_sig = Some(sig_response);
@@ -1471,7 +1448,7 @@ impl Arweave {
 
         let data = serde_json::to_string(&manifest)?.as_bytes().to_vec();
         let transaction = self
-            .create_transaction(data, Some(tags), None, price_terms, false)
+            .create_transaction(data, tags, None, price_terms)
             .await?;
 
         Ok(transaction)
@@ -1512,8 +1489,9 @@ impl Arweave {
             self.sign_transaction(transaction)?
         };
 
-        let (id, _) = self
-            .post_transaction_chunks(signed_transaction, buffer)
+        let id = signed_transaction.id.clone();
+
+        self.post_transaction_chunks(signed_transaction, buffer)
             .await?;
 
         self.write_manifest(manifest, id.to_string(), PathBuf::from(log_dir))
@@ -1732,13 +1710,7 @@ mod tests {
         let last_tx = Base64::from_str("LCwsLCwsLA")?;
         let other_tags = vec![Tag::<Base64>::from_utf8_strs("key2", "value2")?];
         let transaction = arweave
-            .create_transaction_from_file_path(
-                file_path,
-                Some(other_tags),
-                Some(last_tx),
-                (0, 0),
-                true,
-            )
+            .create_transaction_from_file_path(file_path, Some(other_tags), Some(last_tx), (0, 0))
             .await?;
 
         let error = arweave.post_transaction(&transaction).await.unwrap_err();
@@ -1766,7 +1738,6 @@ mod tests {
                 Some(other_tags),
                 Some(last_tx),
                 (0, 0),
-                true,
             )
             .await?;
 
@@ -1834,7 +1805,7 @@ mod tests {
         println!("Time elapsed to create bundle: {} ms", duration.as_millis());
 
         let start = Instant::now();
-        let _ = arweave.create_transaction(bundle.clone(), None, None, (0, 0), true);
+        let _ = arweave.create_transaction(bundle.clone(), Vec::new(), None, (0, 0));
         let duration = start.elapsed();
         println!(
             "Time elapsed to create transaction: {} ms",

@@ -29,6 +29,8 @@ pub struct Transaction {
     pub chunks: Vec<Node>,
     #[serde(skip)]
     pub proofs: Vec<Proof>,
+    #[serde(skip)]
+    pub content_type: String,
 }
 
 /// Chunk data structure per [Arweave chunk spec](https://docs.arweave.org/developers/server/http-api#upload-chunks).
@@ -86,6 +88,7 @@ impl Transaction {
             signature: self.signature.clone(),
             chunks: Vec::new(),
             proofs: Vec::new(),
+            content_type: "".to_string(),
         })
     }
     pub fn get_chunk(&self, idx: usize) -> Result<Chunk, Error> {
