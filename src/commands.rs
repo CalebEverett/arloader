@@ -284,6 +284,7 @@ pub async fn command_update_metadata<IP>(
     paths_iter: IP,
     manifest_path: PathBuf,
     link_file: bool,
+    update_image: bool,
 ) -> CommandResult
 where
     IP: Iterator<Item = PathBuf> + Send + Sync,
@@ -292,7 +293,12 @@ where
     let num_paths: usize = paths_vec.len();
 
     arweave
-        .update_metadata(paths_vec.into_iter(), manifest_path, link_file)
+        .update_metadata(
+            paths_vec.into_iter(),
+            manifest_path,
+            link_file,
+            update_image,
+        )
         .await?;
 
     println!("Successfully updated {} metadata files.", num_paths);
@@ -793,12 +799,14 @@ where
     .unwrap();
 
     // Update metadata with links to uploaded images.
+    // Assumes simple case of single image file - updates image link accordingly.
     println!("\n\nUpdating metadata with links from manifest...\n");
     command_update_metadata(
         &arweave,
         paths_vec.clone().into_iter(),
         asset_manifest_path,
         link_file,
+        true,
     )
     .await?;
 
