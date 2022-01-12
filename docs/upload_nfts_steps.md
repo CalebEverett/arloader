@@ -98,7 +98,7 @@ If your metadata files have the same stem as your asset files and an extension o
 arloader update-metadata --manifest-path <MANIFEST_PATH>
 ```
 
-arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link for the `image` key, you can pass the `--link-file` flag to the `update-metadata` command.
+This will append the links from the manifest file to the `files` key in the metadata file. If you want to update the `image` key as well, pass the `--update-image-link` flag. Arloader defaults to using the id link (`https://arweave.net/<BUNDLE_ITEM_ID>`) for the `image` key, but you can pass the `--link-file` flag to use the file path based link. If you pass `--link-file`, the `files` key will get both the id based and file path based links appended.
 
 ### Upload Metadata
 

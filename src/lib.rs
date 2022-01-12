@@ -1570,23 +1570,29 @@ impl Arweave {
     pub async fn update_metadata_file(
         &self,
         file_path: PathBuf,
-        files_array: Vec<Value>,
-        image_link: String,
+        mut files_array: Vec<Value>,
+        image_link: Option<String>,
     ) -> Result<(), Error> {
         let data = fs::read_to_string(file_path.clone()).await?;
         let mut metadata: Value = serde_json::from_str(&data)?;
         let metadata = metadata.as_object_mut().unwrap();
-        let _ = metadata.insert("image".to_string(), Value::String(image_link));
 
-        let properties = match metadata["properties"].as_object_mut() {
-            Some(p) => p,
-            None => {
-                let _ = metadata.insert("properties".to_string(), json!({}));
-                metadata["properties"].as_object_mut().unwrap()
-            }
+        if let Some(image_link) = image_link {
+            metadata.insert("image".to_string(), Value::String(image_link));
+        }
+
+        let properties = if let Some(properties) = metadata.get_mut("properties") {
+            properties.as_object_mut().unwrap()
+        } else {
+            metadata.insert("properties".to_string(), json!({}));
+            metadata["properties"].as_object_mut().unwrap()
         };
-        let _ = properties.insert("files".to_string(), Value::Array(files_array));
-        // let _ = metadata.insert("properties".to_string(), Value::Object(properties.clone()));
+
+        if let Some(files) = properties.get_mut("files") {
+            files.as_array_mut().unwrap().append(&mut files_array);
+        } else {
+            properties.insert("files".to_string(), Value::Array(files_array));
+        }
 
         fs::write(file_path, serde_json::to_string(&json!(metadata))?).await?;
         Ok(())
@@ -1597,6 +1603,7 @@ impl Arweave {
         paths_iter: IP,
         manifest_path: PathBuf,
         image_link_file: bool,
+        update_image_link: bool,
     ) -> Result<(), Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
@@ -1614,25 +1621,32 @@ impl Arweave {
 
             try_join_all(paths_iter.map(|p| {
                 let path_object = manifest.get(&p.display().to_string()).unwrap();
-                let image_link = if image_link_file {
-                    format!(
-                        "https://arweave.net/{}/{}",
-                        manifest_id,
-                        &p.display().to_string()
-                    )
+                let image_link = if update_image_link {
+                    let link = if image_link_file {
+                        format!(
+                            "https://arweave.net/{}/{}",
+                            manifest_id,
+                            &p.display().to_string()
+                        )
+                    } else {
+                        format!(
+                            "https://arweave.net/{}",
+                            path_object["id"].as_str().unwrap()
+                        )
+                    };
+                    Some(link)
                 } else {
-                    format!(
-                        "https://arweave.net/{}",
-                        path_object["id"].as_str().unwrap()
-                    )
+                    None
                 };
                 let files_array = if image_link_file {
                     path_object["files"].as_array().unwrap().clone()
                 } else {
-                    vec![json!(format!(
-                        "https://arweave.net/{}",
-                        path_object["id"].as_str().unwrap()
-                    ))]
+                    vec![path_object["files"]
+                        .as_array()
+                        .unwrap()
+                        .get(0)
+                        .unwrap()
+                        .clone()]
                 };
                 self.update_metadata_file(p.with_extension("json"), files_array, image_link)
             }))

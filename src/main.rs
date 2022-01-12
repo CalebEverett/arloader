@@ -201,7 +201,15 @@ async fn main() -> CommandResult {
                 .map(PathBuf::from)
                 .unwrap();
             let link_file = sub_arg_matches.is_present("link_file");
-            command_update_metadata(&Arweave::default(), paths_iter, manifest_path, link_file).await
+            let update_image = sub_arg_matches.is_present("update_image");
+            command_update_metadata(
+                &Arweave::default(),
+                paths_iter,
+                manifest_path,
+                link_file,
+                update_image,
+            )
+            .await
         }
         ("update-nft-status", Some(sub_arg_matches)) => {
             let log_dir = &sub_arg_matches
@@ -542,6 +550,14 @@ fn get_app() -> App<'static, 'static> {
                 .arg(buffer_arg("10")),
         )
         .subcommand(
+            SubCommand::with_name("update-metadata")
+                .about("Updates NFT metadata files with links to uploaded asset files.")
+                .arg(file_paths_arg())
+                .arg(manifest_path_arg())
+                .arg(link_file_arg())
+                .arg(update_image_arg()),
+        )
+        .subcommand(
             SubCommand::with_name("update-status")
                 .about("Updates statuses and prints them.")
                 .arg(log_dir_arg_read())
@@ -554,13 +570,6 @@ fn get_app() -> App<'static, 'static> {
                     \n\nNOTES:\n- Make sure NOT to include quotes around <FILE_PATHS>.\n- Make sure <FILE_PATHS> matches the files you uploaded, not the json status files.
                     " ,
                 ),
-        )
-        .subcommand(
-            SubCommand::with_name("update-metadata")
-                .about("Updates NFT metadata files with links to uploaded asset files.")
-                .arg(file_paths_arg())
-                .arg(manifest_path_arg())
-                .arg(link_file_arg()),
         )
         .subcommand(
             SubCommand::with_name("upload")
@@ -799,6 +808,15 @@ fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
         is inferred automatically so not necessary to \
         specify. Applied to each uploaded file.",
         )
+}
+
+fn update_image_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("update_image")
+        .long("update-image")
+        .value_name("UPDATE_IMAGE")
+        .required(false)
+        .takes_value(false)
+        .help("Update image key in metadata file with link from manifest file.")
 }
 
 fn with_sol_arg<'a, 'b>() -> Arg<'a, 'b> {
