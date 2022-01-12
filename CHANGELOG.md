@@ -6,8 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 # v0.1.53 (2022-01-12)
-- **fixed:** Include files as objects with `uri` and `type` keys in the `files` key of the `properties` key when updating metadat files.
-- **changed:** File objects are now appended to the `files` key with the `update-metadata` command and in order to update the `image` key, you have to pass the `--update-image-link` flag. This was done to make it possible to have multiple asset files and associated links for each NFT, in which case you can run `update-metadata` multiple times without the `--update-image-link` flag to append the associated file to the `files` key.
+- **fixed:** Include files as objects with `uri` and `type` keys in the `files` key of the `properties` key when updating metadata files.
+- **changed:** File objects are now appended to the `files` key with the `update-metadata` command and in order to update the `image` key, you have to pass the `--update-image` flag. This was done to make it possible to have multiple asset files and associated links for each NFT, in which case you can run `update-metadata` multiple times without the `--update-image` flag to append multiple links to the `files` key.
 
 # v0.1.52 (2022-01-04)
 - **changed:** Update fees to floor of 10,000 lamports and rate of 2500 winstons per lamport.
