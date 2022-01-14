@@ -39,6 +39,7 @@ cargo install arloader
 4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
 
 ## NFT Usage
+The single `upload-nfts` command below assumes you have a pair of image and metadata files for each of your NFTs. To learn more about each of the steps to upload your files, check out [upload_nfts_steps](docs/upload_nfts_steps.md). See [multiple_asset_files](docs/multiple_asset_files.md) for an example of how to upload multiple media files.
 
 ### Create Upload Folder
  Put your assets and associated metadata files with `.json` extension in a folder by themselves. You can use any kind of file you want. Arloader automatically adds a content type tag to your upload so that browsers will handle it correctly when accessed from Arweave.
@@ -79,7 +80,7 @@ This will first upload your assets, logging statuses to a newly created director
 Then a manifest file will be created from the logged statuses and uploaded. A manifest is a special file that Arweave uses to access your files by their names, relative to the id of the manifest transaction: `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`. You'll still be able to access your files by their id at `https://arweave.net/<BUNDLE_ITEM_ID>`, but creating and uploading a manifest gives you the option of using either. Once uploaded, the manifest file itself can be accessed online at `https://arweave.net/tx/<MANIFEST_ID>/data.json`.
 
 #### Update Metadata and Upload 
-Next your metadata files will be updated with links to the uploaded assets. Arloader adds or replaces the `image` and `files` keys in your metadata `.json` files with the newly created links. It defaults to using the id link, `https://arweave.net/<BUNDLE_ITEM_ID>`, for the `image` key and updates the `files` key to include both links. If you prefer to use the file path based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`, for the `image` key, you can pass the `--link-file` flag to the `upload-nfts` command.
+Next your metadata files will be updated with links to the uploaded assets. For the `upload-nfts` command arloader will replace the `image` key with the newyly created link and append the new link(s) to `files` key in your metadata `.json`. It defaults to using the id link, `https://arweave.net/<BUNDLE_ITEM_ID>`, but if you prefer to use the file path based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`, you can pass the `--link-file` flag.
 
 After your metadata files have been updated, they will be uploaded, followed by the creation and upload of a manifest file for your metadata  files.
 
