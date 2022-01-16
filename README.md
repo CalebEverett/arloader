@@ -39,7 +39,7 @@ cargo install arloader
 4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
 
 ## NFT Usage
-The single `upload-nfts` command below assumes you have a pair of image and metadata files for each of your NFTs. To learn more about each of the steps to upload your files, check out [upload_nfts_steps](docs/upload_nfts_steps.md). See [multiple_asset_files](docs/multiple_asset_files.md) for an example of how to upload multiple media files.
+The single `upload-nfts` command below assumes you have a pair of image and metadata files for each of your NFTs. To learn more about each of the steps to upload your files, check out [upload_nfts_steps](docs/upload_nfts_steps.md). See [multiple_asset_files](docs/multiple_asset_files.md) for an example of how to upload multiple media files.ok
 
 ### Create Upload Folder
  Put your assets and associated metadata files with `.json` extension in a folder by themselves. You can use any kind of file you want. Arloader automatically adds a content type tag to your upload so that browsers will handle it correctly when accessed from Arweave.
@@ -118,14 +118,13 @@ Once everything has been uploaded, the links to your uploaded metadata files, to
     },
 ```
 
-If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file with links it that you can copy and paste into your candy machine config by running the command below. `<FILE_PATHS>` can match your either your asset or metadata files.
+If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/candy-machine-v2/introduction), you can create a json file with links in it that you can copy and paste into your candy machine config by running the command below. `<FILE_PATHS>` needs to match your json metadata files.
 
 ```
 arloader write-metaplex-items <FILE_PATHS> --manifest-path <MANIFEST_PATH>
 ```
 
-This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to the same directory as `<MANIFEST_PATH>`. As with updating metadata files, Arloader defaults to using the id based link, `https://arweave.net/<BUNDLE_ITEM_ID>`, but 
-you can use the file based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`, by passing the `--link-file` flag.
+This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to the same directory as `<MANIFEST_PATH>`. As with updating metadata files, Arloader defaults to using the id based link, `https://arweave.net/<BUNDLE_ITEM_ID>`, but you can use the file based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`, by passing the `--link-file` flag.
 
 ```json
 {

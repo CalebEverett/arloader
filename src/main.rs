@@ -629,7 +629,7 @@ fn get_app() -> App<'static, 'static> {
         .subcommand(
             SubCommand::with_name("write-metaplex-items")
                 .about("Writes metaplex items to file.")
-                .arg(file_paths_arg().required(true))
+                .arg(file_paths_arg().required(true).validator(is_json_file_path))
                 .arg(manifest_path_arg())
                 .arg(link_file_arg())
                 .after_help(
@@ -920,6 +920,23 @@ fn is_valid_file_path(path_str: String) -> Result<(), String> {
                 }
             } else {
                 Err(format!("Path does not exist."))
+            }
+        }
+        Err(_) => Err(format!("Not a valid path.")),
+    }
+}
+
+fn is_json_file_path(path_str: String) -> Result<(), String> {
+    match path_str.parse::<PathBuf>() {
+        Ok(p) => {
+            if p.is_file() {
+                if p.extension().unwrap() == "json" {
+                    Ok(())
+                } else {
+                    Err(format!("Path does not have a json extension."))
+                }
+            } else {
+                Err(format!("Path is not file."))
             }
         }
         Err(_) => Err(format!("Not a valid path.")),

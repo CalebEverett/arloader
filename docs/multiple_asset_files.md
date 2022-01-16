@@ -1,6 +1,6 @@
 ## Multiple Asset Files
 
-There isn't a single command you can run if you have multiple media files per NFT, i.e., and mp4 and a png file. But you can run separate commands for each to get all of your files uploaded with your metadata files updated to include links to all of your media files.
+There isn't a single command you can run if you have multiple media files per NFT, i.e., an mp4 and a png file. But you can run separate commands for each to get all of your files uploaded with your metadata files updated to include links to all of your media files.
 
 Here is an example from a an upload of a series of glb and png files
 

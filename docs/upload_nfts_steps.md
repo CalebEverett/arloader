@@ -130,15 +130,13 @@ arloader get-status <MANIFEST_ID>
 
 Once each of your transactions has been confirmed at least 25 times, you are good to go - grab the `manifest_<TXID>.json` file in the log directory for you metadata files and use the included links to create your NFTs!
 
-If you happen to be creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/create-candy/introduction), you can create a json file of links you can copy
-and paste into your candy machine config by running the command below where `<FILE_PATHS>` is either a list of the paths of your metadata files or a a pattern that will match your metadata files (something `*.json`).
+If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.metaplex.com/candy-machine-v2/introduction), you can create a json file with links in it that you can copy and paste into your candy machine config by running the command below. `<FILE_PATHS>` needs to match your json metadata files.
 
 ```
 arloader write-metaplex-items <FILE_PATHS> --manifest-path <MANIFEST_PATH>
 ```
 
-This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to the same directory as the manifest file with the format below that you can copy into the `items` key in your candy machine config. Arloader defaults to using the id based link (`https://arweave.net/<BUNDLE_ITEM_ID>`), but 
-you can use the file based link (`https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`), by passing the `--link-file` flag.
+This will write a file named `metaplex_items_<MANIFIEST_ID>.json` to the same directory as `<MANIFEST_PATH>`. As with updating metadata files, Arloader defaults to using the id based link, `https://arweave.net/<BUNDLE_ITEM_ID>`, but you can use the file based link, `https://arweave.net/<MANIFEST_ID>/<FILE_PATH>`, by passing the `--link-file` flag.
 
 ```json
 {
