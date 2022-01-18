@@ -285,6 +285,7 @@ pub async fn command_update_metadata<IP>(
     manifest_path: PathBuf,
     link_file: bool,
     update_image: bool,
+    update_animation_url: bool,
 ) -> CommandResult
 where
     IP: Iterator<Item = PathBuf> + Send + Sync,
@@ -298,6 +299,7 @@ where
             manifest_path,
             link_file,
             update_image,
+            update_animation_url,
         )
         .await?;
 
@@ -807,6 +809,7 @@ where
         asset_manifest_path,
         link_file,
         true,
+        false,
     )
     .await?;
 

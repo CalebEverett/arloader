@@ -20,6 +20,7 @@ Upload gigabytes of files with one command. Files are read and posted to [arweav
 * [Pricing Comparison](#pricing-comparison)
 * [Roadmap](#roadmap)
 * [Transactions Prior to v0.1.51](#potential-issue-with-transactions-uploaded-prior-to-version-0.1.51)
+* [Showing Love](#showing-love)
 
 ## Installation
 
@@ -436,3 +437,6 @@ file size | num files | arweave | bundlr | arweave total | bundlr total | arweav
 
 ## Potential Issue with Transactions Uploaded Prior to Version 0.1.51
 The way arloader was formatting transactions for upload was not entirely compatible with the Arweave protocol prior to version 1.51. For transactions bigger than 256 KB it is possible that even though your transactions are visible and are showing more than 25 confirmations that they were not written to the Arweave blockchain. If you would like assistance determining whether your transactions were impacted, please open an issue and I will be happy to help, including paying for any necessary re-uploading.
+
+## Showing Love
+If arloader was useful and the spirit moves you, I'd love to have one of your NFTs in my collection: `F4B7659xdVcTqQEHShLsxp7w8wckMyBmT9GM8bGDqTUW`.

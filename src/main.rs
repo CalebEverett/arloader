@@ -202,12 +202,14 @@ async fn main() -> CommandResult {
                 .unwrap();
             let link_file = sub_arg_matches.is_present("link_file");
             let update_image = sub_arg_matches.is_present("update_image");
+            let update_animation_url = sub_arg_matches.is_present("update_animation_url");
             command_update_metadata(
                 &Arweave::default(),
                 paths_iter,
                 manifest_path,
                 link_file,
                 update_image,
+                update_animation_url,
             )
             .await
         }
@@ -555,7 +557,8 @@ fn get_app() -> App<'static, 'static> {
                 .arg(file_paths_arg())
                 .arg(manifest_path_arg())
                 .arg(link_file_arg())
-                .arg(update_image_arg()),
+                .arg(update_image_arg())
+                .arg(update_animation_url_arg())
         )
         .subcommand(
             SubCommand::with_name("update-status")
@@ -808,6 +811,15 @@ fn tags_arg<'a, 'b>() -> Arg<'a, 'b> {
         is inferred automatically so not necessary to \
         specify. Applied to each uploaded file.",
         )
+}
+
+fn update_animation_url_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("update_animation_url")
+        .long("update-animation-url")
+        .value_name("UPDATE_ANIMATION_URL")
+        .required(false)
+        .takes_value(false)
+        .help("Update animation_url key in metadata file with link from manifest file.")
 }
 
 fn update_image_arg<'a, 'b>() -> Arg<'a, 'b> {

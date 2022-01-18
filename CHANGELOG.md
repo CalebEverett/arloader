@@ -5,6 +5,11 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# v0.1.54 (2022-01-18)
+- **added:** added `--update-animation-url` flag to `update-metadata`.
+- **added:** added [instructions](docs/multiple_asset_files.md) for uploading with multiple asset files.
+- **changed:** validate `<FILE_PATHS>` for `update-metadata` command as json and fix docs to specify json instead of assets.
+
 # v0.1.53 (2022-01-12)
 - **fixed:** Include files as objects with `uri` and `type` keys in the `files` key of the `properties` key when updating metadata files.
 - **changed:** File objects are now appended to the `files` key with the `update-metadata` command and in order to update the `image` key, you have to pass the `--update-image` flag. This was done to make it possible to have multiple asset files and associated links for each NFT, in which case you can run `update-metadata` multiple times without the `--update-image` flag to append multiple links to the `files` key.

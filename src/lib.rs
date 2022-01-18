@@ -1572,6 +1572,7 @@ impl Arweave {
         file_path: PathBuf,
         mut files_array: Vec<Value>,
         image_link: Option<String>,
+        animation_url_link: Option<String>,
     ) -> Result<(), Error> {
         let data = fs::read_to_string(file_path.clone()).await?;
         let mut metadata: Value = serde_json::from_str(&data)?;
@@ -1579,6 +1580,13 @@ impl Arweave {
 
         if let Some(image_link) = image_link {
             metadata.insert("image".to_string(), Value::String(image_link));
+        }
+
+        if let Some(animation_url_link) = animation_url_link {
+            metadata.insert(
+                "animation_url".to_string(),
+                Value::String(animation_url_link),
+            );
         }
 
         let properties = if let Some(properties) = metadata.get_mut("properties") {
@@ -1604,6 +1612,7 @@ impl Arweave {
         manifest_path: PathBuf,
         image_link_file: bool,
         update_image_link: bool,
+        update_animation_url_link: bool,
     ) -> Result<(), Error>
     where
         IP: Iterator<Item = PathBuf> + Send,
@@ -1621,23 +1630,32 @@ impl Arweave {
 
             try_join_all(paths_iter.map(|p| {
                 let path_object = manifest.get(&p.display().to_string()).unwrap();
+
+                let link = if image_link_file {
+                    format!(
+                        "https://arweave.net/{}/{}",
+                        manifest_id,
+                        &p.display().to_string()
+                    )
+                } else {
+                    format!(
+                        "https://arweave.net/{}",
+                        path_object["id"].as_str().unwrap()
+                    )
+                };
+
                 let image_link = if update_image_link {
-                    let link = if image_link_file {
-                        format!(
-                            "https://arweave.net/{}/{}",
-                            manifest_id,
-                            &p.display().to_string()
-                        )
-                    } else {
-                        format!(
-                            "https://arweave.net/{}",
-                            path_object["id"].as_str().unwrap()
-                        )
-                    };
+                    Some(link.clone())
+                } else {
+                    None
+                };
+
+                let animation_url_link = if update_animation_url_link {
                     Some(link)
                 } else {
                     None
                 };
+
                 let files_array = if image_link_file {
                     path_object["files"].as_array().unwrap().clone()
                 } else {
@@ -1648,7 +1666,12 @@ impl Arweave {
                         .unwrap()
                         .clone()]
                 };
-                self.update_metadata_file(p.with_extension("json"), files_array, image_link)
+                self.update_metadata_file(
+                    p.with_extension("json"),
+                    files_array,
+                    image_link,
+                    animation_url_link,
+                )
             }))
             .await?;
             Ok(())
