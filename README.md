@@ -259,7 +259,7 @@ bundle txid                                   items      KB  status       confir
 If you find that not all of your transactions have a status of `Confirmed` or that the number of confirmations is below 25 after some period of time, you will want to re-upload your transactions with the following command:
 
 ```
-arloader repupload <FILE_PATHS> --log-dir <LOG_DIR> --statuses <STATUSES> --max-confirmations <MAX_CONFIRMATIONS>
+arloader reupload <FILE_PATHS> --log-dir <LOG_DIR> --statuses <STATUSES> --max-confirmations <MAX_CONFIRMATIONS>
 ```
 This will first check to make sure that all of the files in `<FILE_PATHS>` are included in the status objects in `<LOG_DIR>`, adding them to the list of files to be reuploaded. Then it will filter the paths in the status objects based on `<STATUSES>` and `<MAX_CONFIRM>`. You can provide multiple statuses and max confirmations will only re-upload transactions with fewer than `<MAX_CONFIRM>` confirmations.
 
