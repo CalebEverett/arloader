@@ -854,9 +854,23 @@ where
         .nth(0)
         .unwrap();
 
+    command_write_metaplex_items(
+        &arweave,
+        paths_vec
+            .clone()
+            .into_iter()
+            .map(|p| p.with_extension("json")),
+        metadata_manifest_path.clone(),
+        false,
+    )
+    .await?;
+
     println!(
         "\n\nUpload complete! Links to your uploaded metadata files can be found in `{}`",
-        metadata_manifest_path.display().to_string()
+        metadata_manifest_path
+            .display()
+            .to_string()
+            .replace("manifest_", "metaplex_items_")
     );
 
     println!(
