@@ -32,6 +32,7 @@ pub async fn command_files(paths: Option<Vec<PathBuf>>) -> CommandResult {
     println!("{:?}", paths);
     Ok(())
 }
+
 /// Gets cost of uploading a list of files.
 pub async fn command_get_cost<IP>(
     arweave: &Arweave,

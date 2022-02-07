@@ -20,7 +20,6 @@ Upload gigabytes of files with one command. Files are read and posted to [arweav
 * [Pricing Comparison](#pricing-comparison)
 * [Roadmap](#roadmap)
 * [Transactions Prior to v0.1.51](#potential-issue-with-transactions-uploaded-prior-to-version-0.1.51)
-* [Tokens of Appreciation](#tokens-of-appreciation)
 
 ## Installation
 
@@ -40,7 +39,7 @@ cargo install arloader
 4. If you're going to use SOL, get a [Solana wallet](https://docs.solana.com/wallet-guide/cli) json file and transfer some SOL to it.
 
 ## NFT Usage
-The single `upload-nfts` command below assumes you have a pair of image and metadata files for each of your NFTs. To learn more about each of the steps to upload your files, check out [upload_nfts_steps](docs/upload_nfts_steps.md). See [multiple_asset_files](docs/multiple_asset_files.md) for an example of how to upload multiple media files.ok
+The single `upload-nfts` command below assumes you have a pair of image and metadata files for each of your NFTs. To learn more about each of the steps to upload your files, check out [upload_nfts_steps](docs/upload_nfts_steps.md). See [multiple_asset_files](docs/multiple_asset_files.md) for an example of how to upload multiple media files.
 
 ### Create Upload Folder
  Put your assets and associated metadata files with `.json` extension in a folder by themselves. You can use any kind of file you want. Arloader automatically adds a content type tag to your upload so that browsers will handle it correctly when accessed from Arweave.
@@ -179,7 +178,7 @@ Updating metadata manifest status...
 
 If you're uploading more than one file, you should pretty much always be using bundles. Bundles take multiple files and packages them together in a single transaction. This is better than uploading multiple individual files because you only have to wait for one transaction to be confirmed. Once the bundle transaction is confirmed, all of your files will be available. Larger transactions with larger rewards are more attractive to miners, which means a larger bundled transaction is more likely to get written quickly than a bunch of smaller individual ones.
 
-Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, but the default bundle size is 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 10 MB. If your files sizes are bigger than 10 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 100` to specify a size of 100 MB, for example.
+Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, with a default of 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 100 MB. If your files sizes are bigger than 100 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 200` to specify a size of 200 MB, for example. If you file sizes are bigger than 200 MB, you can upload them as individual files by passing the `--no-bundle` flag.
 
 ### Estimate Cost
 To get an estimate of the cost of uploading your files run
@@ -197,7 +196,7 @@ To upload your files run
 arloader upload <FILE_PATHS>
 ```
 
-This kicks off the process of uploading a stream of bundles created from your files. The default bundle size is 10 MB. The example output below had a bundle size of 5000 bytes.
+This kicks off the process of uploading a stream of bundles created from your files. The example output below had a bundle size of 5000 bytes.
 
 ```
 bundle txid                                   items      KB  status       confirms
@@ -431,6 +430,3 @@ file size | num files | arweave | bundlr | arweave total | bundlr total | arweav
 
 ## Potential Issue with Transactions Uploaded Prior to Version 0.1.51
 The way arloader was formatting transactions for upload was not entirely compatible with the Arweave protocol prior to version 1.51. For transactions bigger than 256 KB it is possible that even though your transactions are visible and are showing more than 25 confirmations that they were not written to the Arweave blockchain. If you would like assistance determining whether your transactions were impacted, please open an issue and I will be happy to help, including paying for any necessary re-uploading.
-
-## Tokens of Appreciation
-Tokens of appreciation can be sent to `F4B7659xdVcTqQEHShLsxp7w8wckMyBmT9GM8bGDqTUW`.

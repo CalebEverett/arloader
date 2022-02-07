@@ -1042,7 +1042,12 @@ impl Arweave {
             )
             .await?;
         let signed_transaction = self.sign_transaction(transaction)?;
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        let (id, reward) = if signed_transaction.data.0.len() > MAX_TX_DATA as usize {
+            self.post_transaction_chunks(signed_transaction, 100)
+                .await?
+        } else {
+            self.post_transaction(&signed_transaction).await?
+        };
 
         let status = Status {
             id,
@@ -1099,7 +1104,12 @@ impl Arweave {
             .sign_transaction_with_sol(transaction, solana_url, sol_ar_url, from_keypair)
             .await?;
 
-        let (id, reward) = self.post_transaction(&signed_transaction).await?;
+        let (id, reward) = if signed_transaction.data.0.len() > MAX_TX_DATA as usize {
+            self.post_transaction_chunks(signed_transaction, 100)
+                .await?
+        } else {
+            self.post_transaction(&signed_transaction).await?
+        };
 
         let mut status = Status {
             file_path: Some(file_path),

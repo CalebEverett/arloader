@@ -682,7 +682,7 @@ fn bundle_size_arg<'a, 'b>() -> Arg<'a, 'b> {
         .value_name("BUNDLE_SIZE")
         .takes_value(true)
         .validator(is_valid_bundle_size)
-        .default_value("10")
+        .default_value("100")
         .help("Specify the bundle size in megabytes.")
 }
 
@@ -954,6 +954,27 @@ fn is_json_file_path(path_str: String) -> Result<(), String> {
         Err(_) => Err(format!("Not a valid path.")),
     }
 }
+
+// fn file_sizes_less_than_bundle_size(paths_vec: Vec<PathBuf>, bundle_size: u64) -> bool {
+//     if paths_vec.iter().any(|p| {
+//         let p_len = p.metadata().unwrap().len();
+//         if p_len > bundle_size {
+//             println!(
+//                 "{} is {} MB, which is greater than the bundle size of {}. Bundle size must be greater than file.",
+//                 p.display(),
+//                 p_len / 1_000_000,
+//                 bundle_size
+//             );
+//             true
+//         } else {
+//             false
+//         }
+//     }) {
+//         false
+//     } else {
+//         true
+//     }
+// }
 
 // ====================
 // Helpers
