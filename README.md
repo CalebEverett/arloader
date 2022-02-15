@@ -137,7 +137,7 @@ If you are creating your NFTs with the [Metaplex Candy Machine](https://docs.met
 
 Before you create your tokens, make sure that all of your transactions have been confirmed at least 25 times. Run the command below where `<LOG_DIR>` refers to the automatically created directory in your assets folder that begins with `arloader_`.
 
-The primary reason for transactions having a status of `NotFound` is that they were rejected by miners for not having a big enough reward. See [Reward Multiplier](#reward-multiplier) for instructions on increasing the reward by passing the optional `--reward-multiplier` argument.
+The primary reason for transactions having a status of `NotFound` is that they were rejected by miners for not having a big enough reward or for having to big of a reward. See [Reward Multiplier](#reward-multiplier) for instructions on increasing the reward by passing the optional `--reward-multiplier` argument.
 
 ```
 arloader update-nft-status <LOG_DIR>
@@ -178,7 +178,7 @@ Updating metadata manifest status...
 
 If you're uploading more than one file, you should pretty much always be using bundles. Bundles take multiple files and packages them together in a single transaction. This is better than uploading multiple individual files because you only have to wait for one transaction to be confirmed. Once the bundle transaction is confirmed, all of your files will be available. Larger transactions with larger rewards are more attractive to miners, which means a larger bundled transaction is more likely to get written quickly than a bunch of smaller individual ones.
 
-Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, with a default of 10 MB, which makes it possible to post full bundle size payloads to the `/tx` endpoint instead of in 256 KB chunks to the `/chunk` endpoint. This should work fine for individual files up to 100 MB. If your files sizes are bigger than 100 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 200` to specify a size of 200 MB, for example. If you file sizes are bigger than 200 MB, you can upload them as individual files by passing the `--no-bundle` flag.
+Arloader will create as many bundles as necessary to upload all of your files. Your files are read asynchronously, bundled in parallel across multiple threads and then posted to [arweave.net](https://arweave.net). Arloader supports bundle sizes up to 200 MB, with a default of 100 MB. This should work fine for individual files up to 100 MB. If your files sizes are bigger than 100 MB (but smaller than 200 MB), you can specify a larger bundle size with the `--bundles-size` argument - `--bundle-size 200` to specify a size of 200 MB, for example. If your file sizes are bigger than 200 MB, you can upload them as individual files by passing the `--no-bundle` flag.
 
 ### Estimate Cost
 To get an estimate of the cost of uploading your files run
@@ -359,7 +359,7 @@ and that will print the number of pending transactions every second for one minu
   128 | ▥▥▥
   ```
 
-Given that Arloader bundles by default, your transaction is hopefully relatively attractive and you don't need to increase the reward to get it written in a timely fashion. However, if you see that there are a lot of transactions pending and you want to be sure your transaction goes through quickly, you can adjust the reward with `--reward-multiplier` followed by something tha can be parsed as a float between `0.0` and `10.0`. The reward included in your transaction will then be multiplied by this factor when it gets submitted. Similar to the `--with-sol` flag, you can add `--reward-multiplier` to both `estimate` and `upload` commands.
+Given that Arloader bundles by default, your transaction is hopefully relatively attractive and you don't need to increase the reward to get it written in a timely fashion. However, if you see that there are a lot of transactions pending and you want to be sure your transaction goes through quickly, you can adjust the reward with `--reward-multiplier` followed by something tha can be parsed as a float between `0.0` and `3.0`. The reward included in your transaction will then be multiplied by this factor when it gets submitted. Similar to the `--with-sol` flag, you can add `--reward-multiplier` to both `estimate` and `upload` commands.
 
 ## Usage without Bundles
 
