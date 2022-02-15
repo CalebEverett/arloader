@@ -879,10 +879,10 @@ where
 fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
     match reward_mult.parse::<f32>() {
         Ok(n) => {
-            if n > 0. && n <= 10. {
+            if n > 0. && n <= 3. {
                 Ok(())
             } else {
-                Err(format!("Multiplier must be a float between 0 and 10."))
+                Err(format!("Multiplier must be a float between 0 and 3."))
             }
         }
         Err(_) => Err(format!("Not a valid multiplier.")),

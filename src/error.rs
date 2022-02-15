@@ -74,3 +74,6 @@ pub enum Error {
     #[error("url parse error: {0}")]
     UrlParse(#[from] ParseError),
 }
+
+unsafe impl Send for Error {}
+unsafe impl Sync for Error {}
