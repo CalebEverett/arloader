@@ -61,6 +61,8 @@ pub enum Error {
     RingUnspecified(#[from] Unspecified),
     #[error("serde json: {0}")]
     SerdeJson(#[from] serde_json::Error),
+    #[error("status code not ok")]
+    StatusCodeNotOk,
     #[error("status not found")]
     StatusNotFound,
     #[error("solana hash parse {0}")]
