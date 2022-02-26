@@ -866,7 +866,7 @@ impl Arweave {
         let url = self.base_url.join("chunk/")?;
         let client = reqwest::Client::new();
 
-        client
+        let resp = client
             .post(url)
             .json(&chunk)
             .header(&ACCEPT, "application/json")
@@ -875,7 +875,10 @@ impl Arweave {
             .await
             .map_err(|e| Error::ArweavePostError(e))?;
 
-        Ok(chunk.offset)
+        match resp.status() {
+            reqwest::StatusCode::OK => Ok(chunk.offset),
+            _ => Err(Error::StatusCodeNotOk),
+        }
     }
 
     pub async fn post_chunk_with_retries(&self, chunk: Chunk) -> Result<usize, Error> {
@@ -903,19 +906,28 @@ impl Arweave {
             return Err(error::Error::UnsignedTransaction.into());
         }
 
+        let mut retries = 0;
+        let mut status = reqwest::StatusCode::NOT_FOUND;
         let url = self.base_url.join("tx/")?;
         let client = reqwest::Client::new();
-        let resp = client
-            .post(url)
-            .json(&signed_transaction)
-            .header(&ACCEPT, "application/json")
-            .header(&CONTENT_TYPE, "application/json")
-            .send()
-            .await?;
-        debug!("post_transaction {:?}", &resp);
-        assert_eq!(resp.status().as_u16(), 200);
 
-        Ok((signed_transaction.id.clone(), signed_transaction.reward))
+        while (retries < CHUNKS_RETRIES) & (status != reqwest::StatusCode::OK) {
+            status = client
+                .post(url.clone())
+                .json(&signed_transaction)
+                .header(&ACCEPT, "application/json")
+                .header(&CONTENT_TYPE, "application/json")
+                .send()
+                .await?
+                .status();
+            if status == reqwest::StatusCode::OK {
+                return Ok((signed_transaction.id.clone(), signed_transaction.reward));
+            }
+            sleep(Duration::from_secs(CHUNKS_RETRY_SLEEP)).await;
+            retries += 1;
+        }
+
+        Err(Error::StatusCodeNotOk)
     }
 
     pub async fn post_transaction_chunks(

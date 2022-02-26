@@ -8,9 +8,9 @@ use url::Url;
 
 // For smaller sample sizes, you may have to increase this to have the transactions mined.
 const REWARD_MULTIPLIER: f32 = 2.0;
-const NUM_FILES: usize = 10;
-const FILE_SIZE: usize = 10_000_000;
-const BUNDLE_SIZE: u64 = 200_000_000;
+const NUM_FILES: usize = 200;
+const FILE_SIZE: usize = 5_000_000;
+const BUNDLE_SIZE: u64 = 100_000_000;
 const BUFFER: usize = 5;
 
 #[tokio::main]
