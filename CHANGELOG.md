@@ -5,6 +5,10 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# v0.1.59 (2022-02-26)
+- **added:** add logic to retry uploading chunks until they receive a status 200 response.
+- **changed:** increase upload buffer size to 5 now that chunks are retried if not 200 response.
+
 # v0.1.58 (2022-02-24)
 - **changed:** reduced default upload buffer size to 1 to try to eliminate bundle verification errors.
 

@@ -519,7 +519,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(ar_default_keypair())
                 .arg(with_sol_arg().requires("sol_keypair_path"))
                 .arg(sol_keypair_path_arg())
-                .arg(buffer_arg("1"))
+                .arg(buffer_arg("5"))
                 .arg(bundle_size_arg())
                 .group(
                     ArgGroup::with_name("ar_keypair")
@@ -586,7 +586,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(ar_default_keypair())
                 .arg(with_sol_arg().requires("sol_keypair_path"))
                 .arg(sol_keypair_path_arg())
-                .arg(buffer_arg("1"))
+                .arg(buffer_arg("5"))
                 .arg(bundle_size_arg())
                 .group(
                     ArgGroup::with_name("ar_keypair")
@@ -620,7 +620,7 @@ fn get_app() -> App<'static, 'static> {
                 .arg(ar_default_keypair())
                 .arg(with_sol_arg().requires("sol_keypair_path"))
                 .arg(sol_keypair_path_arg())
-                .arg(buffer_arg("1"))
+                .arg(buffer_arg("5"))
                 .arg(bundle_size_arg())
                 .arg(link_file_arg())
                 .group(
