@@ -2,6 +2,7 @@ use arloader::transaction::{stringify, Base64};
 use reqwest;
 use serde::Deserialize;
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct Offset {
     #[serde(with = "stringify")]
@@ -10,6 +11,7 @@ struct Offset {
     offset: usize,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct RawChunk {
     tx_path: Base64,
