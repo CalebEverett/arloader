@@ -15,6 +15,8 @@ pub enum Error {
     ArweaveGetPriceError(reqwest::Error),
     #[error("error posting arweave transaction: {0}")]
     ArweavePostError(reqwest::Error),
+    #[error("Arweave network error: {0}")]
+    ArweaveNetworkError(reqwest::StatusCode),
     #[error("avro deserialize: {0}")]
     AvroDeError(#[from] avro_rs::DeError),
     #[error("base64 decode: {0}")]
