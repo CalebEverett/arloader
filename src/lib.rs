@@ -1268,7 +1268,9 @@ impl Arweave {
             ResponseStatusCode::NOT_FOUND => {
                 status.status = StatusCode::NotFound;
             }
-            _ => unreachable!(),
+            other_status => {
+                return Err(Error::ArweaveNetworkError(other_status));
+            }
         }
         Ok(status)
     }
