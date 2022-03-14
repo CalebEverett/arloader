@@ -6,9 +6,9 @@ use tempdir::TempDir;
 use url::Url;
 
 // For smaller sample sizes, you may have to increase this to have the transactions mined.
-const REWARD_MULTIPLIER: f32 = 2.0;
-const NUM_FILES: usize = 1;
-const FILE_SIZE: usize = 100_000_000;
+const REWARD_MULTIPLIER: f32 = 3.0;
+const NUM_FILES: usize = 2;
+const FILE_SIZE: usize = 100_000;
 const BUFFER: usize = 5;
 
 #[tokio::main]
