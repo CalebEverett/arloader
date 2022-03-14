@@ -908,7 +908,7 @@ impl Arweave {
 
         let mut retries = 0;
         let mut status = reqwest::StatusCode::NOT_FOUND;
-        let url = self.base_url.join("tx/")?;
+        let url = self.base_url.join("tx")?;
         let client = reqwest::Client::new();
 
         while (retries < CHUNKS_RETRIES) & (status != reqwest::StatusCode::OK) {
