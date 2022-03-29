@@ -48,8 +48,8 @@ async fn main() -> CommandResult {
                 .unwrap();
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
             let with_sol = sub_arg_matches.is_present("with_sol");
-            let bundle_size =
-                value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap() * 1_000_000;
+            let bundle_size = (value_t!(sub_arg_matches.value_of("bundle_size"), f64).unwrap()
+                * 1_000_000.0) as u64;
             let no_bundle = sub_arg_matches.is_present("no_bundle");
             command_get_cost(
                 &Arweave::default(),
@@ -130,8 +130,8 @@ async fn main() -> CommandResult {
 
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
             let no_bundle = sub_arg_matches.is_present("no_bundle");
-            let bundle_size =
-                value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap() * 1_000_000;
+            let bundle_size = (value_t!(sub_arg_matches.value_of("bundle_size"), f64).unwrap()
+                * 1_000_000.0) as u64;
             let statuses = sub_arg_matches
                 .values_of("statuses")
                 .map(get_status_codes_vec);
@@ -277,8 +277,8 @@ async fn main() -> CommandResult {
                 .map(|s| s.expand_tilde().add_trailing_slash())
                 .map(PathBuf::from);
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
-            let bundle_size =
-                value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap() * 1_000_000;
+            let bundle_size = (value_t!(sub_arg_matches.value_of("bundle_size"), f64).unwrap()
+                * 1_000_000.0) as u64;
             let with_sol = sub_arg_matches.is_present("with_sol");
             let no_bundle = sub_arg_matches.is_present("no_bundle");
             let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
@@ -359,8 +359,8 @@ async fn main() -> CommandResult {
                 .map(|s| s.expand_tilde().add_trailing_slash())
                 .map(PathBuf::from);
             let reward_mult = value_t!(sub_arg_matches.value_of("reward_multiplier"), f32).unwrap();
-            let bundle_size =
-                value_t!(sub_arg_matches.value_of("bundle_size"), u64).unwrap() * 1_000_000;
+            let bundle_size = (value_t!(sub_arg_matches.value_of("bundle_size"), f64).unwrap()
+                * 1_000_000.0) as u64;
             let buffer = value_t!(sub_arg_matches.value_of("buffer"), usize).unwrap();
             let link_file = sub_arg_matches.is_present("link_file");
             let sol_keypair_path = sub_arg_matches
@@ -879,7 +879,7 @@ where
 fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
     match reward_mult.parse::<f32>() {
         Ok(n) => {
-            if n > 0. && n <= 3. {
+            if n > 0. && n <= 10. {
                 Ok(())
             } else {
                 Err(format!("Multiplier must be a float between 0 and 3."))
@@ -890,9 +890,9 @@ fn is_valid_reward_multiplier(reward_mult: String) -> Result<(), String> {
 }
 
 fn is_valid_bundle_size(bundle_size: String) -> Result<(), String> {
-    match bundle_size.parse::<u64>() {
+    match bundle_size.parse::<f64>() {
         Ok(n) => {
-            if n > 0 && n <= 200 {
+            if n > 0.0 && n <= 200.0 {
                 Ok(())
             } else {
                 Err(format!(
@@ -962,7 +962,7 @@ fn is_json_file_path(path_str: String) -> Result<(), String> {
 //             println!(
 //                 "{} is {} MB, which is greater than the bundle size of {}. Bundle size must be greater than file.",
 //                 p.display(),
-//                 p_len / 1_000_000,
+//                 p_len / 1_000_000.0,
 //                 bundle_size
 //             );
 //             true

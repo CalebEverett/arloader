@@ -85,7 +85,7 @@ use rayon::prelude::*;
 use reqwest::{
     self,
     header::{ACCEPT, CONTENT_TYPE},
-    StatusCode as ResponseStatusCode,
+    Client, StatusCode as ResponseStatusCode,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -226,10 +226,11 @@ pub fn upload_transaction_chunks_stream<'a>(
     signed_transaction: Transaction,
     buffer: usize,
 ) -> impl Stream<Item = Result<usize, Error>> + 'a {
+    let client = Client::new();
     stream::iter(0..signed_transaction.chunks.len())
         .map(move |i| {
             let chunk = signed_transaction.get_chunk(i).unwrap();
-            arweave.post_chunk_with_retries(chunk)
+            arweave.post_chunk_with_retries(chunk, client.clone())
         })
         .buffer_unordered(buffer)
 }
@@ -862,9 +863,9 @@ impl Arweave {
         })
     }
 
-    pub async fn post_chunk(&self, chunk: &Chunk) -> Result<usize, Error> {
-        let url = self.base_url.join("chunk/")?;
-        let client = reqwest::Client::new();
+    pub async fn post_chunk(&self, chunk: &Chunk, client: &Client) -> Result<usize, Error> {
+        let url = self.base_url.join("chunk")?;
+        // let client = reqwest::Client::new();
 
         let resp = client
             .post(url)
@@ -881,17 +882,22 @@ impl Arweave {
         }
     }
 
-    pub async fn post_chunk_with_retries(&self, chunk: Chunk) -> Result<usize, Error> {
+    pub async fn post_chunk_with_retries(
+        &self,
+        chunk: Chunk,
+        client: Client,
+    ) -> Result<usize, Error> {
         let mut retries = 0;
-        let mut resp = self.post_chunk(&chunk).await;
+        let mut resp = self.post_chunk(&chunk, &client).await;
 
         while retries < CHUNKS_RETRIES {
             match resp {
                 Ok(offset) => return Ok(offset),
-                Err(_) => {
+                Err(e) => {
+                    log::debug!("post_chunk_with_retries: {:?}", e);
                     sleep(Duration::from_secs(CHUNKS_RETRY_SLEEP)).await;
                     retries += 1;
-                    resp = self.post_chunk(&chunk).await;
+                    resp = self.post_chunk(&chunk, &client).await;
                 }
             }
         }
@@ -923,6 +929,7 @@ impl Arweave {
             if status == reqwest::StatusCode::OK {
                 return Ok((signed_transaction.id.clone(), signed_transaction.reward));
             }
+            log::debug!("post_transaction: {:?}", status);
             sleep(Duration::from_secs(CHUNKS_RETRY_SLEEP)).await;
             retries += 1;
         }
