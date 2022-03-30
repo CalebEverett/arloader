@@ -41,6 +41,8 @@ cargo install arloader
 ## NFT Usage
 The single `upload-nfts` command below assumes you have a pair of image and metadata files for each of your NFTs. To learn more about each of the steps to upload your files, check out [upload_nfts_steps](docs/upload_nfts_steps.md). See [multiple_asset_files](docs/multiple_asset_files.md) for an example of how to upload multiple media files.
 
+For a beginner's step-by-step guide of how to create an NFT in Solana (from creating a wallet, to uploading assets to arweave using arloader, to listing it in a marketplace) check out [this medium article](https://medium.com/@murki/the-ultimate-dev-guide-to-manually-minting-a-brand-new-nft-in-solana-fb5af9771688).
+
 ### Create Upload Folder
  Put your assets and associated metadata files with `.json` extension in a folder by themselves. You can use any kind of file you want. Arloader automatically adds a content type tag to your upload so that browsers will handle it correctly when accessed from Arweave.
  ```
