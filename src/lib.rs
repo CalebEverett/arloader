@@ -70,7 +70,6 @@
 //! #### Solana
 //! The functions for allowing payment to be made in SOL can be found in the [`solana`] module.
 
-#![feature(derive_default_enum)]
 use blake3;
 use chrono::Utc;
 use futures::{

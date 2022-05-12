@@ -5,6 +5,9 @@ All notable changes starting with v0.1.34 to this project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# v0.1.63 (2022-05-11)
+- **changed:** removed default enum feature to make it possible to use stable tool chain.
+
 # v0.1.61 (2022-03-13)
 - **changed:** removed trailing slash from `tx/` post to be compatible with change in arweave gateway.
 
