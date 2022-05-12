@@ -20,13 +20,18 @@ pub struct RawStatus {
 }
 
 /// Indicates transaction status on the network, from Submitted to Confirmed.
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Eq, Hash)]
 pub enum StatusCode {
-    #[default]
     Submitted,
     Pending,
     Confirmed,
     NotFound,
+}
+
+impl Default for StatusCode {
+    fn default() -> Self {
+        StatusCode::Submitted
+    }
 }
 
 impl std::fmt::Display for StatusCode {
