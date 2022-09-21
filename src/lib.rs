@@ -225,7 +225,7 @@ pub fn upload_transaction_chunks_stream<'a>(
     signed_transaction: Transaction,
     buffer: usize,
 ) -> impl Stream<Item = Result<usize, Error>> + 'a {
-    let client = Client::new();
+    let client = &arweave.client;
     stream::iter(0..signed_transaction.chunks.len())
         .map(move |i| {
             let chunk = signed_transaction.get_chunk(i).unwrap();
@@ -347,6 +347,7 @@ pub struct Arweave {
     pub units: String,
     pub base_url: Url,
     pub crypto: crypto::Provider,
+    pub client: Client,
 }
 
 impl Default for Arweave {
@@ -356,6 +357,7 @@ impl Default for Arweave {
             units: String::from("winstons"),
             base_url: Url::from_str("https://arweave.net/").unwrap(),
             crypto: crypto::Provider::default(),
+            client: Client::new(),
         }
     }
 }
@@ -383,6 +385,10 @@ impl Arweave {
         Ok(arweave)
     }
 
+    pub fn set_client(&mut self, client: Client) {
+        self.client = client;
+    }
+
     //-------------------------
     // Get Request
     //-------------------------
@@ -390,15 +396,32 @@ impl Arweave {
     /// Get pending network transaction count.
     pub async fn get_pending_count(&self) -> Result<usize, Error> {
         let url = self.base_url.join("tx/pending")?;
-        let tx_ids: Vec<String> = reqwest::get(url).await?.json().await?;
+        let tx_ids: Vec<String> = self.client.get(url).send().await?.json().await?;
         Ok(tx_ids.len())
+    }
+
+    /// Get last tx.
+    pub async fn get_last_tx(&self, wallet: Base64) -> Result<Base64, Error> {
+        let url = self.base_url.join(&format!("wallet/{}/last_tx", wallet))?;
+        let last_tx: String = self.client.get(url).send().await?.text().await?;
+        Ok(Base64::from_str(&last_tx)?)
+    }
+
+    /// Get tx_anchor tx.
+    pub async fn get_tx_anchor(&self) -> Result<Base64, Error> {
+        let url = self.base_url.join("tx_anchor")?;
+        let tx_anchor: String = self.client.get(url).send().await?.text().await?;
+        Ok(Base64::from_str(&tx_anchor)?)
     }
 
     /// Returns price of uploading data to the network in winstons and USD per AR and USD per SOL
     /// as a BigUint with two decimals.
     pub async fn get_price(&self, bytes: &u64) -> Result<(BigUint, BigUint, BigUint), Error> {
         let url = self.base_url.join("price/")?.join(&bytes.to_string())?;
-        let winstons_per_bytes = reqwest::get(url)
+        let winstons_per_bytes = self
+            .client
+            .get(url)
+            .send()
             .await
             .map_err(|e| Error::ArweaveGetPriceError(e))?
             .json::<u64>()
@@ -434,7 +457,13 @@ impl Arweave {
     /// Gets transaction from the network.
     pub async fn get_transaction(&self, id: &Base64) -> Result<Transaction, Error> {
         let url = self.base_url.join("tx/")?.join(&id.to_string())?;
-        let resp = reqwest::get(url).await?.json::<Transaction>().await?;
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .await?
+            .json::<Transaction>()
+            .await?;
         Ok(resp)
     }
 
@@ -451,7 +480,7 @@ impl Arweave {
         let url = self
             .base_url
             .join(&format!("wallet/{}/balance", &wallet_address))?;
-        let winstons = reqwest::get(url).await?.json::<u64>().await?;
+        let winstons = self.client.get(url).send().await?.json::<u64>().await?;
         Ok(BigUint::from(winstons))
     }
 
@@ -810,10 +839,9 @@ impl Arweave {
         let last_tx = if let Some(last_tx) = last_tx {
             last_tx
         } else {
-            let resp = reqwest::get(self.base_url.join("tx_anchor")?).await?;
-            debug!("last_tx: {}", resp.status());
-            let last_tx_str = resp.text().await?;
-            Base64::from_str(&last_tx_str)?
+            let last_tx = self.get_tx_anchor().await?;
+            debug!("last_tx: {}", last_tx);
+            Base64::from_str(&last_tx.to_string())?
         };
         transaction.last_tx = last_tx;
 
@@ -864,7 +892,6 @@ impl Arweave {
 
     pub async fn post_chunk(&self, chunk: &Chunk, client: &Client) -> Result<usize, Error> {
         let url = self.base_url.join("chunk")?;
-        // let client = reqwest::Client::new();
 
         let resp = client
             .post(url)
@@ -914,10 +941,10 @@ impl Arweave {
         let mut retries = 0;
         let mut status = reqwest::StatusCode::NOT_FOUND;
         let url = self.base_url.join("tx")?;
-        let client = reqwest::Client::new();
 
         while (retries < CHUNKS_RETRIES) & (status != reqwest::StatusCode::OK) {
-            status = client
+            status = self
+                .client
                 .post(url.clone())
                 .json(&signed_transaction)
                 .header(&ACCEPT, "application/json")
@@ -1252,7 +1279,7 @@ impl Arweave {
     /// Gets status from network.
     pub async fn get_status(&self, id: &Base64) -> Result<Status, Error> {
         let url = self.base_url.join(&format!("tx/{}/status", id))?;
-        let resp = reqwest::get(url).await?;
+        let resp = self.client.get(url).send().await?;
         let mut status = Status {
             id: id.clone(),
             ..Status::default()
@@ -1775,6 +1802,7 @@ impl Arweave {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
         error::Error,
         transaction::{Base64, FromUtf8Strs, Tag},
@@ -1784,6 +1812,7 @@ mod tests {
     use futures::future::try_join_all;
     use glob::glob;
     use matches::assert_matches;
+    use reqwest::header;
     use std::{path::PathBuf, str::FromStr, time::Instant};
     use tokio::fs;
     use url::Url;
