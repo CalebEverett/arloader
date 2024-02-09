@@ -10,6 +10,10 @@ documentation = "https://docs.rs/arloader/latest/arloader/"
 keywords = ["arweave", "nft", "metaplex", "solana", "upload"]
 categories = ["api-bindings", "command-line-utilities", "filesystem"]
 
+[features]
+default = ["reqwest/default-tls"]
+rustls-tls = ["reqwest/rustls-tls"]
+
 [lib]
 name = "arloader"
 path = "src/lib.rs"
@@ -40,7 +44,7 @@ num-bigint = { version = "0.4.2", features = [ "serde" ] }
 num-traits = "0.2.14"
 rayon = "1.5.1"
 ring = {version = "0.16.20", features = [ "std" ] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", optional = true, default-features = false, features = ["json"] }
 serde = "1.0.130"
 serde_derive = "1.0.130"
 serde_json = { version = "1.0.68", features = ["preserve_order"] }
